@@ -88,7 +88,7 @@ struct GameDetailView: View {
         .task(id: game.id) {
             await loadCachedDescription()
         }
-        .task(id: detail?.authorURL) {
+        .task(id: detail == nil ? nil : (detail?.authorURL?.absoluteString ?? game.url?.absoluteString)) {
             guard detail != nil else { return }
             let resolved = await PatreonAvatarService.shared.avatarURL(
                 authorURL: detail?.authorURL,
