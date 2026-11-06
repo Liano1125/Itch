@@ -278,7 +278,6 @@ struct DiscoverView: View {
 
     private func explorationGroup(
         title: String,
-        subtitle: String,
         items: [(String, String, String)]
     ) -> some View {
         VStack(alignment: .leading, spacing: 11) {
