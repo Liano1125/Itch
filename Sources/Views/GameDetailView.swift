@@ -52,6 +52,7 @@ struct GameDetailView: View {
 
                 descriptionSection
                 statusHistorySection
+                gameUpdateHistorySection
 
                 if let errorMessage {
                     errorSection(errorMessage)
@@ -235,6 +236,50 @@ struct GameDetailView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    // MARK: Game Update History
+
+    @ViewBuilder
+    private var gameUpdateHistorySection: some View {
+        if library.record(for: game.id) != nil {
+            let updates = library.updates(for: game.id)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("游戏更新记录")
+                        .font(.title2.bold())
+                    Spacer()
+                    if !updates.isEmpty {
+                        Text("\(updates.count) 条")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if updates.isEmpty {
+                    Text("检测到的页面更新会同步显示在这里。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(updates) { update in
+                        HStack(alignment: .top, spacing: 11) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(update.summary)
+                                    .font(.subheadline)
+                                Text(update.detectedAt.formatted(date: .long, time: .shortened) + " · 检测时间")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
