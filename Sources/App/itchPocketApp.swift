@@ -12,7 +12,6 @@ struct itchPocketApp: App {
                 .task {
                     await authService.restoreSession()
                 }
-                .preferredColorScheme(nil)
-        }
+         }
     }
 }
