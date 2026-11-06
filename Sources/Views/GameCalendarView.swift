@@ -32,7 +32,7 @@ struct GameCalendarView: View {
                             if let day = item.element {
                                 dayCell(day)
                             } else {
-                                Color.clear.frame(height: 42)
+                                Color.clear.frame(height: 58)
                             }
                         }
                     }
@@ -101,20 +101,45 @@ struct GameCalendarView: View {
 
     private func symbolsLabel(_ value: String) -> String { value }
 
+    private func eventColor(_ kind: GameCalendarEventKind) -> Color {
+        switch kind {
+        case .plannedPlay: return .blue
+        case .release: return .purple
+        case .update: return .orange
+        case .custom: return .gray
+        }
+    }
+
     private func dayCell(_ date: Date) -> some View {
         let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
         let isToday = calendar.isDateInToday(date)
-        let hasEvents = !calendarStore.events(on: date).isEmpty
+        let dayEvents = calendarStore.events(on: date)
         return Button { selectedDate = calendar.startOfDay(for: date) } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Text("\(calendar.component(.day, from: date))")
                     .font(.subheadline.weight(isSelected || isToday ? .bold : .regular))
                     .foregroundStyle(isSelected ? .white : .primary)
-                Circle().fill(hasEvents ? (isSelected ? .white : Color.accentColor) : .clear).frame(width: 4, height: 4)
+                VStack(spacing: 2) {
+                    ForEach(dayEvents.prefix(2)) { event in
+                        Text(event.title)
+                            .font(.system(size: 7, weight: .semibold))
+                            .lineLimit(1)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 3)
+                            .frame(maxWidth: .infinity)
+                            .background(eventColor(event.kind), in: Capsule())
+                    }
+                    if dayEvents.count > 2 {
+                        Text("+\\(dayEvents.count - 2)")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(isSelected ? .white : .secondary)
+                    }
+                }
+                .frame(height: 23, alignment: .top)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 42)
-            .background(isSelected ? Color.accentColor : (isToday ? Color.accentColor.opacity(0.12) : .clear), in: RoundedRectangle(cornerRadius: 11))
+            .frame(height: 58)
+            .background(isSelected ? Color.accentColor : (isToday ? Color.accentColor.opacity(0.12) : .clear), in: RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
     }
