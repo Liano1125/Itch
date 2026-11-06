@@ -10,6 +10,7 @@ enum ItchOAuthConfig {
     static let scopes = [
         "profile:me",
         "profile:owned",
+        "profile:collections",
         "game:view:uploads"
     ].joined(separator: " ")
 }
