@@ -57,10 +57,13 @@ struct ContentView: View {
         .environmentObject(updateMonitor)
         .task {
             DevlogAutoSync.scheduleNext()
+            // Always perform a fresh Devlog check on each cold app launch.
+            // Background refresh remains throttled and opportunistic.
             await DevlogAutoSync.refreshIfNeeded(
                 monitor: updateMonitor,
                 library: personalLibrary,
-                calendar: gameCalendar
+                calendar: gameCalendar,
+                force: true
             )
         }
         .onChange(of: scenePhase) { _, phase in
