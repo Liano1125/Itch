@@ -34,25 +34,8 @@ struct ContentView: View {
                 }
                 .tag(AppTab.library)
 
-            NavigationStack {
-                VStack(spacing: 0) {
-                    NavigationLink {
-                        GameUpdateMonitorView()
-                    } label: {
-                        HStack {
-                            Label("游戏更新提醒", systemImage: "arrow.triangle.2.circlepath")
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 12)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground))
-                    }
-                    GameCalendarView()
-                }
-            }
-                .tabItem {
+            GameCalendarView()
+            .tabItem {
                     Label("日历", systemImage: "calendar")
                 }
                 .tag(AppTab.calendar)
