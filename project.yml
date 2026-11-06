@@ -13,15 +13,10 @@ targets:
     platform: iOS
 
     sources:
-      - Sources
+      - path: Sources
 
     info:
-      properties:
-        CFBundleDisplayName: itchPocket
-        CFBundleURLTypes:
-          - CFBundleURLName: com.liano.itchPocket
-            CFBundleURLSchemes:
-              - itchpocket
+      path: Info.plist
 
     settings:
       base:
@@ -29,5 +24,4 @@ targets:
         PRODUCT_NAME: itchPocket
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
-        GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
