@@ -1,360 +1,105 @@
+
 import SwiftUI
+import WebKit
 
-struct LibraryView: View {
-    @EnvironmentObject private var auth: ItchAuthService
+// MARK: - Public Collection Configuration
 
-    @State private var collections: [ItchCollection] = []
-    @State private var searchText = ""
-    @State private var isLoading = false
-    @State private var hasLoaded = false
-    @State private var errorMessage: String?
-
-    private let api = ItchAPI()
-
-    private var filteredCollections: [ItchCollection] {
-        guard !searchText.isEmpty else {
-            return collections
-        }
-
-        return collections.filter {
-            $0.title.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if !auth.isSignedIn {
-                    signedOutView
-                } else if isLoading && collections.isEmpty {
-                    loadingView
-                } else if let errorMessage, collections.isEmpty {
-                    errorView(errorMessage)
-                } else if collections.isEmpty {
-                    emptyView
-                } else {
-                    collectionList
-                }
-            }
-            .navigationTitle("游戏库")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(
-                text: $searchText,
-                prompt: "搜索合集"
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task {
-                            await loadCollections(force: true)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(isLoading || !auth.isSignedIn)
-                    .accessibilityLabel("刷新合集")
-                }
-            }
-            .task {
-                if auth.isSignedIn && !hasLoaded {
-                    await loadCollections()
-                }
-            }
-            .onChange(of: auth.isSignedIn) { _, signedIn in
-                if signedIn {
-                    Task {
-                        await loadCollections(force: true)
-                    }
-                } else {
-                    collections = []
-                    searchText = ""
-                    errorMessage = nil
-                    hasLoaded = false
-                }
-            }
-        }
-    }
-
-    // MARK: - Collection List
-
-    private var collectionList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("我的合集")
-                        .font(.title2.bold())
-
-                    Text("浏览你在 itch.io 创建或管理的游戏合集")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    Text("\(collections.count) 个合集")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    if isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-
-                if filteredCollections.isEmpty {
-                    ContentUnavailableView(
-                        "没有找到合集",
-                        systemImage: "magnifyingglass",
-                        description: Text("试试其他合集名称")
-                    )
-                    .padding(.top, 40)
-                } else {
-                    LazyVStack(spacing: 12) {
-                        ForEach(filteredCollections) { collection in
-                            NavigationLink {
-                                CollectionDetailView(
-                                    collection: collection
-                                )
-                            } label: {
-                                collectionCard(collection)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-            }
-            .padding()
-        }
-        .refreshable {
-            await loadCollections(force: true)
-        }
-    }
-
-    private func collectionCard(
-        _ collection: ItchCollection
-    ) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 15)
-                    .fill(.quaternary)
-
-                Image(systemName: "square.stack.3d.up.fill")
-                    .font(.system(size: 27))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: 62, height: 62)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(collection.title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-
-                HStack(spacing: 8) {
-                    Text("\(collection.gamesCount ?? 0) 款游戏")
-
-                    if collection.isPrivate == true {
-                        Text("·")
-                        Label("私有", systemImage: "lock.fill")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(14)
-        .background(
-            .regularMaterial,
-            in: RoundedRectangle(cornerRadius: 19)
-        )
-    }
-
-    // MARK: - States
-
-    private var signedOutView: some View {
-        ContentUnavailableView(
-            "尚未登录",
-            systemImage: "person.crop.circle",
-            description: Text("登录 itch.io 后即可读取你的游戏合集")
-        )
-    }
-
-    private var loadingView: some View {
-        VStack(spacing: 14) {
-            ProgressView()
-                .controlSize(.large)
-
-            Text("正在读取你的合集…")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyView: some View {
-        ContentUnavailableView(
-            "还没有找到合集",
-            systemImage: "square.stack.3d.up",
-            description: Text("目前没有读取到你创建或管理的 Collection。")
-        )
-    }
-
-    private func errorView(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label(
-                "读取合集失败",
-                systemImage: "exclamationmark.triangle"
-            )
-        } description: {
-            Text(message)
-        } actions: {
-            Button("重新加载") {
-                Task {
-                    await loadCollections(force: true)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-        }
-    }
-
-    // MARK: - Load Collections
-
-    @MainActor
-    private func loadCollections(
-        force: Bool = false
-    ) async {
-
-        guard auth.isSignedIn else {
-            return
-        }
-
-        guard !isLoading else {
-            return
-        }
-
-        if hasLoaded && !force {
-            return
-        }
-
-        guard let token = KeychainStore.read("access_token") else {
-            errorMessage = "没有找到登录凭据，请重新登录。"
-            hasLoaded = true
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        defer {
-            isLoading = false
-        }
-
-        do {
-            let result = try await api.fetchCollections(
-                token: token
-            )
-
-            guard auth.isSignedIn else {
-                return
-            }
-
-            collections = result
-            hasLoaded = true
-
-        } catch {
-            errorMessage = error.localizedDescription
-            hasLoaded = true
-        }
-    }
+private enum ItchPublicCollection {
+    static let url = URL(
+        string: "https://itch.io/c/5891862/liano1125s-collection"
+    )!
 }
 
-// MARK: - Collection Detail
+// MARK: - Public Game Model
 
-struct CollectionDetailView: View {
-    @EnvironmentObject private var auth: ItchAuthService
+private struct PublicCollectionGame: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let url: URL?
+    let coverURL: URL?
+    let description: String?
+    let developer: String?
+    let platforms: [String]
+}
 
-    let collection: ItchCollection
+// MARK: - Library View
 
-    @State private var games: [ItchGame] = []
+struct LibraryView: View {
+    @State private var games: [PublicCollectionGame] = []
     @State private var searchText = ""
-    @State private var isLoading = false
+    @State private var isLoading = true
     @State private var hasLoaded = false
     @State private var errorMessage: String?
-
-    private let api = ItchAPI()
+    @State private var reloadToken = UUID()
 
     private let columns = [
         GridItem(.flexible(), spacing: 14),
         GridItem(.flexible(), spacing: 14)
     ]
 
-    private var filteredGames: [ItchGame] {
+    private var filteredGames: [PublicCollectionGame] {
         guard !searchText.isEmpty else {
             return games
         }
 
         return games.filter { game in
-            let titleMatches = game.title.localizedCaseInsensitiveContains(
-                searchText
-            )
-
-            let developerMatches = (
-                game.user?.displayName
-                ?? game.user?.username
-                ?? ""
-            ).localizedCaseInsensitiveContains(searchText)
-
-            return titleMatches || developerMatches
+            game.title.localizedCaseInsensitiveContains(searchText)
+            || (game.developer ?? "")
+                .localizedCaseInsensitiveContains(searchText)
+            || (game.description ?? "")
+                .localizedCaseInsensitiveContains(searchText)
         }
     }
 
     var body: some View {
-        Group {
-            if isLoading && games.isEmpty {
-                loadingView
-            } else if let errorMessage, games.isEmpty {
-                errorView(errorMessage)
-            } else if games.isEmpty {
-                emptyView
-            } else {
-                gameGrid
+        NavigationStack {
+            ZStack {
+                // 隐藏的网页读取器，只负责获取公开合集数据
+                ItchCollectionPageReader(
+                    url: ItchPublicCollection.url,
+                    reloadToken: reloadToken,
+                    onLoad: handleLoadedGames,
+                    onError: handleLoadError
+                )
+                .frame(width: 1, height: 1)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
+                content
             }
-        }
-        .navigationTitle(collection.title)
-        .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            prompt: "搜索合集中的游戏"
-        )
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await loadGames(force: true)
+            .navigationTitle("游戏库")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(
+                text: $searchText,
+                prompt: "搜索我的游戏"
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        reloadGames()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
                     }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                    .disabled(isLoading)
+                    .accessibilityLabel("刷新游戏库")
                 }
-                .disabled(isLoading)
-                .accessibilityLabel("刷新游戏")
             }
         }
-        .task {
-            if !hasLoaded {
-                await loadGames()
-            }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading && games.isEmpty {
+            loadingView
+        } else if let errorMessage, games.isEmpty {
+            errorView(errorMessage)
+        } else if games.isEmpty {
+            emptyView
+        } else {
+            gameGrid
         }
     }
 
@@ -364,187 +109,183 @@ struct CollectionDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(collection.title)
+                    Text("我的游戏")
                         .font(.title2.bold())
 
-                    Text("\(games.count) 款游戏")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text("\(games.count) 款游戏")
+
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.mini)
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
 
                 if filteredGames.isEmpty {
                     ContentUnavailableView(
                         "没有找到游戏",
                         systemImage: "magnifyingglass",
-                        description: Text("试试其他游戏名称或开发者")
+                        description: Text(
+                            "试试其他游戏名称、开发者或关键词"
+                        )
                     )
                     .padding(.top, 40)
                 } else {
-                    LazyVGrid(columns: columns, spacing: 16) {
+                    LazyVGrid(
+                        columns: columns,
+                        spacing: 16
+                    ) {
                         ForEach(filteredGames) { game in
-                            ItchGameCard(game: game)
+                            PublicGameCard(game: game)
                         }
                     }
-                }
-
-                if isLoading {
-                    ProgressView("正在加载更多游戏…")
-                        .frame(maxWidth: .infinity)
-                        .padding()
                 }
 
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
                         .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
                 }
             }
             .padding()
         }
         .refreshable {
-            await loadGames(force: true)
+            reloadGames()
         }
     }
 
-    // MARK: - States
+    // MARK: - Loading
 
     private var loadingView: some View {
         VStack(spacing: 14) {
             ProgressView()
                 .controlSize(.large)
 
-            Text("正在读取合集中的游戏…")
+            Text("正在读取你的 18 款游戏…")
                 .foregroundStyle(.secondary)
+
+            Text("正在连接 itch.io 公开合集")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // MARK: - Empty
+
     private var emptyView: some View {
         ContentUnavailableView(
-            "这个合集还没有游戏",
+            "没有找到游戏",
             systemImage: "gamecontroller",
-            description: Text("这个 Collection 目前没有可显示的游戏。")
+            description: Text(
+                "暂时没有从公开合集页面读取到游戏，请尝试刷新。"
+            )
         )
     }
+
+    // MARK: - Error
 
     private func errorView(_ message: String) -> some View {
         ContentUnavailableView {
             Label(
-                "读取游戏失败",
+                "读取游戏库失败",
                 systemImage: "exclamationmark.triangle"
             )
         } description: {
             Text(message)
         } actions: {
             Button("重新加载") {
-                Task {
-                    await loadGames(force: true)
-                }
+                reloadGames()
             }
             .buttonStyle(.borderedProminent)
         }
     }
 
-    // MARK: - Load Games
+    // MARK: - Data Handling
 
-    @MainActor
-    private func loadGames(
-        force: Bool = false
-    ) async {
+    private func handleLoadedGames(
+        _ result: [PublicCollectionGame]
+    ) {
+        games = result
+        isLoading = false
+        hasLoaded = true
+        errorMessage = nil
+    }
 
+    private func handleLoadError(_ message: String) {
+        isLoading = false
+        hasLoaded = true
+        errorMessage = message
+    }
+
+    private func reloadGames() {
         guard !isLoading else {
-            return
-        }
-
-        if hasLoaded && !force {
-            return
-        }
-
-        guard let token = KeychainStore.read("access_token") else {
-            errorMessage = "没有找到登录凭据，请重新登录。"
-            hasLoaded = true
             return
         }
 
         isLoading = true
         errorMessage = nil
-
-        defer {
-            isLoading = false
-        }
-
-        do {
-            let result = try await api.fetchCollectionGames(
-                collectionID: collection.id,
-                token: token
-            )
-
-            guard auth.isSignedIn else {
-                return
-            }
-
-            games = result
-            hasLoaded = true
-
-        } catch {
-            errorMessage = error.localizedDescription
-            hasLoaded = true
-        }
+        games = []
+        hasLoaded = false
+        reloadToken = UUID()
     }
 }
 
-// MARK: - Game Card
+// MARK: - Public Game Card
 
-private struct ItchGameCard: View {
-    let game: ItchGame
+private struct PublicGameCard: View {
+    let game: PublicCollectionGame
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Group {
-                if let coverURL = game.coverUrl {
-                    AsyncImage(url: coverURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-
-                        case .failure:
-                            coverPlaceholder
-
-                        case .empty:
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 13)
-                                    .fill(.quaternary)
-
-                                ProgressView()
-                            }
-
-                        @unknown default:
-                            coverPlaceholder
-                        }
-                    }
-                } else {
-                    coverPlaceholder
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1.26, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 13))
+            cover
 
             Text(game.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
 
-            Text(
-                game.user?.displayName
-                ?? game.user?.username
-                ?? "未知开发者"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+            if let description = game.description,
+               !description.isEmpty {
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
+            }
+
+            if let developer = game.developer,
+               !developer.isEmpty {
+                Text(developer)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if !game.platforms.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(
+                        Array(game.platforms.prefix(5).enumerated()),
+                        id: \.offset
+                    ) { _, platform in
+                        Text(platform)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
 
             if let url = game.url {
                 Link(destination: url) {
@@ -565,6 +306,41 @@ private struct ItchGameCard: View {
         )
     }
 
+    @ViewBuilder
+    private var cover: some View {
+        if let url = game.coverURL {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+
+                case .failure:
+                    coverPlaceholder
+
+                case .empty:
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 13)
+                            .fill(.quaternary)
+
+                        ProgressView()
+                    }
+
+                @unknown default:
+                    coverPlaceholder
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1.26, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 13))
+        } else {
+            coverPlaceholder
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1.26, contentMode: .fit)
+        }
+    }
+
     private var coverPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 13)
@@ -574,5 +350,273 @@ private struct ItchGameCard: View {
                 .font(.system(size: 30))
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+// MARK: - Hidden Collection Web Reader
+
+private struct ItchCollectionPageReader: UIViewRepresentable {
+    let url: URL
+    let reloadToken: UUID
+
+    let onLoad: ([PublicCollectionGame]) -> Void
+    let onError: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+
+        let webView = WKWebView(
+            frame: .zero,
+            configuration: configuration
+        )
+
+        webView.navigationDelegate = context.coordinator
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+
+        context.coordinator.currentToken = reloadToken
+
+        webView.load(
+            URLRequest(
+                url: url,
+                cachePolicy: .reloadIgnoringLocalCacheData,
+                timeoutInterval: 30
+            )
+        )
+
+        return webView
+    }
+
+    func updateUIView(
+        _ webView: WKWebView,
+        context: Context
+    ) {
+        context.coordinator.parent = self
+
+        guard context.coordinator.currentToken != reloadToken else {
+            return
+        }
+
+        context.coordinator.currentToken = reloadToken
+
+        webView.load(
+            URLRequest(
+                url: url,
+                cachePolicy: .reloadIgnoringLocalCacheData,
+                timeoutInterval: 30
+            )
+        )
+    }
+
+    // MARK: - Coordinator
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: ItchCollectionPageReader
+        var currentToken: UUID?
+
+        init(parent: ItchCollectionPageReader) {
+            self.parent = parent
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFinish navigation: WKNavigation!
+        ) {
+            webView.evaluateJavaScript(
+                Self.extractionScript
+            ) { result, error in
+
+                if let error {
+                    DispatchQueue.main.async {
+                        self.parent.onError(
+                            "解析合集页面失败：\(error.localizedDescription)"
+                        )
+                    }
+                    return
+                }
+
+                guard let json = result as? String,
+                      let data = json.data(using: .utf8) else {
+                    DispatchQueue.main.async {
+                        self.parent.onError(
+                            "合集页面没有返回有效的游戏数据。"
+                        )
+                    }
+                    return
+                }
+
+                do {
+                    let games = try JSONDecoder().decode(
+                        [PublicCollectionGame].self,
+                        from: data
+                    )
+
+                    DispatchQueue.main.async {
+                        self.parent.onLoad(games)
+                    }
+
+                } catch {
+                    DispatchQueue.main.async {
+                        self.parent.onError(
+                            "游戏数据解码失败：\(error.localizedDescription)"
+                        )
+                    }
+                }
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFail navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            report(error)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            report(error)
+        }
+
+        private func report(_ error: Error) {
+            DispatchQueue.main.async {
+                self.parent.onError(
+                    "无法打开 itch.io 公开合集：\(error.localizedDescription)"
+                )
+            }
+        }
+
+        // MARK: - JavaScript Extraction
+
+        private static let extractionScript = """
+        (() => {
+            const cleanText = (element) => {
+                if (!element) return "";
+                return (element.innerText || element.textContent || "")
+                    .replace(/\\s+/g, " ")
+                    .trim();
+            };
+
+            const absoluteURL = (value) => {
+                if (!value) return null;
+
+                try {
+                    return new URL(value, location.href).href;
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            const cells = Array.from(
+                document.querySelectorAll(".game_cell")
+            );
+
+            const games = [];
+            const seen = new Set();
+
+            for (const cell of cells) {
+                const titleElement = cell.querySelector(
+                    ".game_title, .title, .game_title a, a.title"
+                );
+
+                const links = Array.from(
+                    cell.querySelectorAll("a[href]")
+                );
+
+                const gameLink =
+                    cell.querySelector(
+                        "a.game_link, .game_title a, a.title"
+                    ) ||
+                    links.find(a => {
+                        try {
+                            const host = new URL(a.href).hostname;
+                            return host === "itch.io" ||
+                                   host.endsWith(".itch.io");
+                        } catch (_) {
+                            return false;
+                        }
+                    }) ||
+                    links[0];
+
+                const gameURL = gameLink
+                    ? absoluteURL(gameLink.getAttribute("href"))
+                    : null;
+
+                let title = cleanText(titleElement);
+
+                if (!title && gameLink) {
+                    title = cleanText(gameLink);
+                }
+
+                if (!title) continue;
+
+                const identity =
+                    gameURL ||
+                    cell.getAttribute("data-game_id") ||
+                    title;
+
+                if (seen.has(identity)) continue;
+                seen.add(identity);
+
+                const image = cell.querySelector(
+                    ".game_thumb img, img.game_thumb, .game_thumb picture img, img"
+                );
+
+                let coverURL = null;
+
+                if (image) {
+                    coverURL = absoluteURL(
+                        image.getAttribute("data-lazy_src") ||
+                        image.getAttribute("data-lazy-src") ||
+                        image.getAttribute("data-src") ||
+                        image.currentSrc ||
+                        image.getAttribute("src")
+                    );
+                }
+
+                const descriptionElement = cell.querySelector(
+                    ".game_text, .game_description, .game_blurb, .game_desc"
+                );
+
+                const developerElement = cell.querySelector(
+                    ".game_author a, .game_author, .author"
+                );
+
+                const platformElements = Array.from(
+                    cell.querySelectorAll(
+                        ".game_platform, .game_platforms, .web_flag"
+                    )
+                );
+
+                const platforms = platformElements
+                    .map(cleanText)
+                    .filter(Boolean);
+
+                games.push({
+                    id: String(
+                        cell.getAttribute("data-game_id") ||
+                        gameURL ||
+                        identity
+                    ),
+                    title: title,
+                    url: gameURL,
+                    coverURL: coverURL,
+                    description: cleanText(descriptionElement) || null,
+                    developer: cleanText(developerElement) || null,
+                    platforms: platforms
+                });
+            }
+
+            return JSON.stringify(games);
+        })();
+        """
     }
 }
