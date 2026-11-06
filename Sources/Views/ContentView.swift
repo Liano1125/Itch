@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 enum AppTab: Hashable {
     case discover
     case library
@@ -8,9 +9,9 @@ enum AppTab: Hashable {
 }
 
 struct ContentView: View {
-    @StateObject private var personalLibrary = PersonalLibraryStore()
-    @StateObject private var gameCalendar = GameCalendarStore()
-    @StateObject private var updateMonitor = GameUpdateMonitorStore()
+    @StateObject private var personalLibrary = PersonalLibraryStore.shared
+    @StateObject private var gameCalendar = GameCalendarStore.shared
+    @StateObject private var updateMonitor = GameUpdateMonitorStore.shared
     @State private var selectedTab: AppTab = .discover
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
@@ -53,5 +54,13 @@ struct ContentView: View {
         .environmentObject(personalLibrary)
         .environmentObject(gameCalendar)
         .environmentObject(updateMonitor)
+        .task {
+            DevlogAutoSync.scheduleNext()
+            await DevlogAutoSync.refreshIfNeeded(
+                monitor: updateMonitor,
+                library: personalLibrary,
+                calendar: gameCalendar
+            )
+        }
     }
 }
