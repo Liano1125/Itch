@@ -3,6 +3,7 @@ import SwiftUI
 struct GameUpdateMonitorView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
     @EnvironmentObject private var monitor: GameUpdateMonitorStore
+    @EnvironmentObject private var calendarStore: GameCalendarStore
     @State private var isChecking = false
 
     var body: some View {
@@ -36,7 +37,7 @@ struct GameUpdateMonitorView: View {
                 Button {
                     isChecking = true
                     Task {
-                        await monitor.checkAll()
+                        await monitor.checkAll(calendarStore: calendarStore)
                         isChecking = false
                     }
                 } label: {
