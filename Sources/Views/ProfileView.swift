@@ -4,6 +4,7 @@ struct ProfileView: View {
     @EnvironmentObject private var auth: ItchAuthService
     @EnvironmentObject private var library: PersonalLibraryStore
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
+    @AppStorage("itchPocket.launchTab") private var launchTab = "discover"
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
 
@@ -43,6 +44,7 @@ struct ProfileView: View {
     private var personalStatsSection: some View {
         let total = library.records.count
         let favorites = library.records.filter(\.isFavorite).count
+        let playing = library.records.filter { $0.status == .playing }.count
         let recentRecords = Array(library.records.sorted { $0.addedAt > $1.addedAt }.prefix(3))
 
         return VStack(alignment: .leading, spacing: 14) {
@@ -57,7 +59,7 @@ struct ProfileView: View {
 
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 statCard(title: "收藏游戏", value: favorites, symbol: "heart.fill", tint: accent)
-                statCard(title: "自定义合集", value: library.collections.count, symbol: "folder.fill", tint: .orange)
+                statCard(title: "在玩", value: playing, symbol: "gamecontroller.fill", tint: .green)
             }
 
             VStack(alignment: .leading, spacing: 13) {
@@ -286,6 +288,33 @@ struct ProfileView: View {
                     }
                     .pickerStyle(.segmented)
                     .accessibilityLabel("外观模式")
+
+                    Divider().padding(.leading, 54)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "rectangle.stack")
+                                .font(.headline)
+                                .foregroundStyle(accent)
+                                .frame(width: 30)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("启动默认页面")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("选择每次打开 itchPocket 时首先显示的页面")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        Picker("启动默认页面", selection: $launchTab) {
+                            Text("发现").tag("discover")
+                            Text("游戏库").tag("library")
+                            Text("日历").tag("calendar")
+                            Text("我的").tag("profile")
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityLabel("启动默认页面")
+                    }
+                    .padding(.vertical, 13)
                 }
                 .padding(.vertical, 13)
 
