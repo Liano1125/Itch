@@ -1,5 +1,6 @@
 import Foundation
 import BackgroundTasks
+import UIKit
 
 @MainActor
 enum DevlogAutoSync {
