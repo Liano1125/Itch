@@ -179,7 +179,7 @@ struct GameDetailView: View {
                     Text("\(images.count) 张").font(.caption).foregroundStyle(.secondary)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    LazyHStack(spacing: 12) {
                         ForEach(Array(images.enumerated()), id: \.offset) { index, url in
                             Button {
                                 selectedGalleryIndex = index
@@ -323,11 +323,12 @@ struct GameDetailView: View {
 
     private struct PatreonBrandMark: View {
         var body: some View {
-            HStack(spacing: 3) {
-                Circle().frame(width: 8, height: 8)
-                Capsule().frame(width: 5, height: 21)
+            ZStack(alignment: .topLeading) {
+                Capsule().frame(width: 5, height: 22).offset(x: 1, y: 1)
+                Circle().frame(width: 12, height: 12).offset(x: 10, y: 0)
             }
             .foregroundStyle(.white)
+            .frame(width: 23, height: 23)
         }
     }
 
