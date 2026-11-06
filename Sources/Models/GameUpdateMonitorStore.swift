@@ -45,7 +45,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         save()
     }
 
-    func checkAll() async {
+    func checkAll(calendarStore: GameCalendarStore) async {
         let targets = watches.values.filter(\.isEnabled)
         guard !targets.isEmpty else {
             statusMessage = "还没有开启监控的游戏。"
@@ -82,6 +82,13 @@ final class GameUpdateMonitorStore: ObservableObject {
                     let changed = (modified != nil && current.lastModified != nil && modified != current.lastModified)
                         || (modified == nil && etag != nil && current.entityTag != nil && etag != current.entityTag)
                     if changed {
+                        let fingerprint = "modified:\(modified ?? current.lastModified ?? "")|etag:\(etag ?? current.entityTag ?? "")"
+                        calendarStore.addDetectedUpdate(
+                            gameID: current.gameID,
+                            gameTitle: current.gameTitle,
+                            gameURL: current.gameURL,
+                            fingerprint: fingerprint
+                        )
                         await sendUpdateNotification(for: current)
                         updated += 1
                     }
@@ -95,7 +102,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                 failed += 1
             }
         }
-        statusMessage = "检查完成：\(updated) 款游戏检测到页面更新，\(failed) 款检查失败。首次检查只建立基准，不会发送更新通知。"
+        statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
     }
 
     private func sendUpdateNotification(for watch: GameUpdateWatch) async {
