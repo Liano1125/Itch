@@ -10,6 +10,7 @@ enum AppTab: Hashable {
 struct ContentView: View {
     @StateObject private var personalLibrary = PersonalLibraryStore()
     @StateObject private var gameCalendar = GameCalendarStore()
+    @StateObject private var updateMonitor = GameUpdateMonitorStore()
     @State private var selectedTab: AppTab = .discover
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
@@ -33,7 +34,24 @@ struct ContentView: View {
                 }
                 .tag(AppTab.library)
 
-            GameCalendarView()
+            NavigationStack {
+                VStack(spacing: 0) {
+                    NavigationLink {
+                        GameUpdateMonitorView()
+                    } label: {
+                        HStack {
+                            Label("游戏更新提醒", systemImage: "arrow.triangle.2.circlepath")
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    }
+                    GameCalendarView()
+                }
+            }
                 .tabItem {
                     Label("日历", systemImage: "calendar")
                 }
@@ -51,5 +69,6 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.22), value: appearanceMode)
         .environmentObject(personalLibrary)
         .environmentObject(gameCalendar)
+        .environmentObject(updateMonitor)
     }
 }
