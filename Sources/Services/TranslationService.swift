@@ -1,5 +1,10 @@
 import Foundation
 
+struct CachedTranslationResult {
+    let text: String
+    let wasCached: Bool
+}
+
 enum TranslationService {
     static let providerKey = "itchPocket.translation.provider"
     static let baseURLKey = "itchPocket.translation.baseURL"
@@ -17,6 +22,21 @@ enum TranslationService {
             return !(KeychainStore.read("translation.apiKey") ?? "").isEmpty
         default: return false
         }
+    }
+
+    static func translateCached(
+        _ text: String,
+        scope: String,
+        forceRefresh: Bool = false
+    ) async throws -> CachedTranslationResult {
+        let target = UserDefaults.standard.string(forKey: targetKey) ?? "zh-CN"
+        let key = TranslationCacheKey.make(scope: scope, source: text, target: target)
+        if !forceRefresh, let cached = await TranslationCache.shared.translation(for: key) {
+            return CachedTranslationResult(text: cached.translation, wasCached: true)
+        }
+        let translated = try await translate(text)
+        await TranslationCache.shared.store(translated, for: key)
+        return CachedTranslationResult(text: translated, wasCached: false)
     }
 
     static func translate(_ text: String) async throws -> String {
