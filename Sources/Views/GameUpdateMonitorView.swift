@@ -5,6 +5,8 @@ struct GameUpdateMonitorView: View {
     @EnvironmentObject private var monitor: GameUpdateMonitorStore
     @EnvironmentObject private var calendarStore: GameCalendarStore
     @State private var isChecking = false
+    @State private var isSyncingHistory = false
+    @State private var historySyncMessage: String?
 
     var body: some View {
         List {
@@ -12,6 +14,35 @@ struct GameUpdateMonitorView: View {
                 Text("开启后，itchPocket 会检查游戏页面的 ETag / Last-Modified 响应信息。首次检查只建立基准；之后检测到变化时发送通知。页面没有提供这些信息时，可能无法识别更新。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+            Section("历史版本更新") {
+                Text("从每款游戏的 itch.io Devlog RSS 导入已发布的更新日志。日历使用原始发布日期，历史记录不会触发通知；没有公开 Devlog 的游戏可能没有可导入内容。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button {
+                    isSyncingHistory = true
+                    historySyncMessage = nil
+                    Task {
+                        historySyncMessage = await monitor.syncHistoricalDevlogs(
+                            records: library.records,
+                            calendarStore: calendarStore,
+                            libraryStore: library
+                        )
+                        isSyncingHistory = false
+                    }
+                } label: {
+                    HStack {
+                        if isSyncingHistory { ProgressView() }
+                        Text(isSyncingHistory ? "正在同步历史更新…" : "同步全部游戏的历史更新")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .disabled(isSyncingHistory || library.records.isEmpty)
+                if let historySyncMessage {
+                    Text(historySyncMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             Section("个人游戏库") {
                 if library.records.isEmpty {
