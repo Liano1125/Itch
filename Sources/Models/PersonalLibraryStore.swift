@@ -37,13 +37,23 @@ struct LibraryRecord: Codable, Identifiable {
 
 struct GameLibraryUpdate: Codable, Identifiable {
     var id: String
+    var title: String?
     var summary: String
     var detectedAt: Date
+    var publishedAt: Date?
+    var url: String?
+    var sourceID: String?
+    var isHistorical: Bool?
 
-    init(id: String = UUID().uuidString, summary: String, detectedAt: Date = Date()) {
+    init(id: String = UUID().uuidString, title: String? = nil, summary: String, detectedAt: Date = Date(), publishedAt: Date? = nil, url: String? = nil, sourceID: String? = nil, isHistorical: Bool = false) {
         self.id = id
+        self.title = title
         self.summary = summary
         self.detectedAt = detectedAt
+        self.publishedAt = publishedAt
+        self.url = url
+        self.sourceID = sourceID
+        self.isHistorical = isHistorical
     }
 }
 
@@ -118,6 +128,29 @@ final class PersonalLibraryStore: ObservableObject {
         updated.updatedAt = detectedAt
         records[index] = updated
         save()
+    }
+
+    @discardableResult
+    func recordHistoricalUpdate(gameID: String, title: String, summary: String, publishedAt: Date, url: String?, sourceID: String) -> Bool {
+        guard let index = records.firstIndex(where: { $0.id == gameID }) else { return false }
+        var updated = records[index]
+        var history = updated.gameUpdates ?? []
+        guard !history.contains(where: { $0.sourceID == sourceID || ($0.url != nil && $0.url == url) }) else { return false }
+        history.append(GameLibraryUpdate(
+            title: title,
+            summary: summary,
+            detectedAt: Date(),
+            publishedAt: publishedAt,
+            url: url,
+            sourceID: sourceID,
+            isHistorical: true
+        ))
+        history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
+        updated.gameUpdates = Array(history.prefix(200))
+        updated.updatedAt = Date()
+        records[index] = updated
+        save()
+        return true
     }
 
     func createCollection(title: String) {
