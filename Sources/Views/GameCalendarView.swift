@@ -130,7 +130,7 @@ struct GameCalendarView: View {
                             .background(eventColor(event.kind), in: Capsule())
                     }
                     if dayEvents.count > 2 {
-                        Text("+\\(dayEvents.count - 2)")
+                        Text("+\(dayEvents.count - 2)")
                             .font(.system(size: 7, weight: .bold))
                             .foregroundStyle(isSelected ? .white : .secondary)
                     }
