@@ -154,7 +154,7 @@ struct GameCalendarView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title).font(.subheadline.weight(.semibold))
                 Text(event.gameTitle).font(.caption).foregroundStyle(.secondary)
-                Text(event.date.formatted(date: .omitted, time: .shortened) + (event.reminderEnabled ? " · 已设提醒" : ""))
+                Text(event.date.formatted(date: .omitted, time: .shortened) + (event.sourceFingerprint?.hasPrefix("devlog:") == true ? " · 历史发布日期" : (event.reminderEnabled ? " · 已设提醒" : "")))
                     .font(.caption2).foregroundStyle(.tertiary)
             }
             Spacer()
