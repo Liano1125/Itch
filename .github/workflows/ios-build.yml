@@ -15,25 +15,42 @@ permissions:
 
 jobs:
   build:
-    name: Build unsigned IPA
-    runs-on: macos-26
+    name: Build itchPocket IPA
+    runs-on: xcode-27
 
     steps:
+      # 1. 获取仓库代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. 检查 Xcode 和 iOS SDK
       - name: Select Xcode
         run: |
           xcode-select -p
           xcodebuild -version
+          xcodebuild -showsdks
+          xcrun --sdk iphoneos --show-sdk-version
 
+      # 3. 安装 XcodeGen
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          brew install xcodegen
+          xcodegen --version
 
+      # 4. 生成 Xcode 项目
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
 
-      - name: Build for physical iOS devices (unsigned)
+      # 5. 检查生成的 Scheme
+      - name: Check Xcode Scheme
+        run: |
+          xcodebuild \
+            -list \
+            -project itchPocket.xcodeproj
+
+      # 6. 编译 iPhone 真机 Release 版本
+      - name: Build for physical iOS devices
         run: |
           xcodebuild \
             -project itchPocket.xcodeproj \
@@ -47,30 +64,68 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Package unsigned IPA
+      # 7. 检查编译产物和应用配置
+      - name: Inspect built app
         run: |
           APP_PATH="$RUNNER_TEMP/itchPocketDerivedData/Build/Products/Release-iphoneos/itchPocket.app"
 
           if [ ! -d "$APP_PATH" ]; then
-            echo "::error::Built app not found at $APP_PATH"
-            echo "Available app bundles:"
-            find "$RUNNER_TEMP/itchPocketDerivedData/Build/Products" -maxdepth 4 -name "*.app" -print || true
+            echo "::error::itchPocket.app not found"
+            find "$RUNNER_TEMP/itchPocketDerivedData/Build/Products" -name "*.app" -print
             exit 1
           fi
 
-          mkdir -p "$GITHUB_WORKSPACE/dist" "$RUNNER_TEMP/itchPocket-ipa/Payload"
+          echo "Bundle Identifier:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleIdentifier" \
+            "$APP_PATH/Info.plist"
+
+          echo "Supported device families:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :UIDeviceFamily" \
+            "$APP_PATH/Info.plist" || true
+
+          echo "Supported orientations:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :UISupportedInterfaceOrientations" \
+            "$APP_PATH/Info.plist" || true
+
+          echo "Launch storyboard:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :UILaunchStoryboardName" \
+            "$APP_PATH/Info.plist" || true
+
+          echo "App executable:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleExecutable" \
+            "$APP_PATH/Info.plist"
+
+      # 8. 打包未签名 IPA
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="$RUNNER_TEMP/itchPocketDerivedData/Build/Products/Release-iphoneos/itchPocket.app"
+
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          mkdir -p "$RUNNER_TEMP/itchPocket-ipa/Payload"
+
           cp -R "$APP_PATH" "$RUNNER_TEMP/itchPocket-ipa/Payload/"
 
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Info.plist"
-
           cd "$RUNNER_TEMP/itchPocket-ipa"
-          /usr/bin/zip -qry "$GITHUB_WORKSPACE/dist/itchPocket-unsigned.ipa" Payload
+
+          /usr/bin/zip -qry \
+            "$GITHUB_WORKSPACE/dist/itchPocket-unsigned.ipa" \
+            Payload
 
           cd "$GITHUB_WORKSPACE"
-          shasum -a 256 dist/itchPocket-unsigned.ipa > dist/itchPocket-unsigned.ipa.sha256
+
+          shasum -a 256 \
+            dist/itchPocket-unsigned.ipa \
+            > dist/itchPocket-unsigned.ipa.sha256
+
+          echo "IPA package contents:"
           unzip -l dist/itchPocket-unsigned.ipa
 
+      # 9. 上传 IPA
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
