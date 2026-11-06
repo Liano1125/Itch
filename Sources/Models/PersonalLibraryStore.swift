@@ -90,6 +90,7 @@ struct PersonalGameCollection: Codable, Identifiable {
 
 @MainActor
 final class PersonalLibraryStore: ObservableObject {
+    static let shared = PersonalLibraryStore()
     @Published private(set) var records: [LibraryRecord] = []
     @Published private(set) var collections: [PersonalGameCollection] = []
     @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
