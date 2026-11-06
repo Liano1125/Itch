@@ -1,0 +1,22 @@
+name: itchPocket
+options:
+  bundleIdPrefix: com.liano
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+targets:
+  itchPocket:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.liano.itchPocket
+        PRODUCT_NAME: itchPocket
+        SWIFT_VERSION: 5.0
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: itchPocket
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
