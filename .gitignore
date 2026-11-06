@@ -1,0 +1,33 @@
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdata/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# XcodeGen
+*.xcodeproj/
+
+# Secrets
+Secrets.swift
+.env
+.env.*
+
+# Temporary files
+*.tmp
+*.log
