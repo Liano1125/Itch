@@ -79,6 +79,26 @@ final class GameCalendarStore: ObservableObject {
         save()
     }
 
+    func addHistoricalUpdate(gameID: String, gameTitle: String, gameURL: String?, title: String, summary: String, publishedAt: Date, sourceID: String, postURL: String?) {
+        let fingerprint = "devlog:\(sourceID)"
+        guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return }
+        let linkNote = postURL.map { "\n\($0)" } ?? ""
+        let event = GameCalendarEvent(
+            gameID: gameID,
+            gameTitle: gameTitle,
+            gameURL: gameURL,
+            title: "更新：\(title)",
+            date: publishedAt,
+            kind: .update,
+            reminderEnabled: false,
+            notes: summary + linkNote + "\n来源：itch.io Devlog（历史发布日期）",
+            sourceFingerprint: fingerprint
+        )
+        events.append(event)
+        events.sort { $0.date < $1.date }
+        save()
+    }
+
     func update(_ event: GameCalendarEvent) {
         guard let index = events.firstIndex(where: { $0.id == event.id }) else { return }
         events[index] = event
