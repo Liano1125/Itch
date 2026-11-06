@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var auth: ItchAuthService
+    @EnvironmentObject private var library: PersonalLibraryStore
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
@@ -11,6 +12,7 @@ struct ProfileView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     accountCard
+                    personalStatsSection
 
                     if let error = auth.errorMessage {
                         Label {
@@ -34,6 +36,122 @@ struct ProfileView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.large)
+        }
+    }
+
+
+    private var personalStatsSection: some View {
+        let total = library.records.count
+        let favorites = library.records.filter(\\.isFavorite).count
+        let recentRecords = Array(library.records.sorted { $0.addedAt > $1.addedAt }.prefix(3))
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("游戏档案")
+                    .font(.title3.bold())
+                Spacer()
+                Text("仅统计本机个人游戏库")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                statCard(title: "收藏游戏", value: favorites, symbol: "heart.fill", tint: accent)
+                statCard(title: "自定义合集", value: library.collections.count, symbol: "folder.fill", tint: .orange)
+            }
+
+            VStack(alignment: .leading, spacing: 13) {
+                HStack {
+                    Text("游戏进度")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("\\(total) 款游戏")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(LibraryStatus.allCases) { status in
+                    let count = library.records.filter { $0.status == status }.count
+                    VStack(spacing: 6) {
+                        HStack {
+                            Label(status.rawValue, systemImage: status.symbol)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text("\\(count)")
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: total == 0 ? 0 : Double(count) / Double(total))
+                            .tint(statusTint(for: status))
+                    }
+                }
+            }
+            .padding(15)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            if !recentRecords.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("最近加入")
+                        .font(.subheadline.weight(.semibold))
+
+                    ForEach(recentRecords) { record in
+                        HStack(spacing: 10) {
+                            Image(systemName: "gamecontroller.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(accent)
+                                .frame(width: 34, height: 34)
+                                .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(record.title)
+                                    .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
+                                Text(record.status.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(record.addedAt, style: .date)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .padding(15)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+    }
+
+    private func statCard(title: String, value: Int, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: symbol)
+                .font(.headline)
+                .foregroundStyle(tint)
+                .frame(width: 38, height: 38)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\\(value)")
+                    .font(.title2.bold().monospacedDigit())
+                    .foregroundStyle(.primary)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+    }
+
+    private func statusTint(for status: LibraryStatus) -> Color {
+        switch status {
+        case .wishlist: return .blue
+        case .playing: return .green
+        case .completed: return accent
+        case .onHold: return .orange
+        case .dropped: return .secondary
         }
     }
 
