@@ -336,7 +336,7 @@ private struct PersonalGameCard: View {
                     if let developer = record.developer {
                         Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    if let latestUpdate = record.gameUpdates?.first {
+                    if let latestUpdate = record.gameUpdates?.max(by: { ($0.publishedAt ?? $0.detectedAt) < ($1.publishedAt ?? $1.detectedAt) }) {
                         Label("最近更新 · \((latestUpdate.publishedAt ?? latestUpdate.detectedAt).formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.orange)
