@@ -180,11 +180,18 @@ struct LibraryView: View {
             LazyVGrid(columns: columns, spacing: 14) {
                 ForEach(filteredSourceGames) { game in
                     VStack(alignment: .leading, spacing: 8) {
-                        GameCover(url: game.coverURL)
-                        Text(game.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                        if let developer = game.developer {
-                            Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        NavigationLink {
+                            GameDetailView(game: game)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                GameCover(url: game.coverURL)
+                                Text(game.title).font(.subheadline.weight(.semibold)).lineLimit(2).foregroundStyle(.primary)
+                                if let developer = game.developer {
+                                    Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
                         }
+                        .buttonStyle(.plain)
                         Button {
                             library.add(game)
                         } label: {
@@ -209,13 +216,32 @@ private struct PersonalGameCard: View {
     let onUpdate: (LibraryRecord) -> Void
     let onRemove: () -> Void
 
+    private var detailGame: PublicCollectionGame {
+        PublicCollectionGame(
+            id: record.id,
+            title: record.title,
+            url: URL(string: record.gameURL ?? ""),
+            coverURL: URL(string: record.coverURL ?? ""),
+            description: nil,
+            developer: record.developer,
+            platforms: []
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            GameCover(url: URL(string: record.coverURL ?? ""))
-            Text(record.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-            if let developer = record.developer {
-                Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            NavigationLink {
+                GameDetailView(game: detailGame)
+            } label: {
+                VStack(alignment: .leading, spacing: 9) {
+                    GameCover(url: URL(string: record.coverURL ?? ""))
+                    Text(record.title).font(.subheadline.weight(.semibold)).lineLimit(2).foregroundStyle(.primary)
+                    if let developer = record.developer {
+                        Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
             }
+            .buttonStyle(.plain)
             Menu {
                 ForEach(LibraryStatus.allCases) { status in
                     Button {
