@@ -176,11 +176,55 @@ struct DiscoverView: View {
     }
 
     private var browseSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("浏览分类")
-                .font(.title3.bold())
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("探索游戏")
+                    .font(.title3.bold())
+                Text("按类型、平台和价格找到下一款想玩的游戏")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
-            VStack(spacing: 10) {
+            explorationGroup(
+                title: "热门榜单",
+                subtitle: "从玩家正在关注的作品开始",
+                items: [
+                    ("热门游戏", "flame.fill", "https://itch.io/games"),
+                    ("评分最高", "star.fill", "https://itch.io/games/top-rated"),
+                    ("最新上架", "clock.fill", "https://itch.io/games/newest"),
+                    ("免费游戏", "gift.fill", "https://itch.io/games/price-free")
+                ]
+            )
+
+            explorationGroup(
+                title: "游戏类型",
+                subtitle: "选择你感兴趣的玩法",
+                items: [
+                    ("冒险", "map.fill", "https://itch.io/games/genre-adventure"),
+                    ("角色扮演", "person.fill", "https://itch.io/games/genre-rpg"),
+                    ("解谜", "puzzlepiece.fill", "https://itch.io/games/genre-puzzle"),
+                    ("动作", "bolt.fill", "https://itch.io/games/genre-action"),
+                    ("模拟", "slider.horizontal.3", "https://itch.io/games/genre-simulation"),
+                    ("恐怖", "moon.fill", "https://itch.io/games/genre-horror"),
+                    ("策略", "棋盘图标占位", "https://itch.io/games/genre-strategy"),
+                    ("平台跳跃", "figure.run", "https://itch.io/games/genre-platformer")
+                ]
+            )
+
+            explorationGroup(
+                title: "游戏平台",
+                subtitle: "按设备筛选兼容作品",
+                items: [
+                    ("Windows", "desktopcomputer", "https://itch.io/games/platform-windows"),
+                    ("macOS", "laptopcomputer", "https://itch.io/games/platform-osx"),
+                    ("Linux", "terminal.fill", "https://itch.io/games/platform-linux"),
+                    ("浏览器", "globe", "https://itch.io/games/platform-web")
+                ]
+            )
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("更多发现")
+                    .font(.headline)
                 browseRow(
                     title: "全部游戏",
                     subtitle: "探索 itch.io 的完整游戏目录",
@@ -189,23 +233,57 @@ struct DiscoverView: View {
                     url: "https://itch.io/games",
                     requiresWebLogin: true
                 )
-
                 browseRow(
-                    title: "免费游戏",
-                    subtitle: "发现可以免费体验的作品",
-                    symbol: "gift.fill",
-                    tint: .green,
-                    url: "https://itch.io/games/price-free",
-                    requiresWebLogin: true
-                )
-
-                browseRow(
-                    title: "即将结束的 Game Jam",
+                    title: "Game Jam",
                     subtitle: "看看独立开发者正在参与的创作活动",
                     symbol: "timer",
                     tint: .orange,
                     url: "https://itch.io/jams"
                 )
+            }
+        }
+    }
+
+    private func explorationGroup(
+        title: String,
+        subtitle: String,
+        items: [(String, String, String)]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.headline)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(items, id: \.0) { item in
+                    NavigationLink {
+                        ItchSearchResultsView(query: "", customURL: item.2)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: item.1 == "棋盘图标占位" ? "square.grid.3x3.fill" : item.1)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 34, height: 34)
+                                .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 10))
+                            Text(item.0)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(12)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
