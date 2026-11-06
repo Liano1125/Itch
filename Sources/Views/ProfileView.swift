@@ -42,7 +42,7 @@ struct ProfileView: View {
 
     private var personalStatsSection: some View {
         let total = library.records.count
-        let favorites = library.records.filter(\\.isFavorite).count
+        let favorites = library.records.filter(\.isFavorite).count
         let recentRecords = Array(library.records.sorted { $0.addedAt > $1.addedAt }.prefix(3))
 
         return VStack(alignment: .leading, spacing: 14) {
@@ -65,7 +65,7 @@ struct ProfileView: View {
                     Text("游戏进度")
                         .font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text("\\(total) 款游戏")
+                    Text("\(total) 款游戏")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
@@ -78,7 +78,7 @@ struct ProfileView: View {
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.primary)
                             Spacer()
-                            Text("\\(count)")
+                            Text("\(count)")
                                 .font(.caption.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -131,7 +131,7 @@ struct ProfileView: View {
                 .frame(width: 38, height: 38)
                 .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
-                Text("\\(value)")
+                Text("\(value)")
                     .font(.title2.bold().monospacedDigit())
                     .foregroundStyle(.primary)
                 Text(title)
