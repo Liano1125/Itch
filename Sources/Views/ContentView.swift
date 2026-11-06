@@ -1,7 +1,7 @@
 import SwiftUI
 
 
-enum AppTab: Hashable {
+enum AppTab: String, Hashable {
     case discover
     case library
     case calendar
@@ -13,8 +13,14 @@ struct ContentView: View {
     @StateObject private var personalLibrary = PersonalLibraryStore.shared
     @StateObject private var gameCalendar = GameCalendarStore.shared
     @StateObject private var updateMonitor = GameUpdateMonitorStore.shared
-    @State private var selectedTab: AppTab = .discover
+    @AppStorage("itchPocket.launchTab") private var launchTab = "discover"
+    @State private var selectedTab: AppTab
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
+
+    init() {
+        let savedTab = UserDefaults.standard.string(forKey: "itchPocket.launchTab") ?? "discover"
+        _selectedTab = State(initialValue: AppTab(rawValue: savedTab) ?? .discover)
+    }
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
 
@@ -52,6 +58,9 @@ struct ContentView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .preferredColorScheme(preferredScheme)
         .animation(.easeInOut(duration: 0.22), value: appearanceMode)
+        .onChange(of: launchTab) { _, value in
+            selectedTab = AppTab(rawValue: value) ?? .discover
+        }
         .environmentObject(personalLibrary)
         .environmentObject(gameCalendar)
         .environmentObject(updateMonitor)
