@@ -42,7 +42,9 @@ struct GameDetailView: View {
     @State private var translatedDescription: String?
     @State private var cachedOriginalDescription: String?
     @State private var translatedUpdates: [String: String] = [:]
-    @State private var translationStatus: String?\n    @State private var showingOriginalDescription = false\n    @State private var isRefreshingTranslation = false
+    @State private var translationStatus: String?
+    @State private var showingOriginalDescription = false
+    @State private var isRefreshingTranslation = false
     @State private var selectedGalleryIndex = 0
     @State private var showingGalleryViewer = false
     @State private var resolvedAuthorAvatarURL: URL?
