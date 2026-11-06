@@ -406,14 +406,10 @@ private struct PersonalGameCard: View {
 private struct GameCover: View {
     let url: URL?
     var body: some View {
-        AsyncImage(url: url) { phase in
-            if let image = phase.image {
-                image.resizable().scaledToFill()
-            } else {
-                ZStack {
-                    Color(uiColor: .tertiarySystemFill)
-                    Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
-                }
+        CachedRemoteImage(url: url, contentMode: .fill) {
+            ZStack {
+                Color(uiColor: .tertiarySystemFill)
+                Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity)
