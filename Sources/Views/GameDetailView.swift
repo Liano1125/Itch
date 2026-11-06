@@ -9,8 +9,20 @@ private struct GamePagePayload: Decodable {
     let description: String?
     let developer: String?
     let coverURL: URL?
-    let downloadURL: URL?
+    let uploads: [UploadItem]
+    let pageURL: String?
+    let pageTitle: String?
+    let totalAnchors: Int
     let scriptError: String?
+    
+    struct UploadItem: Decodable {
+        let id: String
+        let name: String
+        let url: URL
+        let fileSize: String?
+        let provider: String
+        let isDirectDownload: Bool
+    }
 }
 
 private struct GameDetailPayload {
@@ -18,6 +30,7 @@ private struct GameDetailPayload {
     let developer: String?
     let coverURL: URL?
     let uploads: [GameUpload]
+    let diagnostic: String?
 }
 
 private struct GameUpload: Identifiable {
@@ -27,20 +40,6 @@ private struct GameUpload: Identifiable {
     let fileSize: String?
     let provider: String
     let isDirectDownload: Bool
-}
-
-private struct DownloadPagePayload: Decodable {
-    let uploads: [DownloadItem]
-    let scriptError: String?
-
-    struct DownloadItem: Decodable {
-        let id: String
-        let name: String
-        let url: URL
-        let fileSize: String?
-        let provider: String
-        let isDirectDownload: Bool
-    }
 }
 
 // MARK: - Game Detail View
@@ -264,7 +263,7 @@ struct GameDetailView: View {
             if isLoading && detail == nil {
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text("正在读取下载选项…")
+                    Text("正在扫描游戏页面…")
                         .foregroundStyle(.secondary)
                 }
 
@@ -274,18 +273,21 @@ struct GameDetailView: View {
                     uploadRow(upload)
                 }
 
-                Text("支持的文件优先尝试 App 内下载；第三方镜像无法直接下载时会打开原网站。")
+                Text("支持的文件优先尝试 App 内下载；第三方镜像会打开对应下载网站。")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
 
-            } else if isLoading {
-                ProgressView("正在查找下载选项…")
-                    .foregroundStyle(.secondary)
-
             } else {
-                Text("没有识别到下载选项。游戏可能需要登录、购买，或下载页面暂时无法访问。")
+                Text("没有识别到下载选项。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                if let diagnostic = detail?.diagnostic {
+                    Text(diagnostic)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -557,7 +559,7 @@ struct GameDetailView: View {
     }
 }
 
-// MARK: - Two Stage Web Reader
+// MARK: - Web Reader
 
 private struct DetailPageReader: UIViewRepresentable {
     let url: URL?
@@ -595,7 +597,7 @@ private struct DetailPageReader: UIViewRepresentable {
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 40
+        request.timeoutInterval = 50
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         webView.load(request)
@@ -614,8 +616,6 @@ private struct DetailPageReader: UIViewRepresentable {
         }
 
         context.coordinator.currentToken = reloadToken
-        context.coordinator.stage = .game
-        context.coordinator.gamePayload = nil
         context.coordinator.extractionID = UUID()
 
         guard let url else {
@@ -624,7 +624,7 @@ private struct DetailPageReader: UIViewRepresentable {
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 40
+        request.timeoutInterval = 50
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         webView.load(request)
@@ -633,17 +633,8 @@ private struct DetailPageReader: UIViewRepresentable {
     // MARK: Coordinator
 
     final class Coordinator: NSObject, WKNavigationDelegate {
-        enum Stage {
-            case game
-            case download
-        }
-
         var parent: DetailPageReader
         var currentToken: UUID?
-
-        var stage: Stage = .game
-        var gamePayload: GamePagePayload?
-
         var extractionID = UUID()
 
         init(parent: DetailPageReader) {
@@ -657,37 +648,29 @@ private struct DetailPageReader: UIViewRepresentable {
             let id = UUID()
             extractionID = id
 
+            // 等待页面脚本及动态内容完成。
             DispatchQueue.main.asyncAfter(
-                deadline: .now() + 0.8
+                deadline: .now() + 1.5
             ) {
                 guard self.extractionID == id else {
                     return
                 }
 
-                switch self.stage {
-                case .game:
-                    self.extractGamePage(
-                        in: webView,
-                        id: id
-                    )
-
-                case .download:
-                    self.extractDownloadPage(
-                        in: webView,
-                        id: id
-                    )
-                }
+                self.extractPage(
+                    in: webView,
+                    id: id
+                )
             }
         }
 
-        // MARK: First Stage
+        // MARK: Extract Page
 
-        private func extractGamePage(
+        private func extractPage(
             in webView: WKWebView,
             id: UUID
         ) {
             webView.evaluateJavaScript(
-                Self.gamePageScript
+                Self.pageExtractionScript
             ) { result, error in
 
                 guard self.extractionID == id else {
@@ -696,7 +679,7 @@ private struct DetailPageReader: UIViewRepresentable {
 
                 if let error {
                     self.fail(
-                        "读取游戏主页失败：\(error.localizedDescription)"
+                        "页面解析异常：\(error.localizedDescription)"
                     )
                     return
                 }
@@ -708,77 +691,19 @@ private struct DetailPageReader: UIViewRepresentable {
                         from: data
                       ) else {
                     self.fail(
-                        "游戏主页返回的数据无法解析。请重新读取。"
+                        "页面数据无法解析。请重新读取。"
                     )
                     return
                 }
 
                 if let scriptError = payload.scriptError {
                     self.fail(
-                        "游戏主页 JavaScript 错误：\(scriptError)"
+                        "JavaScript 异常：\(scriptError)"
                     )
                     return
                 }
 
-                self.gamePayload = payload
-
-                guard let downloadURL = payload.downloadURL else {
-                    self.finishWithoutDownloadPage()
-                    return
-                }
-
-                self.stage = .download
-                self.extractionID = UUID()
-
-                var request = URLRequest(url: downloadURL)
-                request.timeoutInterval = 40
-                request.cachePolicy = .reloadIgnoringLocalCacheData
-
-                webView.load(request)
-            }
-        }
-
-        // MARK: Second Stage
-
-        private func extractDownloadPage(
-            in webView: WKWebView,
-            id: UUID
-        ) {
-            webView.evaluateJavaScript(
-                Self.downloadPageScript
-            ) { result, error in
-
-                guard self.extractionID == id else {
-                    return
-                }
-
-                if let error {
-                    self.finishWithError(
-                        "读取下载选项失败：\(error.localizedDescription)"
-                    )
-                    return
-                }
-
-                guard let json = result as? String,
-                      let data = json.data(using: .utf8),
-                      let parsed = try? JSONDecoder().decode(
-                        DownloadPagePayload.self,
-                        from: data
-                      ) else {
-                    self.finishWithError(
-                        "下载页面返回的数据无法解析。"
-                    )
-                    return
-                }
-
-                if let scriptError = parsed.scriptError {
-                    self.finishWithError(
-                        "下载页面 JavaScript 错误：\(scriptError)"
-                    )
-                    return
-                }
-
-                let uploads = parsed.uploads.map {
+                let uploads = payload.uploads.map {
                     GameUpload(
                         id: $0.id,
                         name: $0.name,
@@ -789,50 +714,23 @@ private struct DetailPageReader: UIViewRepresentable {
                     )
                 }
 
-                let metadata = self.gamePayload
+                let diagnostic =
+                    "页面标题：\(payload.pageTitle ?? "未知")\n" +
+                    "当前网址：\(payload.pageURL ?? "未知")\n" +
+                    "扫描到的链接：\(payload.totalAnchors)\n" +
+                    "识别到的下载选项：\(uploads.count)"
+
+                let detail = GameDetailPayload(
+                    description: payload.description,
+                    developer: payload.developer,
+                    coverURL: payload.coverURL,
+                    uploads: uploads,
+                    diagnostic: diagnostic
+                )
 
                 DispatchQueue.main.async {
-                    self.parent.onLoad(
-                        GameDetailPayload(
-                            description: metadata?.description,
-                            developer: metadata?.developer,
-                            coverURL: metadata?.coverURL,
-                            uploads: uploads
-                        )
-                    )
+                    self.parent.onLoad(detail)
                 }
-            }
-        }
-
-        private func finishWithoutDownloadPage() {
-            let metadata = gamePayload
-
-            DispatchQueue.main.async {
-                self.parent.onLoad(
-                    GameDetailPayload(
-                        description: metadata?.description,
-                        developer: metadata?.developer,
-                        coverURL: metadata?.coverURL,
-                        uploads: []
-                    )
-                )
-            }
-        }
-
-        private func finishWithError(_ message: String) {
-            let metadata = gamePayload
-
-            DispatchQueue.main.async {
-                self.parent.onLoad(
-                    GameDetailPayload(
-                        description: metadata?.description,
-                        developer: metadata?.developer,
-                        coverURL: metadata?.coverURL,
-                        uploads: []
-                    )
-                )
-
-                self.parent.onError(message)
             }
         }
 
@@ -849,7 +747,7 @@ private struct DetailPageReader: UIViewRepresentable {
             didFail navigation: WKNavigation!,
             withError error: Error
         ) {
-            report(error)
+            report(error, webView: webView)
         }
 
         func webView(
@@ -857,42 +755,51 @@ private struct DetailPageReader: UIViewRepresentable {
             didFailProvisionalNavigation navigation: WKNavigation!,
             withError error: Error
         ) {
-            report(error)
+            report(error, webView: webView)
         }
 
-        private func report(_ error: Error) {
+        private func report(
+            _ error: Error,
+            webView: WKWebView
+        ) {
             if (error as NSError).code == NSURLErrorCancelled {
                 return
             }
 
-            if stage == .download {
-                finishWithError(
-                    "无法打开 itch.io 下载页面：\(error.localizedDescription)"
-                )
-            } else {
-                fail(
-                    "无法打开 itch.io 游戏页面：\(error.localizedDescription)"
-                )
-            }
+            let message =
+                "网页加载失败：\(error.localizedDescription)\n" +
+                "当前网址：\(webView.url?.absoluteString ?? "未知")"
+
+            fail(message)
         }
 
         // MARK: JavaScript
 
-        private static let gamePageScript = """
+        private static let pageExtractionScript = """
         (() => {
             try {
                 const clean = el => {
-                    const value = el?.innerText || el?.textContent || "";
-                    return value.split(" ").filter(Boolean).join(" ").trim();
+                    const value = el?.innerText ||
+                                  el?.textContent || "";
+
+                    return value
+                        .replace(/\\s+/g, " ")
+                        .trim();
                 };
 
                 const absolute = value => {
                     try {
-                        return value ? new URL(value, location.href).href : null;
+                        return value
+                            ? new URL(value, location.href).href
+                            : null;
                     } catch (_) {
                         return null;
                     }
                 };
+
+                // -------------------------
+                // Game description
+                // -------------------------
 
                 let description = null;
 
@@ -915,21 +822,26 @@ private struct DetailPageReader: UIViewRepresentable {
 
                 if (!description) {
                     description =
-                        document.querySelector('meta[name="description"]')
-                        ?.getAttribute("content") || null;
+                        document.querySelector(
+                            'meta[name="description"]'
+                        )?.getAttribute("content") || null;
                 }
+
+                // -------------------------
+                // Developer
+                // -------------------------
 
                 let developer = null;
 
-                const developerSelectors = [
+                for (const selector of [
                     ".game_author a",
                     ".game_author",
                     ".header_links .user_link",
                     ".user_link"
-                ];
-
-                for (const selector of developerSelectors) {
-                    const value = clean(document.querySelector(selector));
+                ]) {
+                    const value = clean(
+                        document.querySelector(selector)
+                    );
 
                     if (value) {
                         developer = value;
@@ -937,25 +849,26 @@ private struct DetailPageReader: UIViewRepresentable {
                     }
                 }
 
+                // -------------------------
+                // Cover
+                // -------------------------
+
                 let coverURL = null;
 
-                const coverSelectors = [
+                for (const selector of [
                     'meta[property="og:image"]',
                     'meta[name="twitter:image"]',
                     ".game_cover img",
                     ".game_thumb img",
                     ".screenshot img"
-                ];
-
-                for (const selector of coverSelectors) {
+                ]) {
                     const el = document.querySelector(selector);
+
                     if (!el) continue;
 
                     const value = absolute(
                         el.getAttribute("content") ||
                         el.currentSrc ||
-                        el.getAttribute("data-lazy_src") ||
-                        el.getAttribute("data-lazy-src") ||
                         el.getAttribute("data-src") ||
                         el.getAttribute("src")
                     );
@@ -966,80 +879,64 @@ private struct DetailPageReader: UIViewRepresentable {
                     }
                 }
 
-                const links = Array.from(
-                    document.querySelectorAll("a[href]")
-                );
-
-                let downloadLink = null;
-
-                for (const a of links) {
-                    const href = absolute(a.getAttribute("href"));
-                    if (!href) continue;
-
-                    try {
-                        const path = new URL(href).pathname.toLowerCase();
-
-                        if (
-                            path.includes("/download/") ||
-                            path.endsWith("/download")
-                        ) {
-                            downloadLink = a;
-                            break;
-                        }
-                    } catch (_) {}
-                }
-
-                return JSON.stringify({
-                    description,
-                    developer,
-                    coverURL,
-                    downloadURL: downloadLink
-                        ? absolute(downloadLink.getAttribute("href"))
-                        : null,
-                    scriptError: null
-                });
-
-            } catch (error) {
-                return JSON.stringify({
-                    description: null,
-                    developer: null,
-                    coverURL: null,
-                    downloadURL: null,
-                    scriptError: String(error)
-                });
-            }
-        })();
-        """
-
-        private static let downloadPageScript = """
-        (() => {
-            try {
-                const clean = el => {
-                    const value = el?.innerText || el?.textContent || "";
-                    return value.split(" ").filter(Boolean).join(" ").trim();
-                };
-
-                const absolute = value => {
-                    try {
-                        return value ? new URL(value, location.href).href : null;
-                    } catch (_) {
-                        return null;
-                    }
-                };
+                // -------------------------
+                // Provider detection
+                // -------------------------
 
                 const providerName = url => {
-                    const host = new URL(url).hostname
-                        .toLowerCase()
-                        .replace("www.", "");
+                    let host = "";
 
-                    if (host.includes("mediafire")) return "MediaFire";
-                    if (host.includes("pixeldrain")) return "PixelDrain";
-                    if (host.includes("transfer.it")) return "Transfer.it";
-                    if (host.includes("mega.nz") || host.includes("mega.co.nz")) return "MEGA";
-                    if (host.includes("drive.google")) return "Google Drive";
-                    if (host.includes("dropbox")) return "Dropbox";
-                    if (host.includes("gofile")) return "Gofile";
-                    if (host.includes("itch.io")) return "itch.io";
+                    try {
+                        host = new URL(url).hostname.toLowerCase();
+                    } catch (_) {
+                        return "";
+                    }
+
+                    if (host.includes("mediafire")) {
+                        return "MediaFire";
+                    }
+
+                    if (host.includes("pixeldrain")) {
+                        return "PixelDrain";
+                    }
+
+                    if (
+                        host.includes("transfer.it") ||
+                        host.includes("transfernow")
+                    ) {
+                        return "Transfer.it";
+                    }
+
+                    if (
+                        host.includes("mega.nz") ||
+                        host.includes("mega.co.nz")
+                    ) {
+                        return "MEGA";
+                    }
+
+                    if (host.includes("drive.google")) {
+                        return "Google Drive";
+                    }
+
+                    if (host.includes("dropbox")) {
+                        return "Dropbox";
+                    }
+
+                    if (host.includes("gofile")) {
+                        return "Gofile";
+                    }
+
+                    if (host.includes("1fichier")) {
+                        return "1fichier";
+                    }
+
+                    if (host.includes("pixeldrain")) {
+                        return "PixelDrain";
+                    }
+
+                    if (host.includes("itch.io")) {
+                        return "itch.io";
+                    }
 
                     return host;
                 };
@@ -1051,44 +948,72 @@ private struct DetailPageReader: UIViewRepresentable {
                     "MEGA",
                     "Google Drive",
                     "Dropbox",
-                    "Gofile"
+                    "Gofile",
+                    "1fichier"
                 ];
 
-                const containers = Array.from(
+                // -------------------------
+                // Download candidates
+                // -------------------------
+
+                const allNodes = Array.from(
                     document.querySelectorAll(
-                        '#download, .download, .download_links, ' +
-                        '.download_list, .game_download, .upload, ' +
-                        '.download_link, main, .game_page'
+                        'a[href], ' +
+                        '[data-href], ' +
+                        '[data-url], ' +
+                        '[data-download-url]'
                     )
                 );
-
-                let anchors = [];
-
-                for (const container of containers) {
-                    anchors.push(
-                        ...container.querySelectorAll("a[href]")
-                    );
-                }
-
-                if (anchors.length === 0) {
-                    anchors = Array.from(
-                        document.querySelectorAll("a[href]")
-                    );
-                }
 
                 const results = [];
                 const seen = new Set();
 
-                for (const a of anchors) {
-                    const href = absolute(a.getAttribute("href"));
+                const fileContainers = [
+                    ".upload",
+                    ".uploads",
+                    ".upload_list",
+                    ".file",
+                    ".files",
+                    ".file_list",
+                    ".game_files",
+                    ".download",
+                    ".downloads",
+                    ".download_link",
+                    ".download_links",
+                    ".download_list",
+                    ".post_file",
+                    ".post_files",
+                    ".formatted_description",
+                    ".game_page_content",
+                    ".game_page",
+                    "main"
+                ];
 
-                    if (!href || seen.has(href)) continue;
+                for (const node of allNodes) {
+                    const rawURL =
+                        node.getAttribute("href") ||
+                        node.getAttribute("data-download-url") ||
+                        node.getAttribute("data-href") ||
+                        node.getAttribute("data-url");
+
+                    const href = absolute(rawURL);
+
+                    if (!href || seen.has(href)) {
+                        continue;
+                    }
 
                     let parsed;
 
                     try {
                         parsed = new URL(href);
                     } catch (_) {
+                        continue;
+                    }
+
+                    if (
+                        parsed.protocol !== "http:" &&
+                        parsed.protocol !== "https:"
+                    ) {
                         continue;
                     }
 
@@ -1099,78 +1024,91 @@ private struct DetailPageReader: UIViewRepresentable {
                         host === "itch.io" ||
                         host.endsWith(".itch.io");
 
-                    if (
-                        href.startsWith("javascript:") ||
-                        href.startsWith("mailto:")
-                    ) {
-                        continue;
-                    }
-
-                    const parent = a.closest(
-                        '.upload, .download_link, .download, ' +
-                        '.download_item, li, .button'
-                    ) || a.parentElement;
-
-                    const parentText = clean(parent);
-
-                    const anchorText =
-                        clean(a) ||
-                        a.getAttribute("aria-label") ||
-                        a.getAttribute("title") ||
-                        "";
-
                     const provider = providerName(href);
 
-                    if (
-                        isItchHost &&
-                        !path.includes("/file/") &&
-                        !path.includes("/download/")
-                    ) {
-                        continue;
+                    const anchorText =
+                        clean(node) ||
+                        node.getAttribute("aria-label") ||
+                        node.getAttribute("title") ||
+                        "";
+
+                    let container = node.closest(
+                        fileContainers.join(",")
+                    );
+
+                    if (!container) {
+                        container = node.parentElement;
                     }
 
-                    const knownProvider =
-                        knownProviders.includes(provider);
+                    const containerText = clean(container);
 
-                    const contextText = (
-                        anchorText + " " + parentText
+                    const combinedText = (
+                        anchorText + " " + containerText
                     ).toLowerCase();
 
-                    const downloadContext =
-                        contextText.includes("download") ||
-                        contextText.includes("mirror") ||
-                        contextText.includes("file") ||
-                        contextText.includes("下载") ||
-                        contextText.includes("镜像");
+                    const hasKnownProvider =
+                        knownProviders.includes(provider);
 
+                    const hasDownloadWords =
+                        combinedText.includes("download") ||
+                        combinedText.includes("mirror") ||
+                        combinedText.includes("file") ||
+                        combinedText.includes("下载") ||
+                        combinedText.includes("镜像");
+
+                    const isDownloadPath =
+                        path.includes("/download/") ||
+                        path.endsWith("/download") ||
+                        path.includes("/file/");
+
+                    // Ignore ordinary itch.io navigation.
                     if (
-                        !isItchHost &&
-                        !knownProvider &&
-                        !downloadContext
+                        isItchHost &&
+                        !isDownloadPath
                     ) {
                         continue;
                     }
 
-                    const name = anchorText || provider;
+                    // Keep external links when they are known mirrors,
+                    // or when their surrounding element looks like a file.
+                    if (
+                        !isItchHost &&
+                        !hasKnownProvider &&
+                        !hasDownloadWords
+                    ) {
+                        continue;
+                    }
 
-                    if (!name) continue;
+                    const name =
+                        anchorText ||
+                        provider ||
+                        "下载文件";
+
+                    if (!name) {
+                        continue;
+                    }
 
                     const lowerName = name.toLowerCase();
 
                     if (
                         lowerName === "home" ||
                         lowerName === "community" ||
-                        lowerName === "devlog"
+                        lowerName === "devlog" ||
+                        lowerName === "itch.io"
                     ) {
                         continue;
                     }
 
-                    const parts = path.split("/");
-                    const lastPart = parts[parts.length - 1] || "";
+                    // Determine whether the URL appears to be
+                    // an actual file URL.
+                    const lastPart =
+                        path.split("/").pop() || "";
 
-                    const dotIndex = lastPart.lastIndexOf(".");
-                    const extension = dotIndex >= 0
-                        ? lastPart.substring(dotIndex + 1)
+                    const extensionIndex =
+                        lastPart.lastIndexOf(".");
+
+                    const extension = extensionIndex >= 0
+                        ? lastPart.substring(extensionIndex + 1)
                         : "";
 
                     const directExtensions = [
@@ -1181,28 +1119,47 @@ private struct DetailPageReader: UIViewRepresentable {
 
                     const isDirect =
                         directExtensions.includes(extension) ||
-                        (isItchHost && path.includes("/file/"));
+                        (
+                            isItchHost &&
+                            path.includes("/file/")
+                        );
 
                     seen.add(href);
 
                     results.push({
                         id: href,
-                        name: name.substring(0, 120),
+                        name: name.substring(0, 160),
                         url: href,
                         fileSize: null,
-                        provider,
+                        provider: provider || "下载网站",
                         isDirectDownload: isDirect
                     });
                 }
 
+                // -------------------------
+                // Diagnostics
+                // -------------------------
+
                 return JSON.stringify({
+                    description,
+                    developer,
+                    coverURL,
                     uploads: results,
+                    pageURL: location.href,
+                    pageTitle: document.title,
+                    totalAnchors: allNodes.length,
                     scriptError: null
                 });
 
             } catch (error) {
                 return JSON.stringify({
+                    description: null,
+                    developer: null,
+                    coverURL: null,
                     uploads: [],
+                    pageURL: location.href,
+                    pageTitle: document.title,
+                    totalAnchors: 0,
                     scriptError: String(error)
                 });
             }
