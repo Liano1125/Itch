@@ -23,6 +23,7 @@ struct GameDetailView: View {
     let game: PublicCollectionGame
 
     @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var library: PersonalLibraryStore
 
     @State private var detail: GameDetailPayload?
     @State private var isLoading = true
@@ -50,6 +51,7 @@ struct GameDetailView: View {
                 Divider()
 
                 descriptionSection
+                statusHistorySection
 
                 if let errorMessage {
                     errorSection(errorMessage)
@@ -199,6 +201,49 @@ struct GameDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Status History
+
+    @ViewBuilder
+    private var statusHistorySection: some View {
+        if library.record(for: game.id) != nil {
+            VStack(alignment: .leading, spacing: 13) {
+                Text("状态记录")
+                    .font(.title2.bold())
+
+                let events = library.history(for: game.id)
+                if events.isEmpty {
+                    Text("从现在开始，游戏状态的每次变化都会记录在这里。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(events) { event in
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: event.toStatus.symbol)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(width: 34, height: 34)
+                                    .background(Color.accentColor.opacity(0.12), in: Circle())
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(event.fromStatus.map { "\($0.rawValue) → \(event.toStatus.rawValue)" } ?? "加入个人游戏库")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(event.changedAt.formatted(date: .long, time: .shortened))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        }
     }
 
     // MARK: Error
