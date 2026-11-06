@@ -336,6 +336,12 @@ private struct PersonalGameCard: View {
                     if let developer = record.developer {
                         Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
+                    if let latestUpdate = record.gameUpdates?.first {
+                        Label("最近更新 · \(latestUpdate.detectedAt.formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                    }
                 }
             }
             .buttonStyle(.plain)
