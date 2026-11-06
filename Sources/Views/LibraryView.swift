@@ -166,7 +166,7 @@ struct LibraryView: View {
             ProgressView()
                 .controlSize(.large)
 
-            Text("正在读取你的 18 款游戏…")
+            Text("正在读取你的游戏库…")
                 .foregroundStyle(.secondary)
 
             Text("正在连接 itch.io 公开合集")
