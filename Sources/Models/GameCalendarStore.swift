@@ -30,8 +30,9 @@ struct GameCalendarEvent: Codable, Identifiable {
     var reminderEnabled: Bool
     var reminderMinutes: Int
     var notes: String
+    var sourceFingerprint: String?
 
-    init(id: String = UUID().uuidString, gameID: String, gameTitle: String, gameURL: String?, title: String, date: Date, kind: GameCalendarEventKind, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String = "") {
+    init(id: String = UUID().uuidString, gameID: String, gameTitle: String, gameURL: String?, title: String, date: Date, kind: GameCalendarEventKind, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String = "", sourceFingerprint: String? = nil) {
         self.id = id
         self.gameID = gameID
         self.gameTitle = gameTitle
@@ -42,6 +43,7 @@ struct GameCalendarEvent: Codable, Identifiable {
         self.reminderEnabled = reminderEnabled
         self.reminderMinutes = reminderMinutes
         self.notes = notes
+        self.sourceFingerprint = sourceFingerprint
     }
 }
 
@@ -57,6 +59,24 @@ final class GameCalendarStore: ObservableObject {
         events.sort { $0.date < $1.date }
         save()
         Task { await GameNotificationManager.shared.schedule(event) }
+    }
+
+    func addDetectedUpdate(gameID: String, gameTitle: String, gameURL: String, fingerprint: String, detectedAt: Date = Date()) {
+        guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return }
+        let event = GameCalendarEvent(
+            gameID: gameID,
+            gameTitle: gameTitle,
+            gameURL: gameURL,
+            title: "检测到游戏页面更新",
+            date: detectedAt,
+            kind: .update,
+            reminderEnabled: false,
+            notes: "由更新监控自动记录。此日期是页面变化的检测日期，并非经确认的官方发布日期。",
+            sourceFingerprint: fingerprint
+        )
+        events.append(event)
+        events.sort { $0.date < $1.date }
+        save()
     }
 
     func update(_ event: GameCalendarEvent) {
