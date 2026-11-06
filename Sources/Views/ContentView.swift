@@ -7,6 +7,7 @@ enum AppTab: Hashable {
 }
 
 struct ContentView: View {
+    @StateObject private var personalLibrary = PersonalLibraryStore()
     @State private var selectedTab: AppTab = .discover
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
@@ -40,5 +41,6 @@ struct ContentView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .preferredColorScheme(preferredScheme)
         .animation(.easeInOut(duration: 0.22), value: appearanceMode)
+        .environmentObject(personalLibrary)
     }
 }
