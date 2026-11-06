@@ -28,8 +28,8 @@ struct GameCalendarView: View {
                     monthHeader
                     weekdayHeader
                     LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(Array(monthDays.enumerated()), id: \.offset) { _, day in
-                            if let day {
+                        ForEach(Array(monthDays.enumerated()), id: \.offset) { item in
+                            if let day = item.element {
                                 dayCell(day)
                             } else {
                                 Color.clear.frame(height: 42)
