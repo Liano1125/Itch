@@ -37,7 +37,7 @@ struct GameUpdateMonitorView: View {
                 Button {
                     isChecking = true
                     Task {
-                        await monitor.checkAll(calendarStore: calendarStore)
+                        await monitor.checkAll(calendarStore: calendarStore, libraryStore: library)
                         isChecking = false
                     }
                 } label: {
