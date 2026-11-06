@@ -49,6 +49,7 @@ struct GameCalendarEvent: Codable, Identifiable {
 
 @MainActor
 final class GameCalendarStore: ObservableObject {
+    static let shared = GameCalendarStore()
     @Published private(set) var events: [GameCalendarEvent] = []
     private let key = "itchPocket.gameCalendar.v1"
 
