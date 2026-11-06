@@ -16,7 +16,7 @@ struct PublicCollectionGame: Decodable, Identifiable {
 }
 
 struct LibraryView: View {
-    @StateObject private var library = PersonalLibraryStore()
+    @EnvironmentObject private var library: PersonalLibraryStore
     @State private var sourceGames: [PublicCollectionGame] = []
     @State private var searchText = ""
     @State private var selectedStatus: LibraryStatus?
@@ -182,6 +182,9 @@ struct LibraryView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         NavigationLink {
                             GameDetailView(game: game)
+                                .safeAreaInset(edge: .bottom) {
+                                    LibraryGameActions(game: game)
+                                }
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 GameCover(url: game.coverURL)
@@ -232,6 +235,9 @@ private struct PersonalGameCard: View {
         VStack(alignment: .leading, spacing: 9) {
             NavigationLink {
                 GameDetailView(game: detailGame)
+                    .safeAreaInset(edge: .bottom) {
+                        LibraryGameActions(game: detailGame)
+                    }
             } label: {
                 VStack(alignment: .leading, spacing: 9) {
                     GameCover(url: URL(string: record.coverURL ?? ""))
@@ -420,5 +426,122 @@ private struct CollectionReader: UIViewRepresentable {
           }).filter(Boolean));
         })();
         """
+    }
+}
+
+
+// MARK: - Game Detail Library Actions
+
+private struct LibraryGameActions: View {
+    let game: PublicCollectionGame
+
+    @EnvironmentObject private var library: PersonalLibraryStore
+    @State private var showingNotesEditor = false
+    @State private var notesDraft = ""
+
+    private var record: LibraryRecord? {
+        library.record(for: game.id)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let record {
+                HStack(spacing: 12) {
+                    Menu {
+                        ForEach(LibraryStatus.allCases) { status in
+                            Button {
+                                guard var updated = library.record(for: game.id) else { return }
+                                updated.status = status
+                                library.update(updated)
+                            } label: {
+                                Label(status.rawValue, systemImage: status.symbol)
+                            }
+                        }
+                    } label: {
+                        Label(record.status.rawValue, systemImage: record.status.symbol)
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        guard var updated = library.record(for: game.id) else { return }
+                        updated.isFavorite.toggle()
+                        library.update(updated)
+                    } label: {
+                        Image(systemName: record.isFavorite ? "heart.fill" : "heart")
+                            .font(.headline)
+                            .foregroundStyle(record.isFavorite ? .pink : .primary)
+                            .frame(width: 44, height: 42)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(record.isFavorite ? "取消收藏" : "收藏游戏")
+
+                    Button {
+                        notesDraft = record.notes
+                        showingNotesEditor = true
+                    } label: {
+                        Image(systemName: "note.text")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 42)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("编辑游戏备注")
+                }
+
+                if !record.notes.isEmpty {
+                    Text(record.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                Button {
+                    library.add(game)
+                } label: {
+                    Label("加入想玩", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(.regularMaterial)
+        .sheet(isPresented: $showingNotesEditor) {
+            NavigationStack {
+                Form {
+                    Section("游戏备注") {
+                        TextEditor(text: $notesDraft)
+                            .frame(minHeight: 150)
+                    }
+                }
+                .navigationTitle("编辑备注")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { showingNotesEditor = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") {
+                            if var updated = library.record(for: game.id) {
+                                updated.notes = notesDraft
+                                library.update(updated)
+                            }
+                            showingNotesEditor = false
+                        }
+                    }
+                }
+            }
+        }
     }
 }
