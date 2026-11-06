@@ -337,7 +337,7 @@ private struct PersonalGameCard: View {
                         Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     if let latestUpdate = record.gameUpdates?.first {
-                        Label("最近更新 · \(latestUpdate.detectedAt.formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
+                        Label("最近更新 · \((latestUpdate.publishedAt ?? latestUpdate.detectedAt).formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.orange)
                             .lineLimit(1)
