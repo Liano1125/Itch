@@ -34,12 +34,34 @@ struct LibraryRecord: Codable, Identifiable {
     var updatedAt: Date
 }
 
+
+struct PersonalGameCollection: Codable, Identifiable {
+    var id: String
+    var title: String
+    var gameIDs: [String]
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(id: String = UUID().uuidString, title: String, gameIDs: [String] = [], createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id
+        self.title = title
+        self.gameIDs = gameIDs
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 @MainActor
 final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var records: [LibraryRecord] = []
+    @Published private(set) var collections: [PersonalGameCollection] = []
     private let storageKey = "itchPocket.personalLibrary.v1"
+    private let collectionsStorageKey = "itchPocket.collections.v1"
 
-    init() { load() }
+    init() {
+        load()
+        loadCollections()
+    }
 
     func contains(_ id: String) -> Bool {
         records.contains { $0.id == id }
@@ -47,6 +69,43 @@ final class PersonalLibraryStore: ObservableObject {
 
     func record(for id: String) -> LibraryRecord? {
         records.first { $0.id == id }
+    }
+
+    func createCollection(title: String) {
+        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        collections.insert(PersonalGameCollection(title: cleaned), at: 0)
+        saveCollections()
+    }
+
+    func updateCollection(_ collection: PersonalGameCollection) {
+        guard let index = collections.firstIndex(where: { $0.id == collection.id }) else { return }
+        var updated = collection
+        updated.title = updated.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !updated.title.isEmpty else { return }
+        updated.updatedAt = Date()
+        collections[index] = updated
+        saveCollections()
+    }
+
+    func deleteCollection(_ id: String) {
+        collections.removeAll { $0.id == id }
+        saveCollections()
+    }
+
+    func containsGame(_ gameID: String, in collectionID: String) -> Bool {
+        collections.first(where: { $0.id == collectionID })?.gameIDs.contains(gameID) ?? false
+    }
+
+    func toggleGame(_ gameID: String, in collectionID: String) {
+        guard let index = collections.firstIndex(where: { $0.id == collectionID }) else { return }
+        if collections[index].gameIDs.contains(gameID) {
+            collections[index].gameIDs.removeAll { $0 == gameID }
+        } else {
+            collections[index].gameIDs.append(gameID)
+        }
+        collections[index].updatedAt = Date()
+        saveCollections()
     }
 
     func add(_ game: PublicCollectionGame, status: LibraryStatus = .wishlist) {
@@ -87,6 +146,17 @@ final class PersonalLibraryStore: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([LibraryRecord].self, from: data) else { return }
         records = decoded
+    }
+
+    private func loadCollections() {
+        guard let data = UserDefaults.standard.data(forKey: collectionsStorageKey),
+              let decoded = try? JSONDecoder().decode([PersonalGameCollection].self, from: data) else { return }
+        collections = decoded
+    }
+
+    private func saveCollections() {
+        guard let data = try? JSONEncoder().encode(collections) else { return }
+        UserDefaults.standard.set(data, forKey: collectionsStorageKey)
     }
 
     private func save() {
