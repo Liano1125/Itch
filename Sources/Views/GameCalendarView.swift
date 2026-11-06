@@ -59,6 +59,12 @@ struct GameCalendarView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("游戏日历")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink { GameUpdateMonitorView() } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .accessibilityLabel("游戏更新提醒")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { selectedDate = calendar.startOfDay(for: Date()); month = calendar.dateInterval(of: .month, for: Date())?.start ?? Date() } label: {
                         Image(systemName: "dot.scope")
