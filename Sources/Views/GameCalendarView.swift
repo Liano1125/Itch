@@ -16,45 +16,25 @@ struct GameCalendarView: View {
               let dayRange = calendar.range(of: .day, in: .month, for: month) else { return [] }
         let weekday = calendar.component(.weekday, from: interval.start)
         let offset = (weekday + 5) % 7
-        return Array(repeating: nil, count: offset) + dayRange.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: interval.start) }
+        return Array(repeating: nil, count: offset) + dayRange.compactMap {
+            calendar.date(byAdding: .day, value: $0 - 1, to: interval.start)
+        }
     }
 
     private var selectedEvents: [GameCalendarEvent] { calendarStore.events(on: selectedDate) }
+    private var timelineEvents: [GameCalendarEvent] { calendarStore.events.sorted { $0.date > $1.date } }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    monthHeader
-                    weekdayHeader
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(Array(monthDays.enumerated()), id: \.offset) { item in
-                            if let day = item.element {
-                                dayCell(day)
-                            } else {
-                                Color.clear.frame(height: 58)
-                            }
-                        }
-                    }
-                    HStack {
-                        Text(selectedDate.formatted(date: .complete, time: .omitted))
-                            .font(.headline)
-                        Spacer()
-                        Button { editingEvent = nil; showingEditor = true } label: {
-                            Label("添加事件", systemImage: "plus")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                    }
-                    if selectedEvents.isEmpty {
-                        ContentUnavailableView("这一天还没有安排", systemImage: "calendar", description: Text("可以添加计划游玩、预计发售或更新日期。"))
-                            .padding(.top, 12)
-                    } else {
-                        ForEach(selectedEvents) { event in
-                            eventRow(event)
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 22) {
+                    calendarCard
+                    selectedDaySection
+                    timelineSection
                 }
-                .padding(18)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 30)
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("游戏日历")
@@ -66,9 +46,10 @@ struct GameCalendarView: View {
                     .accessibilityLabel("游戏更新提醒")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { selectedDate = calendar.startOfDay(for: Date()); month = calendar.dateInterval(of: .month, for: Date())?.start ?? Date() } label: {
-                        Image(systemName: "dot.scope")
-                    }
+                    Button {
+                        selectedDate = calendar.startOfDay(for: Date())
+                        month = calendar.dateInterval(of: .month, for: Date())?.start ?? Date()
+                    } label: { Image(systemName: "dot.scope") }
                     .accessibilityLabel("回到今天")
                 }
             }
@@ -80,26 +61,77 @@ struct GameCalendarView: View {
         }
     }
 
-    private var monthHeader: some View {
-        HStack {
-            Button { month = calendar.date(byAdding: .month, value: -1, to: month) ?? month } label: { Image(systemName: "chevron.left") }
-            Spacer()
-            Text(month.formatted(.dateTime.year().month(.wide)))
-                .font(.title2.bold())
-            Spacer()
-            Button { month = calendar.date(byAdding: .month, value: 1, to: month) ?? month } label: { Image(systemName: "chevron.right") }
+    private var calendarCard: some View {
+        VStack(spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(month.formatted(.dateTime.year()))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(month.formatted(.dateTime.month(.wide)))
+                        .font(.title2.bold())
+                }
+                Spacer()
+                HStack(spacing: 8) {
+                    monthButton("chevron.left") {
+                        month = calendar.date(byAdding: .month, value: -1, to: month) ?? month
+                    }
+                    monthButton("chevron.right") {
+                        month = calendar.date(byAdding: .month, value: 1, to: month) ?? month
+                    }
+                }
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { day in
+                    Text(day)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 3)
+                }
+                ForEach(Array(monthDays.enumerated()), id: \.offset) { item in
+                    if let day = item.element {
+                        dayCell(day)
+                    } else {
+                        Color.clear.frame(height: 58)
+                    }
+                }
+            }
+
+            HStack(spacing: 14) {
+                legendItem(color: .blue, title: "计划游玩")
+                legendItem(color: .purple, title: "预计发售")
+                legendItem(color: .orange, title: "游戏更新")
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 2)
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        }
+    }
+
+    private func monthButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 34, height: 34)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: Circle())
         }
         .buttonStyle(.plain)
     }
 
-    private var weekdayHeader: some View {
-        let symbols = ["一", "二", "三", "四", "五", "六", "日"]
-        return LazyVGrid(columns: columns) {
-            ForEach(symbols, id: \.self) { Text(symbolsLabel($0)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(maxWidth: .infinity) }
+    private func legendItem(color: Color, title: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(title).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
         }
     }
-
-    private func symbolsLabel(_ value: String) -> String { value }
 
     private func eventColor(_ kind: GameCalendarEventKind) -> Color {
         switch kind {
@@ -110,61 +142,238 @@ struct GameCalendarView: View {
         }
     }
 
+    private func displayTitle(for event: GameCalendarEvent) -> String {
+        event.kind == .update ? event.gameTitle : event.title
+    }
+
     private func dayCell(_ date: Date) -> some View {
         let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
         let isToday = calendar.isDateInToday(date)
         let dayEvents = calendarStore.events(on: date)
-        return Button { selectedDate = calendar.startOfDay(for: date) } label: {
-            VStack(spacing: 3) {
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                selectedDate = calendar.startOfDay(for: date)
+            }
+        } label: {
+            VStack(spacing: 4) {
                 Text("\(calendar.component(.day, from: date))")
-                    .font(.subheadline.weight(isSelected || isToday ? .bold : .regular))
+                    .font(.subheadline.weight(isSelected || isToday ? .bold : .medium))
                     .foregroundStyle(isSelected ? .white : .primary)
                 VStack(spacing: 2) {
                     ForEach(dayEvents.prefix(2)) { event in
-                        Text(event.title)
+                        Text(displayTitle(for: event))
                             .font(.system(size: 7, weight: .semibold))
                             .lineLimit(1)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isSelected ? .white : eventColor(event.kind))
                             .padding(.horizontal, 3)
                             .frame(maxWidth: .infinity)
-                            .background(eventColor(event.kind), in: Capsule())
                     }
                     if dayEvents.count > 2 {
                         Text("+\(dayEvents.count - 2)")
                             .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(isSelected ? .white : .secondary)
+                            .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
                     }
                 }
-                .frame(height: 23, alignment: .top)
+                .frame(height: 22, alignment: .top)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 58)
-            .background(isSelected ? Color.accentColor : (isToday ? Color.accentColor.opacity(0.12) : .clear), in: RoundedRectangle(cornerRadius: 10))
+            .background {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isSelected ? Color.accentColor : (isToday ? Color.accentColor.opacity(0.10) : .clear))
+            }
+            .overlay {
+                if !isSelected && !dayEvents.isEmpty {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.045), lineWidth: 1)
+                }
+            }
         }
         .buttonStyle(.plain)
     }
 
-    private func eventRow(_ event: GameCalendarEvent) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: event.kind.symbol)
-                .font(.headline)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 40, height: 40)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    private var selectedDaySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("所选日期")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(selectedDate.formatted(date: .complete, time: .omitted))
+                        .font(.headline)
+                }
+                Spacer()
+                Button {
+                    editingEvent = nil
+                    showingEditor = true
+                } label: {
+                    Label("添加事件", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Color.accentColor.opacity(0.11), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if selectedEvents.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 42, height: 42)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("这一天还没有安排").font(.subheadline.weight(.semibold))
+                        Text("添加计划游玩、预计发售或其他事件")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 17)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                }
+            } else {
+                VStack(spacing: 9) {
+                    ForEach(selectedEvents) { event in
+                        selectedEventRow(event)
+                    }
+                }
+            }
+        }
+    }
+
+    private func selectedEventRow(_ event: GameCalendarEvent) -> some View {
+        HStack(spacing: 11) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(eventColor(event.kind))
+                .frame(width: 4, height: 38)
             VStack(alignment: .leading, spacing: 4) {
-                Text(event.title).font(.subheadline.weight(.semibold))
-                Text(event.gameTitle).font(.caption).foregroundStyle(.secondary)
-                Text(event.date.formatted(date: .omitted, time: .shortened) + (event.sourceFingerprint?.hasPrefix("devlog:") == true ? " · 历史发布日期" : (event.reminderEnabled ? " · 已设提醒" : "")))
-                    .font(.caption2).foregroundStyle(.tertiary)
+                Text(displayTitle(for: event)).font(.subheadline.weight(.semibold))
+                Text("\(event.kind.rawValue) · \(event.date.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Menu {
-                Button("编辑", systemImage: "pencil") { editingEvent = event; showingEditor = true }
-                Button("删除", systemImage: "trash", role: .destructive) { calendarStore.delete(event.id) }
-            } label: { Image(systemName: "ellipsis").padding(8) }
+            eventMenu(event)
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
+        .overlay {
+            RoundedRectangle(cornerRadius: 15)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private var timelineSection: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("游戏动态")
+                        .font(.title3.bold())
+                    Text("按照更新与事件日期排列")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(timelineEvents.count) 条记录")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            if timelineEvents.isEmpty {
+                ContentUnavailableView("还没有游戏动态", systemImage: "clock", description: Text("游戏更新、历史 Devlog 和日历事件会显示在这里。"))
+                    .padding(.top, 8)
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(timelineEvents) { event in
+                        timelineRow(event)
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func timelineRow(_ event: GameCalendarEvent) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            VStack(spacing: 2) {
+                Text(event.date.formatted(.dateTime.day()))
+                    .font(.title3.bold().monospacedDigit())
+                Text(event.date.formatted(.dateTime.month(.abbreviated)))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 43)
+            .padding(.top, 12)
+
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .center, spacing: 7) {
+                    Circle().fill(eventColor(event.kind)).frame(width: 7, height: 7)
+                    Text(event.kind.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(eventColor(event.kind))
+                    Spacer()
+                    Text(event.date.formatted(date: .omitted, time: .shortened))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+
+                Text(displayTitle(for: event))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !event.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(cleanTimelineNote(event.notes))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                HStack {
+                    Spacer()
+                    eventMenu(event)
+                }
+                .padding(.top, -4)
+            }
+            .padding(13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.065), lineWidth: 1)
+            }
+        }
+    }
+
+    private func cleanTimelineNote(_ note: String) -> String {
+        note.components(separatedBy: "\n")
+            .filter { !$0.hasPrefix("https://") && !$0.hasPrefix("http://") && !$0.hasPrefix("来源：") }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder
+    private func eventMenu(_ event: GameCalendarEvent) -> some View {
+        Menu {
+            Button("编辑", systemImage: "pencil") {
+                editingEvent = event
+                showingEditor = true
+            }
+            Button("删除", systemImage: "trash", role: .destructive) {
+                calendarStore.delete(event.id)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 28)
+                .contentShape(Rectangle())
+        }
     }
 }
 
@@ -223,7 +432,18 @@ private struct CalendarEventEditor: View {
                     Button("保存") {
                         guard let game = games.first(where: { $0.id == selectedGameID }) else { return }
                         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let value = GameCalendarEvent(id: event?.id ?? UUID().uuidString, gameID: game.id, gameTitle: game.title, gameURL: game.gameURL, title: cleanTitle.isEmpty ? kind.rawValue : cleanTitle, date: date, kind: kind, reminderEnabled: reminderEnabled, reminderMinutes: reminderMinutes, notes: notes)
+                        let value = GameCalendarEvent(
+                            id: event?.id ?? UUID().uuidString,
+                            gameID: game.id,
+                            gameTitle: game.title,
+                            gameURL: game.gameURL,
+                            title: cleanTitle.isEmpty ? kind.rawValue : cleanTitle,
+                            date: date,
+                            kind: kind,
+                            reminderEnabled: reminderEnabled,
+                            reminderMinutes: reminderMinutes,
+                            notes: notes
+                        )
                         onSave(value)
                         dismiss()
                     }
@@ -232,10 +452,16 @@ private struct CalendarEventEditor: View {
             }
             .onAppear {
                 if let event {
-                    selectedGameID = event.gameID; title = event.title; date = event.date; kind = event.kind
-                    reminderEnabled = event.reminderEnabled; reminderMinutes = event.reminderMinutes; notes = event.notes
+                    selectedGameID = event.gameID
+                    title = event.title
+                    date = event.date
+                    kind = event.kind
+                    reminderEnabled = event.reminderEnabled
+                    reminderMinutes = event.reminderMinutes
+                    notes = event.notes
                 } else {
-                    selectedGameID = games.first?.id ?? ""; date = initialDate
+                    selectedGameID = games.first?.id ?? ""
+                    date = initialDate
                 }
             }
         }
