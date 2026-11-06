@@ -12,7 +12,7 @@ private enum ItchPublicCollection {
 
 // MARK: - Public Game Model
 
-private struct PublicCollectionGame: Decodable, Identifiable {
+struct PublicCollectionGame: Decodable, Identifiable {
     let id: String
     let title: String
     let url: URL?
@@ -54,7 +54,6 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // 隐藏的网页读取器，只负责获取公开合集数据
                 ItchCollectionPageReader(
                     url: ItchPublicCollection.url,
                     reloadToken: reloadToken,
@@ -139,7 +138,12 @@ struct LibraryView: View {
                         spacing: 16
                     ) {
                         ForEach(filteredGames) { game in
-                            PublicGameCard(game: game)
+                            NavigationLink {
+                                GameDetailView(game: game)
+                            } label: {
+                                PublicGameCard(game: game)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -287,16 +291,13 @@ private struct PublicGameCard: View {
                 }
             }
 
-            if let url = game.url {
-                Link(destination: url) {
-                    HStack(spacing: 4) {
-                        Text("查看游戏")
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .font(.caption.weight(.medium))
-                }
-                .padding(.top, 2)
-            }
+            Label(
+                "查看详情",
+                systemImage: "arrow.right"
+            )
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.primary)
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
@@ -304,6 +305,7 @@ private struct PublicGameCard: View {
             .regularMaterial,
             in: RoundedRectangle(cornerRadius: 18)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 18))
     }
 
     @ViewBuilder
