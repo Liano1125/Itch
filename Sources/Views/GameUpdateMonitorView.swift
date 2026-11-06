@@ -16,6 +16,9 @@ struct GameUpdateMonitorView: View {
                     .foregroundStyle(.secondary)
             }
             Section("历史版本更新") {
+                Text("自动同步已开启：打开 App 时会检查；iOS 也会在系统允许时安排后台刷新（目标间隔约 6 小时，但实际时间由系统决定）。发现新 Devlog 后会自动写入日历和个人游戏库。仅能获取开发者公开发布的 Devlog RSS。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Text("从每款游戏的 itch.io Devlog RSS 导入已发布的更新日志。日历使用原始发布日期，历史记录不会触发通知；没有公开 Devlog 的游戏可能没有可导入内容。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
