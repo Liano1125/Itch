@@ -2,6 +2,14 @@ import Foundation
 import Combine
 import UserNotifications
 
+struct DevlogSyncGameResult: Codable, Identifiable {
+    var id: String { gameID }
+    let gameID: String
+    let gameTitle: String
+    let importedCount: Int
+    let message: String
+}
+
 struct GameUpdateWatch: Codable, Identifiable {
     var id: String { gameID }
     var gameID: String
@@ -20,9 +28,24 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var watches: [String: GameUpdateWatch] = [:]
     @Published private(set) var checkingIDs: Set<String> = []
     @Published var statusMessage: String?
+    @Published private(set) var isSyncingHistoricalDevlogs = false
+    @Published private(set) var lastHistoricalSyncAt: Date?
+    @Published private(set) var lastHistoricalSyncMessage: String?
+    @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
     private let storageKey = "itchPocket.updateWatches.v1"
+    private let historicalSyncDateKey = "itchPocket.devlogSync.lastDate"
+    private let historicalSyncMessageKey = "itchPocket.devlogSync.lastMessage"
+    private let historicalSyncResultsKey = "itchPocket.devlogSync.lastResults"
 
-    init() { load() }
+    init() {
+        load()
+        lastHistoricalSyncAt = UserDefaults.standard.object(forKey: historicalSyncDateKey) as? Date
+        lastHistoricalSyncMessage = UserDefaults.standard.string(forKey: historicalSyncMessageKey)
+        if let data = UserDefaults.standard.data(forKey: historicalSyncResultsKey),
+           let results = try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data) {
+            lastHistoricalSyncResults = results
+        }
+    }
 
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
 
@@ -111,14 +134,23 @@ final class GameUpdateMonitorStore: ObservableObject {
     }
 
     func syncHistoricalDevlogs(records: [LibraryRecord], calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async -> String {
+        guard !isSyncingHistoricalDevlogs else {
+            return lastHistoricalSyncMessage ?? "历史更新同步正在进行中。"
+        }
+        isSyncingHistoricalDevlogs = true
+        defer { isSyncingHistoricalDevlogs = false }
+
         var imported = 0
         var unchanged = 0
         var failed = 0
+        var results: [DevlogSyncGameResult] = []
+
         for record in records {
             guard let rawURL = record.gameURL,
                   let gameURL = URL(string: rawURL),
                   let feedURL = Self.devlogFeedURL(for: gameURL) else {
                 failed += 1
+                results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "缺少有效的游戏页面链接"))
                 continue
             }
             do {
@@ -126,12 +158,18 @@ final class GameUpdateMonitorStore: ObservableObject {
                 request.timeoutInterval = 25
                 request.setValue("application/rss+xml, application/xml, text/xml, */*", forHTTPHeaderField: "Accept")
                 let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                guard let http = response as? HTTPURLResponse else {
                     failed += 1
+                    results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "服务器没有返回有效的 HTTP 响应"))
+                    continue
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    failed += 1
+                    results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "RSS 请求失败，HTTP \(http.statusCode)"))
                     continue
                 }
                 let posts = try DevlogRSSParser.parse(data: data)
-                if posts.isEmpty { unchanged += 1 }
+                let before = imported
                 for post in posts {
                     guard let publishedAt = post.publishedAt else { continue }
                     let stableID = post.guid ?? post.url ?? "\(post.title)|\(publishedAt.timeIntervalSince1970)"
@@ -155,11 +193,29 @@ final class GameUpdateMonitorStore: ObservableObject {
                     )
                     if libraryAdded || calendarAdded { imported += 1 }
                 }
+                let addedForGame = imported - before
+                if posts.isEmpty {
+                    unchanged += 1
+                    results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "没有公开的 Devlog 更新"))
+                } else {
+                    results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: addedForGame, message: addedForGame > 0 ? "已同步 \(addedForGame) 条更新" : "内容已是最新，没有重复导入"))
+                }
             } catch {
                 failed += 1
+                results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "读取失败：\(error.localizedDescription)"))
             }
         }
-        return "历史更新同步完成：新增或补齐 \(imported) 条记录，\(unchanged) 款游戏没有可导入的更新日志，\(failed) 款读取失败。重复记录会自动跳过。"
+
+        let message = "同步完成：新增或补齐 \(imported) 条记录，\(unchanged) 款游戏没有公开更新日志，\(failed) 款游戏读取失败。"
+        lastHistoricalSyncAt = Date()
+        lastHistoricalSyncMessage = message
+        lastHistoricalSyncResults = results
+        UserDefaults.standard.set(lastHistoricalSyncAt, forKey: historicalSyncDateKey)
+        UserDefaults.standard.set(message, forKey: historicalSyncMessageKey)
+        if let data = try? JSONEncoder().encode(results) {
+            UserDefaults.standard.set(data, forKey: historicalSyncResultsKey)
+        }
+        return message
     }
 
     private static func devlogFeedURL(for gameURL: URL) -> URL? {
