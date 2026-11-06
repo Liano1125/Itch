@@ -62,6 +62,7 @@ struct GameDetailView: View {
                 originalPageButton
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("游戏详情")
@@ -77,7 +78,7 @@ struct GameDetailView: View {
                 .accessibilityLabel("重新读取游戏详情")
             }
         }
-        .background {
+        .overlay {
             DetailPageReader(
                 url: game.url,
                 reloadToken: reloadToken,
@@ -94,36 +95,48 @@ struct GameDetailView: View {
     // MARK: - Cover
 
     private var coverSection: some View {
-        Group {
-            if let url = displayCover {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
+        GeometryReader { geometry in
+            ZStack {
+                if let url = displayCover {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(
+                                    width: geometry.size.width,
+                                    height: geometry.size.height
+                                )
+                                .clipped()
 
-                    case .failure:
-                        coverPlaceholder
+                        case .failure:
+                            coverPlaceholder
 
-                    case .empty:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(.quaternary)
+                        case .empty:
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(.quaternary)
 
-                            ProgressView()
+                                ProgressView()
+                            }
+
+                        @unknown default:
+                            coverPlaceholder
                         }
-
-                    @unknown default:
-                        coverPlaceholder
                     }
+                } else {
+                    coverPlaceholder
                 }
-            } else {
-                coverPlaceholder
             }
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height
+            )
+            .clipped()
         }
-        .frame(maxWidth: .infinity)
         .aspectRatio(1.45, contentMode: .fit)
+        .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
@@ -196,6 +209,7 @@ struct GameDetailView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Uploads
@@ -242,6 +256,7 @@ struct GameDetailView: View {
                 .foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func uploadRow(_ upload: GameUpload) -> some View {
@@ -281,6 +296,7 @@ struct GameDetailView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(13)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 .regularMaterial,
                 in: RoundedRectangle(cornerRadius: 14)
@@ -473,7 +489,6 @@ private struct DetailPageReader: UIViewRepresentable {
             let currentExtractionID = UUID()
             extractionID = currentExtractionID
 
-            // 等待页面中的延迟内容和图片信息完成初始化
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                 guard self.extractionID == currentExtractionID else {
                     return
@@ -692,7 +707,6 @@ private struct DetailPageReader: UIViewRepresentable {
                     return;
                 }
 
-                // 只保留 itch.io 下载入口，排除无关外链
                 const isItchHost =
                     parsedURL.hostname === "itch.io" ||
                     parsedURL.hostname.endsWith(".itch.io");
@@ -741,7 +755,6 @@ private struct DetailPageReader: UIViewRepresentable {
                 });
             };
 
-            // 优先读取每个上传文件的独立容器
             for (const container of uploadContainers) {
                 const links = Array.from(
                     container.querySelectorAll("a[href]")
@@ -752,7 +765,6 @@ private struct DetailPageReader: UIViewRepresentable {
                 }
             }
 
-            // 补充读取下载区域中未被容器覆盖的入口
             const downloadArea = document.querySelector(
                 "#download, .game_download, .uploads"
             );
