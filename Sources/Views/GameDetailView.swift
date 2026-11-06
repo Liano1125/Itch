@@ -275,11 +275,21 @@ struct GameDetailView: View {
                                 .font(.title3)
                                 .foregroundStyle(.orange)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(update.summary)
-                                    .font(.subheadline)
-                                Text(update.detectedAt.formatted(date: .long, time: .shortened) + " · 检测时间")
+                                Text(update.title ?? update.summary)
+                                    .font(.subheadline.weight(.semibold))
+                                if !(update.summary.isEmpty) && update.title != nil {
+                                    Text(update.summary)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(4)
+                                }
+                                Text((update.publishedAt ?? update.detectedAt).formatted(date: .long, time: .shortened) + ((update.isHistorical ?? false) ? " · 原始发布日期" : " · 检测时间"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                if let rawURL = update.url, let postURL = URL(string: rawURL) {
+                                    Link("查看 itch.io 更新原文", destination: postURL)
+                                        .font(.caption.weight(.medium))
+                                }
                             }
                         }
                     }
