@@ -2,6 +2,7 @@ import SwiftUI
 import WebKit
 
 struct DiscoverView: View {
+    @EnvironmentObject private var library: PersonalLibraryStore
     @State private var searchText = ""
     @State private var submittedQuery = ""
     @State private var showSearchResults = false
@@ -17,6 +18,7 @@ struct DiscoverView: View {
                     header
                     searchBar
                     featuredSection
+                    libraryDiscoverySection
                     browseSection
                 }
                 .padding(.horizontal, 20)
@@ -172,6 +174,63 @@ struct DiscoverView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private var libraryDevelopers: [String] {
+        var seen = Set<String>()
+        return library.records.compactMap { record -> String? in
+            guard let developer = record.developer?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !developer.isEmpty,
+                  seen.insert(developer.lowercased()).inserted else {
+                return nil
+            }
+            return developer
+        }.prefix(6).map { $0 }
+    }
+
+    @ViewBuilder
+    private var libraryDiscoverySection: some View {
+        if !libraryDevelopers.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("从你的游戏库继续发现")
+                        .font(.title3.bold())
+                    Text("看看你已收藏游戏的开发者还有哪些作品")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(libraryDevelopers, id: \.self) { developer in
+                    NavigationLink {
+                        ItchSearchResultsView(query: developer)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.crop.circle")
+                                .font(.title2)
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 42, height: 42)
+                                .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 13))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(developer)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text("搜索该开发者的其他游戏")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(12)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
