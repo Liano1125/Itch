@@ -737,6 +737,24 @@ private struct DetailPageReader: UIViewRepresentable {
                     }
                 }
 
+                const galleryURLs = Array.from(document.querySelectorAll(
+                    ".screenshot img, .screenshot_container img, .game_page_screenshots img, .screenshots img, .game_page_content img"
+                )).map(el => absolute(
+                    el.getAttribute("data-lazy_src") || el.getAttribute("data-lazy-src") ||
+                    el.getAttribute("data-src") || el.currentSrc || el.getAttribute("src")
+                )).filter(Boolean).filter((value, index, array) => array.indexOf(value) === index).slice(0, 24);
+
+                const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
+                const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
+                const authorAvatar = document.querySelector(".game_author img, .user_avatar img, .user_link img, .header_links img");
+                const authorAvatarURL = authorAvatar ? absolute(
+                    authorAvatar.getAttribute("data-lazy_src") || authorAvatar.getAttribute("data-src") || authorAvatar.currentSrc || authorAvatar.getAttribute("src")
+                ) : null;
+
+                const links = Array.from(document.querySelectorAll("a[href]")).map(a => absolute(a.getAttribute("href"))).filter(Boolean);
+                const patreonURL = links.find(value => /(^|\\.)patreon\\.com$/i.test(new URL(value).hostname)) || null;
+                const discordURL = links.find(value => /(^|\\.)discord\\.(gg|com)$/i.test(new URL(value).hostname) || /discord\\.com\\/invite\\//i.test(value)) || null;
+
                 return JSON.stringify({
                     description,
                     developer,
