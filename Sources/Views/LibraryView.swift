@@ -23,9 +23,6 @@ struct LibraryView: View {
     @State private var selectedStatus: LibraryStatus?
     @State private var showingSource = false
     @State private var editingRecord: LibraryRecord?
-    @State private var selectedCollectionID: String?
-    @State private var collectionDraft: PersonalGameCollection?
-    @State private var showingCollectionEditor = false
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
@@ -35,7 +32,6 @@ struct LibraryView: View {
     private var filteredRecords: [LibraryRecord] {
         library.records.filter { record in
             (selectedStatus == nil || record.status == selectedStatus)
-            && (selectedCollectionID.map { library.containsGame(record.id, in: $0) } ?? true)
             && (searchText.isEmpty
                 || record.title.localizedCaseInsensitiveContains(searchText)
                 || (record.developer ?? "").localizedCaseInsensitiveContains(searchText))
@@ -67,9 +63,6 @@ struct LibraryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header
-                        if !showingSource {
-                            collectionsSection
-                        }
                         statusPicker
 
                         if showingSource {
@@ -108,91 +101,16 @@ struct LibraryView: View {
             .sheet(item: $editingRecord) { record in
                 LibraryNoteEditor(record: record) { library.update($0) }
             }
-            .sheet(isPresented: $showingCollectionEditor) {
-                CollectionNameEditor(collection: collectionDraft) { title in
-                    if var existing = collectionDraft {
-                        existing.title = title
-                        library.updateCollection(existing)
-                    } else {
-                        library.createCollection(title: title)
-                    }
-                }
-            }
         }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(showingSource ? "发现并添加游戏" : (selectedCollectionID.flatMap { id in library.collections.first(where: { $0.id == id })?.title } ?? "我的游戏"))
+            Text(showingSource ? "发现并添加游戏" : "我的游戏")
                 .font(.title2.bold())
-            Text(showingSource
-                 ? "从你的 itch.io 公开合集中选择游戏，加入个人游戏库"
-                 : "\(library.records.count) 款游戏 · 数据保存在本机")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
     }
 
-
-    private var collectionsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("我的合集")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    collectionDraft = nil
-                    showingCollectionEditor = true
-                } label: {
-                    Label("新建", systemImage: "plus")
-                        .font(.caption.weight(.semibold))
-                }
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 9) {
-                    collectionChip(title: "全部游戏", count: library.records.count, id: nil)
-                    ForEach(library.collections) { collection in
-                        collectionChip(title: collection.title, count: collection.gameIDs.count, id: collection.id)
-                            .contextMenu {
-                                Button("重命名", systemImage: "pencil") {
-                                    collectionDraft = collection
-                                    showingCollectionEditor = true
-                                }
-                                Button("删除合集", systemImage: "trash", role: .destructive) {
-                                    if selectedCollectionID == collection.id {
-                                        selectedCollectionID = nil
-                                    }
-                                    library.deleteCollection(collection.id)
-                                }
-                            }
-                    }
-                }
-            }
-        }
-    }
-
-    private func collectionChip(title: String, count: Int, id: String?) -> some View {
-        let selected = selectedCollectionID == id
-        return Button {
-            selectedCollectionID = id
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text("\(count) 款游戏")
-                    .font(.caption2)
-                    .foregroundStyle(selected ? .white.opacity(0.8) : .secondary)
-            }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 10)
-            .background(selected ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13))
-            .foregroundStyle(selected ? .white : .primary)
-        }
-        .buttonStyle(.plain)
-    }
 
     private var statusPicker: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -231,7 +149,7 @@ struct LibraryView: View {
                 Label(searchText.isEmpty ? "你的游戏库还是空的" : "没有找到游戏", systemImage: "gamecontroller")
             } description: {
                 Text(searchText.isEmpty
-                     ? (selectedCollectionID == nil ? "从右上角的加号进入公开合集，把喜欢的游戏加入这里。" : "这个合集还没有游戏，可以从游戏详情或游戏卡片中添加。")
+                     ? "从右上角的加号进入公开合集，把喜欢的游戏加入这里。"
                      : "试试其他游戏名称或开发者。")
             } actions: {
                 if searchText.isEmpty {
@@ -245,9 +163,6 @@ struct LibraryView: View {
                 ForEach(filteredRecords) { record in
                     PersonalGameCard(
                         record: record,
-                        collections: library.collections,
-                        isInCollection: { library.containsGame(record.id, in: $0) },
-                        onToggleCollection: { library.toggleGame(record.id, in: $0) },
                         onEdit: { editingRecord = record },
                         onUpdate: { library.update($0) },
                         onRemove: { library.remove(record.id) }
@@ -304,9 +219,6 @@ struct LibraryView: View {
 
 private struct PersonalGameCard: View {
     let record: LibraryRecord
-    let collections: [PersonalGameCollection]
-    let isInCollection: (String) -> Bool
-    let onToggleCollection: (String) -> Void
     let onEdit: () -> Void
     let onUpdate: (LibraryRecord) -> Void
     let onRemove: () -> Void
@@ -363,19 +275,6 @@ private struct PersonalGameCard: View {
                     onUpdate(copy)
                 } label: {
                     Label(record.isFavorite ? "取消收藏" : "收藏", systemImage: "heart")
-                }
-                Menu("添加到合集") {
-                    if collections.isEmpty {
-                        Text("请先创建一个合集")
-                    } else {
-                        ForEach(collections) { collection in
-                            Button {
-                                onToggleCollection(collection.id)
-                            } label: {
-                                Label(collection.title, systemImage: isInCollection(collection.id) ? "checkmark.circle.fill" : "circle")
-                            }
-                        }
-                    }
                 }
                 Button(action: onEdit) {
                     Label("编辑备注", systemImage: "note.text")
