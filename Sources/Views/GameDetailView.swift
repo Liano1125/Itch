@@ -1,7 +1,6 @@
 import SwiftUI
 import WebKit
 import Foundation
-import Translation
 
 // MARK: - Models
 
@@ -42,7 +41,9 @@ struct GameDetailView: View {
     @State private var reloadToken = UUID()
     @State private var translatedDescription: String?
     @State private var translatedUpdates: [String: String] = [:]
-    @State private var translationConfiguration: TranslationSession.Configuration?
+    @State private var translationStatus: String?
+    @State private var selectedGalleryIndex = 0
+    @State private var showingGalleryViewer = false
 
     private var displayCover: URL? {
         detail?.coverURL ?? game.coverURL
@@ -59,8 +60,8 @@ struct GameDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                coverSection
                 gallerySection
+                coverSection
                 titleSection
                 authorSection
                 linksSection
@@ -81,19 +82,6 @@ struct GameDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(uiColor: .systemBackground))
-        .translationTask(translationConfiguration) { session in
-            guard let detail else { return }
-            if let description = displayDescription, !description.isEmpty {
-                do { translatedDescription = try await session.translate(description).targetText }
-                catch { translatedDescription = nil }
-            }
-            for update in library.updates(for: game.id) {
-                let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
-                guard !source.isEmpty else { continue }
-                do { translatedUpdates[update.id] = try await session.translate(source).targetText }
-                catch { translatedUpdates[update.id] = nil }
-            }
-        }
         .navigationTitle("游戏详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -103,6 +91,9 @@ struct GameDetailView: View {
                 }
                 .disabled(isLoading)
             }
+        }
+        .sheet(isPresented: $showingGalleryViewer) {
+            galleryViewer
         }
         .overlay {
             DetailPageReader(
@@ -186,26 +177,104 @@ struct GameDetailView: View {
                 HStack {
                     Text("游戏图库").font(.title3.bold())
                     Spacer()
-                    Text("\(images.count) 张图片").font(.caption).foregroundStyle(.secondary)
+                    Text("\(images.count) 张截图").font(.caption).foregroundStyle(.secondary)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { index, url in
-                            AsyncImage(url: url) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    RoundedRectangle(cornerRadius: 15).fill(.quaternary)
-                                        .overlay { ProgressView() }
-                                }
-                            }
-                            .frame(width: index == 0 ? 270 : 190, height: 150)
-                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                ZStack(alignment: .bottomLeading) {
+                    AsyncImage(url: images[min(selectedGalleryIndex, images.count - 1)]) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            RoundedRectangle(cornerRadius: 20).fill(.quaternary)
+                                .overlay { ProgressView() }
                         }
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 232)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .contentShape(Rectangle())
+                    .onTapGesture { showingGalleryViewer = true }
+
+                    LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
+                        .frame(height: 90)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .allowsHitTesting(false)
+
+                    HStack(alignment: .bottom) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: -13) {
+                                ForEach(Array(images.prefix(7).enumerated()), id: \.offset) { index, url in
+                                    Button {
+                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                            selectedGalleryIndex = index
+                                        }
+                                    } label: {
+                                        AsyncImage(url: url) { phase in
+                                            if let image = phase.image {
+                                                image.resizable().scaledToFill()
+                                            } else {
+                                                RoundedRectangle(cornerRadius: 10).fill(.quaternary)
+                                            }
+                                        }
+                                        .frame(width: 70, height: 52)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .stroke(selectedGalleryIndex == index ? Color.white : Color.white.opacity(0.65), lineWidth: selectedGalleryIndex == index ? 2.5 : 1)
+                                        }
+                                        .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .zIndex(selectedGalleryIndex == index ? 2 : 1)
+                                }
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 4)
+                        }
+                        Spacer(minLength: 2)
+                        Button { showingGalleryViewer = true } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(.black.opacity(0.35), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 5)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
+                }
+                .accessibilityElement(children: .contain)
+            }
+        }
+    }
+
+    private var galleryViewer: some View {
+        NavigationStack {
+            TabView(selection: $selectedGalleryIndex) {
+                ForEach(Array((detail?.galleryURLs ?? []).enumerated()), id: \.offset) { index, url in
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFit()
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    .tag(index)
+                    .background(Color.black)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .background(Color.black.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { showingGalleryViewer = false }
+                        .foregroundStyle(.white)
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 
     // MARK: Title
@@ -311,7 +380,7 @@ struct GameDetailView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
 
-            } else if isLoading {
+                if let translationStatus {\n                    Text(translationStatus).font(.caption).foregroundStyle(.secondary)\n                }\n            } else if isLoading {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text("正在读取游戏介绍…")
@@ -474,12 +543,36 @@ struct GameDetailView: View {
         detail = result
         translatedDescription = nil
         translatedUpdates = [:]
-        translationConfiguration = TranslationSession.Configuration(
-            source: nil,
-            target: Locale.Language(identifier: "zh-Hans")
-        )
+        translationStatus = nil
+        selectedGalleryIndex = 0
         isLoading = false
         errorMessage = nil
+        Task { await translateContent() }
+    }
+
+    private func translateContent() async {
+        guard TranslationService.isConfigured else {
+            translationStatus = "请在「我的 - 翻译设置」配置翻译服务。"
+            return
+        }
+        translationStatus = "正在翻译…"
+        do {
+            if let description = displayDescription, !description.isEmpty {
+                translatedDescription = try await TranslationService.translate(description)
+            }
+            for update in library.updates(for: game.id) {
+                let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+                guard !source.isEmpty else { continue }
+                do {
+                    translatedUpdates[update.id] = try await TranslationService.translate(source)
+                } catch {
+                    // A failed individual update must not block the rest of the detail page.
+                }
+            }
+            translationStatus = "已尝试翻译介绍和更新记录"
+        } catch {
+            translationStatus = "翻译失败：\(error.localizedDescription)"
+        }
     }
 
     private func handleLoadError(_ message: String) {
@@ -737,12 +830,36 @@ private struct DetailPageReader: UIViewRepresentable {
                     }
                 }
 
-                const galleryURLs = Array.from(document.querySelectorAll(
-                    ".screenshot img, .screenshot_container img, .game_page_screenshots img, .screenshots img, .game_page_content img"
-                )).map(el => absolute(
-                    el.getAttribute("data-lazy_src") || el.getAttribute("data-lazy-src") ||
-                    el.getAttribute("data-src") || el.currentSrc || el.getAttribute("src")
-                )).filter(Boolean).filter((value, index, array) => array.indexOf(value) === index).slice(0, 24);
+                // itch.io screenshot images are linked to their original-size asset.
+                // Read the anchor href first (usually /original/...), then fall back to lazy-loaded img sources.
+                const galleryCandidates = [];
+                const screenshotAnchors = Array.from(document.querySelectorAll(
+                    '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox="true"]'
+                ));
+                for (const anchor of screenshotAnchors) {
+                    const image = anchor.querySelector("img");
+                    const href = absolute(anchor.getAttribute("href"));
+                    const imageSource = absolute(
+                        image?.getAttribute("data-lazy_src") || image?.getAttribute("data-lazy-src") ||
+                        image?.getAttribute("data-src") || image?.currentSrc || image?.getAttribute("src")
+                    );
+                    const candidate = href && /img\.itch\.zone|\.(png|jpe?g|webp|gif)(\?|$)/i.test(href) ? href : imageSource;
+                    if (candidate) galleryCandidates.push(candidate);
+                }
+                const screenshotImages = Array.from(document.querySelectorAll(
+                    'img.screenshot, .screenshot_list img, .screenshot_container img, .screenshot img, #game_screenshots img, .game_page_screenshots img'
+                ));
+                for (const image of screenshotImages) {
+                    const source = absolute(
+                        image.getAttribute("data-lazy_src") || image.getAttribute("data-lazy-src") ||
+                        image.getAttribute("data-src") || image.currentSrc || image.getAttribute("src")
+                    );
+                    if (source) galleryCandidates.push(source);
+                }
+                const galleryURLs = galleryCandidates
+                    .filter(value => /img\.itch\.zone|\.(png|jpe?g|webp|gif)(\?|$)/i.test(value))
+                    .filter((value, index, array) => array.indexOf(value) === index)
+                    .slice(0, 30);
 
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
