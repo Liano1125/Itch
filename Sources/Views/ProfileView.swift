@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var auth: ItchAuthService
+    @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
 
@@ -144,7 +145,32 @@ struct ProfileView: View {
                 .font(.title3.bold())
 
             VStack(spacing: 0) {
-                settingsRow("外观", subtitle: "跟随 iOS 系统设置", symbol: "circle.lefthalf.filled")
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "circle.lefthalf.filled")
+                            .font(.headline)
+                            .foregroundStyle(accent)
+                            .frame(width: 30)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("外观模式")
+                                .font(.subheadline.weight(.semibold))
+                            Text("选择你喜欢的界面风格")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    Picker("外观模式", selection: $appearanceMode) {
+                        Text("浅色").tag("light")
+                        Text("深色").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("外观模式")
+                }
+                .padding(.vertical, 13)
+
                 Divider().padding(.leading, 54)
                 settingsRow("隐私与数据", subtitle: "了解 itchPocket 如何使用数据", symbol: "hand.raised")
             }
