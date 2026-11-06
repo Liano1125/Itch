@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftUI
 import UIKit
 
@@ -43,11 +44,9 @@ final class PersistentImageCache {
     }
 
     private func fileURL(for url: URL) -> URL {
-        let safeName = url.absoluteString
-            .unicodeScalars
-            .map { String($0.value, radix: 16) }
-            .joined(separator: "-")
-        return directory.appendingPathComponent(safeName).appendingPathExtension("img")
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        let fileName = digest.map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent(fileName).appendingPathExtension("img")
     }
 }
 
