@@ -35,7 +35,13 @@ enum TranslationService {
             return CachedTranslationResult(text: cached.translation, wasCached: true)
         }
         let translated = try await translate(text)
-        await TranslationCache.shared.store(translated, for: key)
+        await TranslationCache.shared.store(
+            translated,
+            source: text,
+            scope: scope,
+            target: target,
+            for: key
+        )
         return CachedTranslationResult(text: translated, wasCached: false)
     }
 
