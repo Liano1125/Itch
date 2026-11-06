@@ -47,7 +47,7 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("发现好玩的\n独立游戏。")
+            Text("发现好玩的\n独立游戏")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
