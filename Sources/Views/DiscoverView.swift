@@ -186,7 +186,8 @@ struct DiscoverView: View {
                     subtitle: "探索 itch.io 的完整游戏目录",
                     symbol: "square.grid.2x2.fill",
                     tint: .blue,
-                    url: "https://itch.io/games"
+                    url: "https://itch.io/games",
+                    requiresWebLogin: true
                 )
 
                 browseRow(
@@ -194,7 +195,8 @@ struct DiscoverView: View {
                     subtitle: "发现可以免费体验的作品",
                     symbol: "gift.fill",
                     tint: .green,
-                    url: "https://itch.io/games/price-free"
+                    url: "https://itch.io/games/price-free",
+                    requiresWebLogin: true
                 )
 
                 browseRow(
@@ -213,10 +215,15 @@ struct DiscoverView: View {
         subtitle: String,
         symbol: String,
         tint: Color,
-        url: String
+        url: String,
+        requiresWebLogin: Bool = false
     ) -> some View {
         NavigationLink {
-            ItchSearchResultsView(query: "", customURL: url)
+            ItchSearchResultsView(
+                query: "",
+                customURL: url,
+                requiresWebLogin: requiresWebLogin
+            )
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: symbol)
@@ -263,11 +270,74 @@ struct DiscoverView: View {
 struct ItchSearchResultsView: View {
     let query: String
     var customURL: String? = nil
+    var requiresWebLogin: Bool = false
+
+    @AppStorage("itchPocket.webLoginCompleted") private var webLoginCompleted = false
+    @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
     var body: some View {
-        ItchWebView(url: searchURL)
-            .navigationTitle(query.isEmpty ? "浏览 itch.io" : query)
-            .navigationBarTitleDisplayMode(.inline)
+        Group {
+            if requiresWebLogin && !webLoginCompleted {
+                webLoginGate
+            } else {
+                ItchWebView(url: localizedURL(searchURL), appearanceMode: appearanceMode)
+            }
+        }
+        .navigationTitle(query.isEmpty ? "浏览 itch.io" : query)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if requiresWebLogin && webLoginCompleted {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("重新登录") {
+                        webLoginCompleted = false
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+    }
+
+    private var webLoginGate: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("首次连接 itch.io 网页账号", systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.headline)
+                Text("请在下方登录你的 itch.io 账号。登录成功后，点击“我已登录，继续浏览”。登录状态会保存在本机，全部游戏和免费游戏共用。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+
+            ItchWebView(
+                url: URL(string: "https://itch.io/login?locale=zh")!,
+                appearanceMode: appearanceMode
+            )
+
+            Button {
+                webLoginCompleted = true
+            } label: {
+                Text("我已登录，继续浏览")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .padding()
+        }
+        .background(Color(uiColor: .systemBackground))
+    }
+
+    private func localizedURL(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name == "locale" }
+        items.append(URLQueryItem(name: "locale", value: "zh"))
+        components.queryItems = items
+        return components.url ?? url
     }
 
     private var searchURL: URL {
@@ -285,17 +355,29 @@ struct ItchSearchResultsView: View {
 
 private struct ItchWebView: UIViewRepresentable {
     let url: URL
+    let appearanceMode: String
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        applyAppearance(to: webView)
         webView.load(URLRequest(url: url))
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
+        applyAppearance(to: webView)
+        if webView.url == nil || webView.url?.host != url.host || webView.url?.path != url.path {
             webView.load(URLRequest(url: url))
         }
+    }
+
+    private func applyAppearance(to webView: WKWebView) {
+        let style: UIUserInterfaceStyle = appearanceMode == "dark" ? .dark : .light
+        webView.overrideUserInterfaceStyle = style
+        let colorScheme = appearanceMode == "dark" ? "dark" : "light"
+        webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(colorScheme)';")
     }
 }
