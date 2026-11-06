@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import UserNotifications
 
 struct GameUpdateWatch: Codable, Identifiable {
@@ -99,8 +100,8 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private func sendUpdateNotification(for watch: GameUpdateWatch) async {
         let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        guard granted else { return }
         let content = UNMutableNotificationContent()
         content.title = "游戏页面可能已更新"
         content.body = "\(watch.gameTitle) 的 itch.io 页面信息发生变化，打开游戏页面确认详情。"
