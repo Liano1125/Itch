@@ -79,9 +79,10 @@ final class GameCalendarStore: ObservableObject {
         save()
     }
 
-    func addHistoricalUpdate(gameID: String, gameTitle: String, gameURL: String?, title: String, summary: String, publishedAt: Date, sourceID: String, postURL: String?) {
+    @discardableResult
+    func addHistoricalUpdate(gameID: String, gameTitle: String, gameURL: String?, title: String, summary: String, publishedAt: Date, sourceID: String, postURL: String?) -> Bool {
         let fingerprint = "devlog:\(sourceID)"
-        guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return }
+        guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return false }
         let linkNote = postURL.map { "\n\($0)" } ?? ""
         let event = GameCalendarEvent(
             gameID: gameID,
@@ -97,6 +98,7 @@ final class GameCalendarStore: ObservableObject {
         events.append(event)
         events.sort { $0.date < $1.date }
         save()
+        return true
     }
 
     func update(_ event: GameCalendarEvent) {
