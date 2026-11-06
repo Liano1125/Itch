@@ -83,7 +83,7 @@ struct GameDetailView: View {
         .background(Color(uiColor: .systemBackground))
         .translationTask(translationConfiguration) { session in
             guard let detail else { return }
-            if let description = detail.description, !description.isEmpty {
+            if let description = displayDescription, !description.isEmpty {
                 do { translatedDescription = try await session.translate(description).targetText }
                 catch { translatedDescription = nil }
             }
