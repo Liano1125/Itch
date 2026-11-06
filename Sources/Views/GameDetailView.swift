@@ -40,6 +40,7 @@ struct GameDetailView: View {
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
     @State private var translatedDescription: String?
+    @State private var cachedOriginalDescription: String?
     @State private var translatedUpdates: [String: String] = [:]
     @State private var translationStatus: String?\n    @State private var showingOriginalDescription = false\n    @State private var isRefreshingTranslation = false
     @State private var selectedGalleryIndex = 0
@@ -55,7 +56,7 @@ struct GameDetailView: View {
     }
 
     private var displayDescription: String? {
-        detail?.description ?? game.description
+        detail?.description ?? cachedOriginalDescription ?? game.description
     }
 
     var body: some View {
@@ -82,6 +83,9 @@ struct GameDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(uiColor: .systemBackground))
+        .task(id: game.id) {
+            await loadCachedDescription()
+        }
         .task(id: detail?.authorURL) {
             guard detail != nil else { return }
             let resolved = await PatreonAvatarService.shared.avatarURL(
@@ -550,13 +554,27 @@ struct GameDetailView: View {
             }
             library.update(record)
         }
-        translatedDescription = nil
+        if let currentDescription = result.description {
+            if cachedOriginalDescription != currentDescription {
+                translatedDescription = nil
+            }
+            cachedOriginalDescription = currentDescription
+        }
         translatedUpdates = [:]
         translationStatus = nil
         selectedGalleryIndex = 0
         isLoading = false
         errorMessage = nil
         Task { await translateContent() }
+    }
+
+    private func loadCachedDescription() async {
+        let target = UserDefaults.standard.string(forKey: TranslationService.targetKey) ?? "zh-CN"
+        let scope = "game-description:\(game.id)"
+        guard let cached = await TranslationCache.shared.latest(scope: scope, target: target) else { return }
+        cachedOriginalDescription = cached.sourceText
+        translatedDescription = cached.translation
+        translationStatus = "已显示本地译文 · 正在检查更新"
     }
 
     private func translateContent(forceRefresh: Bool = false) async {
