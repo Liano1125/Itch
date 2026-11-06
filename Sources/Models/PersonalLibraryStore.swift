@@ -119,7 +119,9 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func updates(for gameID: String) -> [GameLibraryUpdate] {
-        (record(for: gameID)?.gameUpdates ?? []).sorted { $0.detectedAt > $1.detectedAt }
+        (record(for: gameID)?.gameUpdates ?? []).sorted {
+            ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt)
+        }
     }
 
     func recordGameUpdate(gameID: String, summary: String, detectedAt: Date = Date()) {
