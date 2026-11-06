@@ -380,7 +380,10 @@ struct GameDetailView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let translationStatus {\n                    Text(translationStatus).font(.caption).foregroundStyle(.secondary)\n                }\n            } else if isLoading {
+                if let translationStatus {
+                    Text(translationStatus).font(.caption).foregroundStyle(.secondary)
+                }
+            } else if isLoading {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text("正在读取游戏介绍…")
@@ -834,16 +837,16 @@ private struct DetailPageReader: UIViewRepresentable {
                 // Read the anchor href first (usually /original/...), then fall back to lazy-loaded img sources.
                 const galleryCandidates = [];
                 const screenshotAnchors = Array.from(document.querySelectorAll(
-                    '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox="true"]'
+                    '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox]'
                 ));
                 for (const anchor of screenshotAnchors) {
                     const image = anchor.querySelector("img");
                     const href = absolute(anchor.getAttribute("href"));
                     const imageSource = absolute(
                         image?.getAttribute("data-lazy_src") || image?.getAttribute("data-lazy-src") ||
-                        image?.getAttribute("data-src") || image?.currentSrc || image?.getAttribute("src")
+                        image?.getAttribute("data-src") || image?.currentSrc || image?.getAttribute("srcset")?.split(/\\s+/)[0] || image?.getAttribute("src")
                     );
-                    const candidate = href && /img\.itch\.zone|\.(png|jpe?g|webp|gif)(\?|$)/i.test(href) ? href : imageSource;
+                    const candidate = href && /img\\.itch\\.zone|\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(href) ? href : imageSource;
                     if (candidate) galleryCandidates.push(candidate);
                 }
                 const screenshotImages = Array.from(document.querySelectorAll(
@@ -852,12 +855,12 @@ private struct DetailPageReader: UIViewRepresentable {
                 for (const image of screenshotImages) {
                     const source = absolute(
                         image.getAttribute("data-lazy_src") || image.getAttribute("data-lazy-src") ||
-                        image.getAttribute("data-src") || image.currentSrc || image.getAttribute("src")
+                        image.getAttribute("data-src") || image.currentSrc || image.getAttribute("srcset")?.split(/\\s+/)[0] || image.getAttribute("src")
                     );
                     if (source) galleryCandidates.push(source);
                 }
                 const galleryURLs = galleryCandidates
-                    .filter(value => /img\.itch\.zone|\.(png|jpe?g|webp|gif)(\?|$)/i.test(value))
+                    .filter(value => /img\\.itch\\.zone|\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(value))
                     .filter((value, index, array) => array.indexOf(value) === index)
                     .slice(0, 30);
 
