@@ -15,6 +15,49 @@ struct GameUpdateMonitorView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            Section("自动同步状态") {
+                HStack(spacing: 10) {
+                    if monitor.isSyncingHistoricalDevlogs {
+                        ProgressView()
+                        Text("正在检查公开 Devlog…")
+                    } else {
+                        Image(systemName: monitor.lastHistoricalSyncAt == nil ? "clock" : "checkmark.circle")
+                            .foregroundStyle(monitor.lastHistoricalSyncAt == nil ? .secondary : .green)
+                        Text(monitor.lastHistoricalSyncAt == nil ? "尚未执行同步" : "最近一次同步")
+                    }
+                    Spacer()
+                    if let date = monitor.lastHistoricalSyncAt {
+                        Text(date.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let message = monitor.lastHistoricalSyncMessage {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("每次启动 App 时自动检查；后台检查由 iOS 系统择机执行。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if !monitor.lastHistoricalSyncResults.isEmpty {
+                    ForEach(monitor.lastHistoricalSyncResults) { result in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: result.message.hasPrefix("读取失败") || result.message.contains("失败") || result.message.contains("缺少有效") ? "exclamationmark.circle" : "checkmark.circle")
+                                .foregroundStyle(result.message.hasPrefix("读取失败") || result.message.contains("失败") || result.message.contains("缺少有效") ? .orange : .secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(result.gameTitle)
+                                    .font(.subheadline)
+                                Text(result.message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            }
             Section("历史版本更新") {
                 Text("自动同步已开启：打开 App 时会检查；iOS 也会在系统允许时安排后台刷新（目标间隔约 6 小时，但实际时间由系统决定）。发现新 Devlog 后会自动写入日历和个人游戏库。仅能获取开发者公开发布的 Devlog RSS。")
                     .font(.footnote)
