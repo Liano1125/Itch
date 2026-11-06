@@ -41,7 +41,7 @@ struct GameDetailView: View {
     @State private var reloadToken = UUID()
     @State private var translatedDescription: String?
     @State private var translatedUpdates: [String: String] = [:]
-    @State private var translationStatus: String?
+    @State private var translationStatus: String?\n    @State private var showingOriginalDescription = false\n    @State private var isRefreshingTranslation = false
     @State private var selectedGalleryIndex = 0
     @State private var showingGalleryViewer = false
     @State private var resolvedAuthorAvatarURL: URL?
@@ -359,14 +359,28 @@ struct GameDetailView: View {
 
             if let description = displayDescription,
                !description.isEmpty {
-                Text(translatedDescription ?? description)
+                Text(showingOriginalDescription ? description : (translatedDescription ?? description))
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let translationStatus {
-                    Text(translationStatus).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    if translatedDescription != nil {
+                        Button(showingOriginalDescription ? "显示中文译文" : "查看英文原文") {
+                            showingOriginalDescription.toggle()
+                        }
+                        .font(.caption.weight(.medium))
+                    }
+                    Button(isRefreshingTranslation ? "翻译中…" : "重新翻译") {
+                        Task { await translateContent(forceRefresh: true) }
+                    }
+                    .font(.caption.weight(.medium))
+                    .disabled(isRefreshingTranslation || !TranslationService.isConfigured)
+                    Spacer(minLength: 0)
+                    if let translationStatus {
+                        Text(translationStatus).font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             } else if isLoading {
                 HStack(spacing: 10) {
@@ -545,26 +559,43 @@ struct GameDetailView: View {
         Task { await translateContent() }
     }
 
-    private func translateContent() async {
+    private func translateContent(forceRefresh: Bool = false) async {
         guard TranslationService.isConfigured else {
             translationStatus = "请在「我的 - 翻译设置」配置翻译服务。"
             return
         }
-        translationStatus = "正在翻译…"
+        guard !isRefreshingTranslation else { return }
+        isRefreshingTranslation = true
+        defer { isRefreshingTranslation = false }
+
+        translationStatus = forceRefresh ? "正在重新翻译…" : "正在检查本地译文…"
+        var usedCache = false
         do {
             if let description = displayDescription, !description.isEmpty {
-                translatedDescription = try await TranslationService.translate(description)
+                let result = try await TranslationService.translateCached(
+                    description,
+                    scope: "game-description:\(game.id)",
+                    forceRefresh: forceRefresh
+                )
+                translatedDescription = result.text
+                usedCache = result.wasCached
             }
             for update in library.updates(for: game.id) {
                 let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
                 guard !source.isEmpty else { continue }
                 do {
-                    translatedUpdates[update.id] = try await TranslationService.translate(source)
+                    let result = try await TranslationService.translateCached(
+                        source,
+                        scope: "devlog:\(game.id):\(update.id)",
+                        forceRefresh: forceRefresh
+                    )
+                    translatedUpdates[update.id] = result.text
+                    usedCache = usedCache || result.wasCached
                 } catch {
                     // A failed individual update must not block the rest of the detail page.
                 }
             }
-            translationStatus = "已尝试翻译介绍和更新记录"
+            translationStatus = usedCache ? "已使用本地缓存" : "翻译完成 · 已保存"
         } catch {
             translationStatus = "翻译失败：\(error.localizedDescription)"
         }
