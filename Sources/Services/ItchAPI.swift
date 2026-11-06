@@ -75,7 +75,7 @@ final class ItchAPI {
     }
 }
 
-private extension JSONDecoder {
+extension JSONDecoder {
     static var itchDecoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
