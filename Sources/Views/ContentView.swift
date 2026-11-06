@@ -9,17 +9,19 @@ enum AppTab: Hashable {
 struct ContentView: View {
     @State private var selectedTab: AppTab = .discover
 
+    private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
+
     var body: some View {
         TabView(selection: $selectedTab) {
             DiscoverView()
                 .tabItem {
-                    Label("发现", systemImage: "sparkle.magnifyingglass")
+                    Label("发现", systemImage: "sparkles")
                 }
                 .tag(AppTab.discover)
 
             LibraryView()
                 .tabItem {
-                    Label("游戏库", systemImage: "books.vertical")
+                    Label("游戏库", systemImage: "square.grid.2x2")
                 }
                 .tag(AppTab.library)
 
@@ -29,6 +31,7 @@ struct ContentView: View {
                 }
                 .tag(AppTab.profile)
         }
-        .tint(.primary)
+        .tint(accent)
+        .toolbarBackground(.visible, for: .tabBar)
     }
 }
