@@ -44,6 +44,7 @@ struct GameDetailView: View {
     @State private var translationStatus: String?
     @State private var selectedGalleryIndex = 0
     @State private var showingGalleryViewer = false
+    @State private var resolvedAuthorAvatarURL: URL?
 
     private var displayCover: URL? {
         detail?.coverURL ?? game.coverURL
@@ -81,6 +82,22 @@ struct GameDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(uiColor: .systemBackground))
+        .task(id: detail?.authorURL) {
+            guard detail != nil else { return }
+            let resolved = await PatreonAvatarService.shared.avatarURL(
+                authorURL: detail?.authorURL,
+                gameURL: game.url,
+                fallbackURL: detail?.authorAvatarURL
+            )
+            resolvedAuthorAvatarURL = resolved
+            if let resolved, var record = library.record(for: game.id) {
+                record.patreonAvatarURL = resolved.absoluteString
+                if let authorURL = detail?.authorURL {
+                    record.developerProfileURL = authorURL.absoluteString
+                }
+                library.update(record)
+            }
+        }
         .navigationTitle("游戏详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -258,7 +275,7 @@ struct GameDetailView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    CachedRemoteImage(url: detail?.authorAvatarURL, contentMode: .fill) {
+                    CachedRemoteImage(url: resolvedAuthorAvatarURL ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "") ?? detail?.authorAvatarURL, contentMode: .fill) {
                         Image(systemName: "person.fill")
                             .resizable().scaledToFit().padding(11)
                             .foregroundStyle(.secondary)
@@ -512,6 +529,13 @@ struct GameDetailView: View {
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
+        resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
+        if var record = library.record(for: game.id) {
+            if let authorURL = result.authorURL {
+                record.developerProfileURL = authorURL.absoluteString
+            }
+            library.update(record)
+        }
         translatedDescription = nil
         translatedUpdates = [:]
         translationStatus = nil
