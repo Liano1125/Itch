@@ -112,7 +112,6 @@ final class PersonalLibraryStore: ObservableObject {
     func recordGameUpdate(gameID: String, summary: String, detectedAt: Date = Date()) {
         guard let index = records.firstIndex(where: { $0.id == gameID }) else { return }
         var updated = records[index]
-        if updated.gameUpdates?.contains(where: { $0.summary == summary }) == true { return }
         var history = updated.gameUpdates ?? []
         history.insert(GameLibraryUpdate(summary: summary, detectedAt: detectedAt), at: 0)
         updated.gameUpdates = Array(history.prefix(30))
