@@ -16,6 +16,7 @@ struct GameUpdateWatch: Codable, Identifiable {
 
 @MainActor
 final class GameUpdateMonitorStore: ObservableObject {
+    static let shared = GameUpdateMonitorStore()
     @Published private(set) var watches: [String: GameUpdateWatch] = [:]
     @Published private(set) var checkingIDs: Set<String> = []
     @Published var statusMessage: String?
