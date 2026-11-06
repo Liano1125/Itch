@@ -310,7 +310,7 @@ struct ItchSearchResultsView: View {
             .padding()
 
             ItchWebView(
-                url: URL(string: "https://itch.io/login?locale=zh")!,
+                url: URL(string: "https://itch.io/login?locale=zh_Hans")!,
                 appearanceMode: appearanceMode
             )
 
@@ -335,7 +335,7 @@ struct ItchSearchResultsView: View {
         }
         var items = components.queryItems ?? []
         items.removeAll { $0.name == "locale" }
-        items.append(URLQueryItem(name: "locale", value: "zh"))
+        items.append(URLQueryItem(name: "locale", value: "zh_Hans"))
         components.queryItems = items
         return components.url ?? url
     }
@@ -357,17 +357,23 @@ private struct ItchWebView: UIViewRepresentable {
     let url: URL
     let appearanceMode: String
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        webView.navigationDelegate = context.coordinator
         applyAppearance(to: webView)
         webView.load(URLRequest(url: url))
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.parent = self
         applyAppearance(to: webView)
         if webView.url == nil || webView.url?.host != url.host || webView.url?.path != url.path {
             webView.load(URLRequest(url: url))
@@ -379,5 +385,17 @@ private struct ItchWebView: UIViewRepresentable {
         webView.overrideUserInterfaceStyle = style
         let colorScheme = appearanceMode == "dark" ? "dark" : "light"
         webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(colorScheme)';")
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: ItchWebView
+
+        init(parent: ItchWebView) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            parent.applyAppearance(to: webView)
+        }
     }
 }
