@@ -9,6 +9,7 @@ enum AppTab: Hashable {
 }
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var personalLibrary = PersonalLibraryStore.shared
     @StateObject private var gameCalendar = GameCalendarStore.shared
     @StateObject private var updateMonitor = GameUpdateMonitorStore.shared
@@ -61,6 +62,16 @@ struct ContentView: View {
                 library: personalLibrary,
                 calendar: gameCalendar
             )
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await DevlogAutoSync.refreshIfNeeded(
+                    monitor: updateMonitor,
+                    library: personalLibrary,
+                    calendar: gameCalendar
+                )
+            }
         }
     }
 }
