@@ -6,6 +6,9 @@ actor TranslationCache {
 
     struct Entry: Codable {
         let translation: String
+        let sourceText: String
+        let scope: String
+        let target: String
         let updatedAt: Date
     }
 
@@ -23,9 +26,22 @@ actor TranslationCache {
         return entries[key]
     }
 
-    func store(_ translation: String, for key: String) {
+    func latest(scope: String, target: String) -> Entry? {
         loadIfNeeded()
-        entries[key] = Entry(translation: translation, updatedAt: Date())
+        return entries.values
+            .filter { $0.scope == scope && $0.target == target }
+            .max { $0.updatedAt < $1.updatedAt }
+    }
+
+    func store(_ translation: String, source: String, scope: String, target: String, for key: String) {
+        loadIfNeeded()
+        entries[key] = Entry(
+            translation: translation,
+            sourceText: source,
+            scope: scope,
+            target: target,
+            updatedAt: Date()
+        )
         if entries.count > 1200 {
             let retained = entries.sorted { $0.value.updatedAt > $1.value.updatedAt }.prefix(1000)
             entries = Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })
