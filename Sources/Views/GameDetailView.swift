@@ -194,15 +194,29 @@ struct GameDetailView: View {
     @ViewBuilder
     private var gallerySection: some View {
         let images = detail?.galleryURLs ?? []
-        if !images.isEmpty {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack {
-                    Text("游戏图库").font(.headline)
-                    Spacer()
-                    Text("\(images.count) 张").font(.caption).foregroundStyle(.secondary)
+
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("游戏图库").font(.headline)
+                Spacer()
+                if !images.isEmpty {
+                    Text("\(images.count) 张")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if detail == nil {
+                    Text("加载中")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 12) {
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    if images.isEmpty {
+                        galleryPlaceholder(
+                            message: detail == nil ? "正在加载游戏截图" : "暂未获取到游戏截图"
+                        )
+                    } else {
                         ForEach(Array(images.enumerated()), id: \.offset) { index, url in
                             Button {
                                 selectedGalleryIndex = index
@@ -219,10 +233,31 @@ struct GameDetailView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.vertical, 2)
                 }
+                .padding(.vertical, 2)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func galleryPlaceholder(message: String) -> some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color(uiColor: .tertiarySystemFill))
+            .overlay {
+                VStack(spacing: 9) {
+                    if detail == nil {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 310, height: 174)
     }
 
     private var galleryViewer: some View {
