@@ -45,7 +45,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         save()
     }
 
-    func checkAll(calendarStore: GameCalendarStore) async {
+    func checkAll(calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async {
         let targets = watches.values.filter(\.isEnabled)
         guard !targets.isEmpty else {
             statusMessage = "还没有开启监控的游戏。"
@@ -83,12 +83,16 @@ final class GameUpdateMonitorStore: ObservableObject {
                         || (modified == nil && etag != nil && current.entityTag != nil && etag != current.entityTag)
                     if changed {
                         let fingerprint = "modified:\(modified ?? current.lastModified ?? "")|etag:\(etag ?? current.entityTag ?? "")"
+                        let detectedAt = Date()
+                        let summary = "itch.io 游戏页面响应信息发生变化（ETag / Last-Modified）；请打开页面确认具体更新内容。"
                         calendarStore.addDetectedUpdate(
                             gameID: current.gameID,
                             gameTitle: current.gameTitle,
                             gameURL: current.gameURL,
-                            fingerprint: fingerprint
+                            fingerprint: fingerprint,
+                            detectedAt: detectedAt
                         )
+                        libraryStore.recordGameUpdate(gameID: current.gameID, summary: summary, detectedAt: detectedAt)
                         await sendUpdateNotification(for: current)
                         updated += 1
                     }
