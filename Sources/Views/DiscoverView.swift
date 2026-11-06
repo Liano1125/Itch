@@ -256,6 +256,7 @@ struct DiscoverView: View {
                     .font(.headline)
                 browseRow(
                     title: "全部游戏",
+                    subtitle: "探索 itch.io 的完整游戏目录",
                     symbol: "square.grid.2x2.fill",
                     tint: .blue,
                     url: "https://itch.io/games",
@@ -263,6 +264,7 @@ struct DiscoverView: View {
                 )
                 browseRow(
                     title: "Game Jam",
+                    subtitle: "看看独立开发者正在参与的创作活动",
                     symbol: "timer",
                     tint: .orange,
                     url: "https://itch.io/jams"
