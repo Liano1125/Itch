@@ -3,11 +3,13 @@ import SwiftUI
 enum AppTab: Hashable {
     case discover
     case library
+    case calendar
     case profile
 }
 
 struct ContentView: View {
     @StateObject private var personalLibrary = PersonalLibraryStore()
+    @StateObject private var gameCalendar = GameCalendarStore()
     @State private var selectedTab: AppTab = .discover
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
@@ -31,6 +33,12 @@ struct ContentView: View {
                 }
                 .tag(AppTab.library)
 
+            GameCalendarView()
+                .tabItem {
+                    Label("日历", systemImage: "calendar")
+                }
+                .tag(AppTab.calendar)
+
             ProfileView()
                 .tabItem {
                     Label("我的", systemImage: "person.crop.circle")
@@ -42,5 +50,6 @@ struct ContentView: View {
         .preferredColorScheme(preferredScheme)
         .animation(.easeInOut(duration: 0.22), value: appearanceMode)
         .environmentObject(personalLibrary)
+        .environmentObject(gameCalendar)
     }
 }
