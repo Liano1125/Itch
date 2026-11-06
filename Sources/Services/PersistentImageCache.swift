@@ -23,7 +23,10 @@ final class PersistentImageCache {
         if let cached = memory.object(forKey: key) { return cached }
 
         let file = fileURL(for: url)
-        if let data = try? Data(contentsOf: file), let image = UIImage(data: data) {
+        let diskData = await Task.detached(priority: .userInitiated) {
+            try? Data(contentsOf: file, options: .mappedIfSafe)
+        }.value
+        if let data = diskData, let image = UIImage(data: data) {
             memory.setObject(image, forKey: key)
             return image
         }
@@ -40,6 +43,16 @@ final class PersistentImageCache {
             return image
         } catch {
             return nil
+        }
+    }
+
+    func prefetch(_ urls: [URL]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for url in urls {
+                group.addTask {
+                    _ = await self.image(for: url)
+                }
+            }
         }
     }
 
