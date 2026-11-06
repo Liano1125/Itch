@@ -1,6 +1,7 @@
 
 import SwiftUI
 import WebKit
+import Foundation
 
 // MARK: - Models
 
@@ -9,6 +10,7 @@ private struct GamePagePayload: Decodable {
     let developer: String?
     let coverURL: URL?
     let downloadURL: URL?
+    let scriptError: String?
 }
 
 private struct GameDetailPayload {
@@ -29,6 +31,7 @@ private struct GameUpload: Identifiable {
 
 private struct DownloadPagePayload: Decodable {
     let uploads: [DownloadItem]
+    let scriptError: String?
 
     struct DownloadItem: Decodable {
         let id: String
@@ -191,12 +194,9 @@ struct GameDetailView: View {
 
             if let developer = displayDeveloper,
                !developer.isEmpty {
-                Label(
-                    developer,
-                    systemImage: "person"
-                )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                Label(developer, systemImage: "person")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
 
             if !game.platforms.isEmpty {
@@ -470,13 +470,13 @@ struct GameDetailView: View {
 
         if [
             ".zip", ".7z", ".rar", ".tar", ".gz"
-        ].contains(where: value.hasSuffix) {
+        ].contains(where: { value.hasSuffix($0) }) {
             return "doc.zipper"
         }
 
         if [
             ".dmg", ".pkg", ".exe", ".app", ".msi"
-        ].contains(where: value.hasSuffix) {
+        ].contains(where: { value.hasSuffix($0) }) {
             return "desktopcomputer"
         }
 
@@ -616,6 +616,7 @@ private struct DetailPageReader: UIViewRepresentable {
         context.coordinator.currentToken = reloadToken
         context.coordinator.stage = .game
         context.coordinator.gamePayload = nil
+        context.coordinator.extractionID = UUID()
 
         guard let url else {
             onError("游戏页面地址无效。")
@@ -643,7 +644,7 @@ private struct DetailPageReader: UIViewRepresentable {
         var stage: Stage = .game
         var gamePayload: GamePagePayload?
 
-        private var extractionID = UUID()
+        var extractionID = UUID()
 
         init(parent: DetailPageReader) {
             self.parent = parent
@@ -706,7 +707,16 @@ private struct DetailPageReader: UIViewRepresentable {
                         GamePagePayload.self,
                         from: data
                       ) else {
-                    self.fail("游戏主页没有返回可识别的数据。")
+                    self.fail(
+                        "游戏主页返回的数据无法解析。请重新读取。"
+                    )
+                    return
+                }
+
+                if let scriptError = payload.scriptError {
+                    self.fail(
+                        "游戏主页 JavaScript 错误：\(scriptError)"
+                    )
                     return
                 }
 
@@ -718,6 +728,7 @@ private struct DetailPageReader: UIViewRepresentable {
                 }
 
                 self.stage = .download
+                self.extractionID = UUID()
 
                 var request = URLRequest(url: downloadURL)
                 request.timeoutInterval = 40
@@ -755,7 +766,14 @@ private struct DetailPageReader: UIViewRepresentable {
                         from: data
                       ) else {
                     self.finishWithError(
-                        "下载页面没有返回有效的选项数据。"
+                        "下载页面返回的数据无法解析。"
+                    )
+                    return
+                }
+
+                if let scriptError = parsed.scriptError {
+                    self.finishWithError(
+                        "下载页面 JavaScript 错误：\(scriptError)"
                     )
                     return
                 }
@@ -862,257 +880,171 @@ private struct DetailPageReader: UIViewRepresentable {
 
         private static let gamePageScript = """
         (() => {
-            const clean = el => (
-                el?.innerText ||
-                el?.textContent ||
-                ""
-            ).replace(/\\\\s+/g, " ").trim();
+            try {
+                const clean = el => {
+                    const value = el?.innerText || el?.textContent || "";
+                    return value.split(" ").filter(Boolean).join(" ").trim();
+                };
 
-            const absolute = value => {
-                try {
-                    return value
-                        ? new URL(value, location.href).href
-                        : null;
-                } catch (_) {
-                    return null;
+                const absolute = value => {
+                    try {
+                        return value ? new URL(value, location.href).href : null;
+                    } catch (_) {
+                        return null;
+                    }
+                };
+
+                let description = null;
+
+                const descriptionSelectors = [
+                    ".formatted_description",
+                    ".game_page_content .formatted_description",
+                    ".game_description",
+                    "#game_description"
+                ];
+
+                for (const selector of descriptionSelectors) {
+                    const el = document.querySelector(selector);
+                    const value = clean(el);
+
+                    if (value.length > 20) {
+                        description = value;
+                        break;
+                    }
                 }
-            };
 
-            // Description
-
-            let description = null;
-
-            for (const selector of [
-                ".formatted_description",
-                ".game_page_content .formatted_description",
-                ".game_description",
-                "#game_description"
-            ]) {
-                const el = document.querySelector(selector);
-                const value = clean(el);
-
-                if (value.length > 20) {
-                    description = value;
-                    break;
+                if (!description) {
+                    description =
+                        document.querySelector('meta[name="description"]')
+                        ?.getAttribute("content") || null;
                 }
-            }
 
-            if (!description) {
-                description =
-                    document.querySelector(
-                        'meta[name="description"]'
-                    )?.getAttribute("content") || null;
-            }
+                let developer = null;
 
-            // Developer
+                const developerSelectors = [
+                    ".game_author a",
+                    ".game_author",
+                    ".header_links .user_link",
+                    ".user_link"
+                ];
 
-            let developer = null;
+                for (const selector of developerSelectors) {
+                    const value = clean(document.querySelector(selector));
 
-            for (const selector of [
-                ".game_author a",
-                ".game_author",
-                ".header_links .user_link",
-                ".user_link"
-            ]) {
-                const value = clean(
-                    document.querySelector(selector)
+                    if (value) {
+                        developer = value;
+                        break;
+                    }
+                }
+
+                let coverURL = null;
+
+                const coverSelectors = [
+                    'meta[property="og:image"]',
+                    'meta[name="twitter:image"]',
+                    ".game_cover img",
+                    ".game_thumb img",
+                    ".screenshot img"
+                ];
+
+                for (const selector of coverSelectors) {
+                    const el = document.querySelector(selector);
+                    if (!el) continue;
+
+                    const value = absolute(
+                        el.getAttribute("content") ||
+                        el.currentSrc ||
+                        el.getAttribute("data-lazy_src") ||
+                        el.getAttribute("data-lazy-src") ||
+                        el.getAttribute("data-src") ||
+                        el.getAttribute("src")
+                    );
+
+                    if (value) {
+                        coverURL = value;
+                        break;
+                    }
+                }
+
+                const links = Array.from(
+                    document.querySelectorAll("a[href]")
                 );
 
-                if (value) {
-                    developer = value;
-                    break;
-                }
-            }
+                let downloadLink = null;
 
-            // Cover
+                for (const a of links) {
+                    const href = absolute(a.getAttribute("href"));
+                    if (!href) continue;
 
-            let coverURL = null;
+                    try {
+                        const path = new URL(href).pathname.toLowerCase();
 
-            for (const selector of [
-                'meta[property="og:image"]',
-                'meta[name="twitter:image"]',
-                ".game_cover img",
-                ".game_thumb img",
-                ".screenshot img"
-            ]) {
-                const el = document.querySelector(selector);
-                if (!el) continue;
-
-                const value = absolute(
-                    el.getAttribute("content") ||
-                    el.currentSrc ||
-                    el.getAttribute("data-lazy_src") ||
-                    el.getAttribute("data-lazy-src") ||
-                    el.getAttribute("data-src") ||
-                    el.getAttribute("src")
-                );
-
-                if (value) {
-                    coverURL = value;
-                    break;
-                }
-            }
-
-            // Download page link
-
-            const links = Array.from(
-                document.querySelectorAll("a[href]")
-            );
-
-            let downloadLink = links.find(a => {
-                const href = absolute(
-                    a.getAttribute("href")
-                );
-
-                if (!href) return false;
-
-                let path = "";
-
-                try {
-                    path = new URL(href).pathname;
-                } catch (_) {
-                    return false;
+                        if (
+                            path.includes("/download/") ||
+                            path.endsWith("/download")
+                        ) {
+                            downloadLink = a;
+                            break;
+                        }
+                    } catch (_) {}
                 }
 
-                return /\\\\/download\\\\//i.test(path);
-            });
+                return JSON.stringify({
+                    description,
+                    developer,
+                    coverURL,
+                    downloadURL: downloadLink
+                        ? absolute(downloadLink.getAttribute("href"))
+                        : null,
+                    scriptError: null
+                });
 
-            if (!downloadLink) {
-                downloadLink = document.querySelector(
-                    'a[href*="/download/"]'
-                );
+            } catch (error) {
+                return JSON.stringify({
+                    description: null,
+                    developer: null,
+                    coverURL: null,
+                    downloadURL: null,
+                    scriptError: String(error)
+                });
             }
-
-            return JSON.stringify({
-                description,
-                developer,
-                coverURL,
-                downloadURL: downloadLink
-                    ? absolute(
-                        downloadLink.getAttribute("href")
-                    )
-                    : null
-            });
         })();
         """
 
         private static let downloadPageScript = """
         (() => {
-            const clean = el => (
-                el?.innerText ||
-                el?.textContent ||
-                ""
-            ).replace(/\\\\s+/g, " ").trim();
+            try {
+                const clean = el => {
+                    const value = el?.innerText || el?.textContent || "";
+                    return value.split(" ").filter(Boolean).join(" ").trim();
+                };
 
-            const absolute = value => {
-                try {
-                    return value
-                        ? new URL(value, location.href).href
-                        : null;
-                } catch (_) {
-                    return null;
-                }
-            };
+                const absolute = value => {
+                    try {
+                        return value ? new URL(value, location.href).href : null;
+                    } catch (_) {
+                        return null;
+                    }
+                };
 
-            const providerName = url => {
-                const host = new URL(url)
-                    .hostname
-                    .toLowerCase()
-                    .replace(/^www\\\\./, "");
+                const providerName = url => {
+                    const host = new URL(url).hostname
+                        .toLowerCase()
+                        .replace("www.", "");
 
-                if (host.includes("mediafire")) return "MediaFire";
-                if (host.includes("pixeldrain")) return "PixelDrain";
-                if (host.includes("transfer.it")) return "Transfer.it";
-                if (host.includes("mega.nz") || host.includes("mega.co.nz")) return "MEGA";
-                if (host.includes("drive.google")) return "Google Drive";
-                if (host.includes("dropbox")) return "Dropbox";
-                if (host.includes("gofile")) return "Gofile";
-                if (host.includes("itch.io")) return "itch.io";
+                    if (host.includes("mediafire")) return "MediaFire";
+                    if (host.includes("pixeldrain")) return "PixelDrain";
+                    if (host.includes("transfer.it")) return "Transfer.it";
+                    if (host.includes("mega.nz") || host.includes("mega.co.nz")) return "MEGA";
+                    if (host.includes("drive.google")) return "Google Drive";
+                    if (host.includes("dropbox")) return "Dropbox";
+                    if (host.includes("gofile")) return "Gofile";
+                    if (host.includes("itch.io")) return "itch.io";
 
-                return host;
-            };
+                    return host;
+                };
 
-            const directExtension =
-                /\\\\.(zip|7z|rar|tar|gz|dmg|pkg|exe|msi|apk|pdf|iso)(?:$|[?#])/i;
-
-            const containers = Array.from(
-                document.querySelectorAll(
-                    '#download, .download, .download_links, ' +
-                    '.download_list, .game_download, .upload, ' +
-                    '.download_link, main, .game_page'
-                )
-            );
-
-            let anchors = [];
-
-            for (const container of containers) {
-                anchors.push(
-                    ...container.querySelectorAll("a[href]")
-                );
-            }
-
-            if (anchors.length === 0) {
-                anchors = Array.from(
-                    document.querySelectorAll("a[href]")
-                );
-            }
-
-            const results = [];
-            const seen = new Set();
-
-            for (const a of anchors) {
-                const href = absolute(
-                    a.getAttribute("href")
-                );
-
-                if (!href || seen.has(href)) continue;
-
-                let parsed;
-
-                try {
-                    parsed = new URL(href);
-                } catch (_) {
-                    continue;
-                }
-
-                const host = parsed.hostname.toLowerCase();
-
-                const isItchHost =
-                    host === "itch.io" ||
-                    host.endsWith(".itch.io");
-
-                const path = parsed.pathname.toLowerCase();
-
-                if (/^(javascript:|mailto:|#)/i.test(href)) {
-                    continue;
-                }
-
-                const parent = a.closest(
-                    '.upload, .download_link, .download, ' +
-                    '.download_item, li, .button'
-                ) || a.parentElement;
-
-                const parentText = clean(parent);
-                const anchorText =
-                    clean(a) ||
-                    a.getAttribute("aria-label") ||
-                    a.getAttribute("title") ||
-                    "";
-
-                const provider = providerName(href);
-
-                // Ignore unrelated itch navigation links.
-                if (
-                    isItchHost &&
-                    !path.includes("/file/") &&
-                    !path.includes("/download/")
-                ) {
-                    continue;
-                }
-
-                // For external sites, accept recognizable mirror
-                // providers or links located in download containers.
-                const knownProvider = [
+                const knownProviders = [
                     "MediaFire",
                     "PixelDrain",
                     "Transfer.it",
@@ -1120,60 +1052,160 @@ private struct DetailPageReader: UIViewRepresentable {
                     "Google Drive",
                     "Dropbox",
                     "Gofile"
-                ].includes(provider);
+                ];
 
-                const downloadContext =
-                    /download|mirror|file|下载|镜像/i.test(
-                        anchorText + " " + parentText
-                    );
-
-                if (
-                    !isItchHost &&
-                    !knownProvider &&
-                    !downloadContext
-                ) {
-                    continue;
-                }
-
-                const name =
-                    anchorText ||
-                    provider;
-
-                if (
-                    !name ||
-                    /^(home|community|devlog|itch.io)$/i.test(name)
-                ) {
-                    continue;
-                }
-
-                const sizeMatch = parentText.match(
-                    /\\\\b\\\\d+(?:\\\\.\\\\d+)?\\\\s*(?:KB|MB|GB|TB)\\\\b/i
+                const containers = Array.from(
+                    document.querySelectorAll(
+                        '#download, .download, .download_links, ' +
+                        '.download_list, .game_download, .upload, ' +
+                        '.download_link, main, .game_page'
+                    )
                 );
 
-                const isDirect =
-                    directExtension.test(href) ||
-                    (
-                        isItchHost &&
-                        path.includes("/file/")
+                let anchors = [];
+
+                for (const container of containers) {
+                    anchors.push(
+                        ...container.querySelectorAll("a[href]")
                     );
+                }
 
-                seen.add(href);
+                if (anchors.length === 0) {
+                    anchors = Array.from(
+                        document.querySelectorAll("a[href]")
+                    );
+                }
 
-                results.push({
-                    id: href,
-                    name: name.slice(0, 120),
-                    url: href,
-                    fileSize: sizeMatch
-                        ? sizeMatch[0]
-                        : null,
-                    provider,
-                    isDirectDownload: isDirect
+                const results = [];
+                const seen = new Set();
+
+                for (const a of anchors) {
+                    const href = absolute(a.getAttribute("href"));
+
+                    if (!href || seen.has(href)) continue;
+
+                    let parsed;
+
+                    try {
+                        parsed = new URL(href);
+                    } catch (_) {
+                        continue;
+                    }
+
+                    const host = parsed.hostname.toLowerCase();
+                    const path = parsed.pathname.toLowerCase();
+
+                    const isItchHost =
+                        host === "itch.io" ||
+                        host.endsWith(".itch.io");
+
+                    if (
+                        href.startsWith("javascript:") ||
+                        href.startsWith("mailto:")
+                    ) {
+                        continue;
+                    }
+
+                    const parent = a.closest(
+                        '.upload, .download_link, .download, ' +
+                        '.download_item, li, .button'
+                    ) || a.parentElement;
+
+                    const parentText = clean(parent);
+
+                    const anchorText =
+                        clean(a) ||
+                        a.getAttribute("aria-label") ||
+                        a.getAttribute("title") ||
+                        "";
+
+                    const provider = providerName(href);
+
+                    if (
+                        isItchHost &&
+                        !path.includes("/file/") &&
+                        !path.includes("/download/")
+                    ) {
+                        continue;
+                    }
+
+                    const knownProvider =
+                        knownProviders.includes(provider);
+
+                    const contextText = (
+                        anchorText + " " + parentText
+                    ).toLowerCase();
+
+                    const downloadContext =
+                        contextText.includes("download") ||
+                        contextText.includes("mirror") ||
+                        contextText.includes("file") ||
+                        contextText.includes("下载") ||
+                        contextText.includes("镜像");
+
+                    if (
+                        !isItchHost &&
+                        !knownProvider &&
+                        !downloadContext
+                    ) {
+                        continue;
+                    }
+
+                    const name = anchorText || provider;
+
+                    if (!name) continue;
+
+                    const lowerName = name.toLowerCase();
+
+                    if (
+                        lowerName === "home" ||
+                        lowerName === "community" ||
+                        lowerName === "devlog"
+                    ) {
+                        continue;
+                    }
+
+                    const parts = path.split("/");
+                    const lastPart = parts[parts.length - 1] || "";
+
+                    const dotIndex = lastPart.lastIndexOf(".");
+                    const extension = dotIndex >= 0
+                        ? lastPart.substring(dotIndex + 1)
+                        : "";
+
+                    const directExtensions = [
+                        "zip", "7z", "rar", "tar", "gz",
+                        "dmg", "pkg", "exe", "msi",
+                        "apk", "pdf", "iso"
+                    ];
+
+                    const isDirect =
+                        directExtensions.includes(extension) ||
+                        (isItchHost && path.includes("/file/"));
+
+                    seen.add(href);
+
+                    results.push({
+                        id: href,
+                        name: name.substring(0, 120),
+                        url: href,
+                        fileSize: null,
+                        provider,
+                        isDirectDownload: isDirect
+                    });
+                }
+
+                return JSON.stringify({
+                    uploads: results,
+                    scriptError: null
+                });
+
+            } catch (error) {
+                return JSON.stringify({
+                    uploads: [],
+                    scriptError: String(error)
                 });
             }
-
-            return JSON.stringify({
-                uploads: results
-            });
         })();
         """
     }
