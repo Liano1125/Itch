@@ -52,9 +52,6 @@ struct DiscoverView: View {
                 .tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("从 itch.io 探索那些值得收藏的作品")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -112,9 +109,6 @@ struct DiscoverView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("从这里开始")
                         .font(.title3.bold())
-                    Text("打开 itch.io 的精选作品")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -177,16 +171,12 @@ struct DiscoverView: View {
         }
     }
 
-    private var libraryDevelopers: [String] {
+    private var libraryDevelopers: [LibraryRecord] {
         var seen = Set<String>()
-        return library.records.compactMap { record -> String? in
-            guard let developer = record.developer?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !developer.isEmpty,
-                  seen.insert(developer.lowercased()).inserted else {
-                return nil
-            }
-            return developer
+        return library.records.filter { record in
+            guard let developer = record.developer?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !developer.isEmpty else { return false }
+            return seen.insert(developer.lowercased()).inserted
         }.prefix(6).map { $0 }
     }
 
@@ -194,32 +184,20 @@ struct DiscoverView: View {
     private var libraryDiscoverySection: some View {
         if !libraryDevelopers.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("从你的游戏库继续发现")
-                        .font(.title3.bold())
-                    Text("看看你已收藏游戏的开发者还有哪些作品")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("从你的游戏库继续发现")
+                    .font(.title3.bold())
 
-                ForEach(libraryDevelopers, id: \.self) { developer in
+                ForEach(libraryDevelopers) { record in
                     NavigationLink {
-                        ItchSearchResultsView(query: developer)
+                        ItchSearchResultsView(query: record.developer ?? "")
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "person.crop.circle")
-                                .font(.title2)
-                                .foregroundStyle(Color.accentColor)
-                                .frame(width: 42, height: 42)
-                                .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 13))
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(developer)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text("搜索该开发者的其他游戏")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            DeveloperPatreonAvatar(record: record)
+                                .frame(width: 46, height: 46)
+                                .clipShape(Circle())
+                            Text(record.developer ?? "")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
                             Spacer()
                             Image(systemName: "arrow.up.right")
                                 .font(.caption.weight(.semibold))
@@ -236,13 +214,8 @@ struct DiscoverView: View {
 
     private var browseSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("探索游戏")
-                    .font(.title3.bold())
-                Text("按类型、平台和价格找到下一款想玩的游戏")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("探索游戏")
+                .font(.title3.bold())
 
             explorationGroup(
                 title: "热门榜单",
@@ -309,10 +282,7 @@ struct DiscoverView: View {
         items: [(String, String, String)]
     ) -> some View {
         VStack(alignment: .leading, spacing: 11) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
+            Text(title).font(.headline)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 ForEach(items, id: \.0) { item in
@@ -533,6 +503,42 @@ private struct ItchWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.applyAppearance(to: webView)
+        }
+    }
+}
+
+
+private struct DeveloperPatreonAvatar: View {
+    @EnvironmentObject private var library: PersonalLibraryStore
+    let record: LibraryRecord
+    @State private var avatarURL: URL?
+
+    private var fallbackURL: URL? {
+        URL(string: record.patreonAvatarURL ?? "")
+    }
+
+    var body: some View {
+        CachedRemoteImage(url: avatarURL ?? fallbackURL, contentMode: .fill) {
+            Image(systemName: "person.fill")
+                .resizable()
+                .scaledToFit()
+                .padding(11)
+                .foregroundStyle(.secondary)
+                .background(Color(uiColor: .tertiarySystemFill))
+        }
+        .task(id: record.id) {
+            let resolved = await PatreonAvatarService.shared.avatarURL(
+                authorURL: URL(string: record.developerProfileURL ?? ""),
+                gameURL: URL(string: record.gameURL ?? ""),
+                fallbackURL: fallbackURL
+            )
+            guard let resolved else { return }
+            avatarURL = resolved
+            if var updated = library.record(for: record.id),
+               updated.patreonAvatarURL != resolved.absoluteString {
+                updated.patreonAvatarURL = resolved.absoluteString
+                library.update(updated)
+            }
         }
     }
 }
