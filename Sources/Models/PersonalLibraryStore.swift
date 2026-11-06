@@ -32,6 +32,19 @@ struct LibraryRecord: Codable, Identifiable {
     var notes: String
     var addedAt: Date
     var updatedAt: Date
+    var gameUpdates: [GameLibraryUpdate]? = nil
+}
+
+struct GameLibraryUpdate: Codable, Identifiable {
+    var id: String
+    var summary: String
+    var detectedAt: Date
+
+    init(id: String = UUID().uuidString, summary: String, detectedAt: Date = Date()) {
+        self.id = id
+        self.summary = summary
+        self.detectedAt = detectedAt
+    }
 }
 
 struct LibraryStatusEvent: Codable, Identifiable {
@@ -90,6 +103,22 @@ final class PersonalLibraryStore: ObservableObject {
 
     func history(for gameID: String) -> [LibraryStatusEvent] {
         (statusEvents[gameID] ?? []).sorted { $0.changedAt > $1.changedAt }
+    }
+
+    func updates(for gameID: String) -> [GameLibraryUpdate] {
+        (record(for: gameID)?.gameUpdates ?? []).sorted { $0.detectedAt > $1.detectedAt }
+    }
+
+    func recordGameUpdate(gameID: String, summary: String, detectedAt: Date = Date()) {
+        guard let index = records.firstIndex(where: { $0.id == gameID }) else { return }
+        var updated = records[index]
+        if updated.gameUpdates?.contains(where: { $0.summary == summary }) == true { return }
+        var history = updated.gameUpdates ?? []
+        history.insert(GameLibraryUpdate(summary: summary, detectedAt: detectedAt), at: 0)
+        updated.gameUpdates = Array(history.prefix(30))
+        updated.updatedAt = detectedAt
+        records[index] = updated
+        save()
     }
 
     func createCollection(title: String) {
