@@ -290,6 +290,26 @@ struct ProfileView: View {
                 .padding(.vertical, 13)
 
                 Divider().padding(.leading, 54)
+                NavigationLink {
+                    TranslationSettingsView()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "character.bubble")
+                            .font(.headline)
+                            .foregroundStyle(accent)
+                            .frame(width: 30)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("翻译设置").font(.subheadline.weight(.semibold))
+                            Text("选择 Google、DeepSeek 或自定义 AI API").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 13)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Divider().padding(.leading, 54)
                 settingsRow("隐私与数据", subtitle: "了解 itchPocket 如何使用数据", symbol: "hand.raised")
             }
             .padding(.horizontal, 14)
