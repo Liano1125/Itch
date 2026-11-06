@@ -109,6 +109,68 @@ final class GameUpdateMonitorStore: ObservableObject {
         statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
     }
 
+    func syncHistoricalDevlogs(records: [LibraryRecord], calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async -> String {
+        var imported = 0
+        var unchanged = 0
+        var failed = 0
+        for record in records {
+            guard let rawURL = record.gameURL,
+                  let gameURL = URL(string: rawURL),
+                  let feedURL = Self.devlogFeedURL(for: gameURL) else {
+                failed += 1
+                continue
+            }
+            do {
+                var request = URLRequest(url: feedURL)
+                request.timeoutInterval = 25
+                request.setValue("application/rss+xml, application/xml, text/xml, */*", forHTTPHeaderField: "Accept")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    failed += 1
+                    continue
+                }
+                let posts = try DevlogRSSParser.parse(data: data)
+                if posts.isEmpty { unchanged += 1 }
+                for post in posts {
+                    guard let publishedAt = post.publishedAt else { continue }
+                    let stableID = post.guid ?? post.url ?? "\(post.title)|\(publishedAt.timeIntervalSince1970)"
+                    let libraryAdded = libraryStore.recordHistoricalUpdate(
+                        gameID: record.id,
+                        title: post.title,
+                        summary: post.summary,
+                        publishedAt: publishedAt,
+                        url: post.url,
+                        sourceID: stableID
+                    )
+                    let calendarAdded = calendarStore.addHistoricalUpdate(
+                        gameID: record.id,
+                        gameTitle: record.title,
+                        gameURL: record.gameURL,
+                        title: post.title,
+                        summary: post.summary,
+                        publishedAt: publishedAt,
+                        sourceID: stableID,
+                        postURL: post.url
+                    )
+                    if libraryAdded || calendarAdded { imported += 1 }
+                }
+            } catch {
+                failed += 1
+            }
+        }
+        return "历史更新同步完成：新增或补齐 \(imported) 条记录，\(unchanged) 款游戏没有可导入的更新日志，\(failed) 款读取失败。重复记录会自动跳过。"
+    }
+
+    private static func devlogFeedURL(for gameURL: URL) -> URL? {
+        guard var components = URLComponents(url: gameURL, resolvingAgainstBaseURL: false),
+              components.scheme == "https" || components.scheme == "http" else { return nil }
+        let cleanPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = "/" + (cleanPath.isEmpty ? "" : cleanPath + "/") + "devlog.rss"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
     private func sendUpdateNotification(for watch: GameUpdateWatch) async {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
@@ -132,5 +194,111 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func save() {
         guard let data = try? JSONEncoder().encode(Array(watches.values)) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
+    }
+}
+
+
+private struct DevlogRSSPost {
+    let title: String
+    let summary: String
+    let url: String?
+    let guid: String?
+    let publishedAt: Date?
+}
+
+private final class DevlogRSSParser: NSObject, XMLParserDelegate {
+    private var posts: [DevlogRSSPost] = []
+    private var isInsideItem = false
+    private var currentElement = ""
+    private var values: [String: String] = [:]
+
+    static func parse(data: Data) throws -> [DevlogRSSPost] {
+        let parser = XMLParser(data: data)
+        let delegate = DevlogRSSParser()
+        parser.delegate = delegate
+        parser.shouldResolveExternalEntities = false
+        guard parser.parse() else {
+            throw parser.parserError ?? NSError(domain: "DevlogRSSParser", code: 1)
+        }
+        return delegate.posts
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
+        let name = (qName ?? elementName).lowercased()
+        if name == "item" || name == "entry" {
+            isInsideItem = true
+            values = [:]
+        } else if isInsideItem {
+            currentElement = name
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        guard isInsideItem, !currentElement.isEmpty else { return }
+        values[currentElement, default: ""].append(string)
+    }
+
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        guard isInsideItem, !currentElement.isEmpty,
+              let value = String(data: CDATABlock, encoding: .utf8) else { return }
+        values[currentElement, default: ""].append(value)
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        let name = (qName ?? elementName).lowercased()
+        if name == "item" || name == "entry" {
+            let title = Self.clean(values["title"] ?? "")
+            let link = Self.clean(values["link"] ?? "")
+            let guid = Self.clean(values["guid"] ?? values["id"] ?? "")
+            let rawDate = Self.clean(values["pubdate"] ?? values["published"] ?? values["updated"] ?? "")
+            let summary = Self.cleanHTML(values["description"] ?? values["content:encoded"] ?? values["summary"] ?? "")
+            if !title.isEmpty {
+                posts.append(DevlogRSSPost(
+                    title: title,
+                    summary: summary,
+                    url: link.isEmpty ? nil : link,
+                    guid: guid.isEmpty ? nil : guid,
+                    publishedAt: Self.parseDate(rawDate)
+                ))
+            }
+            isInsideItem = false
+            currentElement = ""
+            values = [:]
+        } else if isInsideItem {
+            currentElement = ""
+        }
+    }
+
+    private static func clean(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func cleanHTML(_ value: String) -> String {
+        let stripped = value.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        return stripped
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        guard !value.isEmpty else { return nil }
+        let formats = [
+            "EEE, dd MMM yyyy HH:mm:ss Z",
+            "EEE, d MMM yyyy HH:mm:ss Z",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        ]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) { return date }
+        }
+        return ISO8601DateFormatter().date(from: value)
     }
 }
