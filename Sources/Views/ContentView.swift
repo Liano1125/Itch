@@ -8,8 +8,13 @@ enum AppTab: Hashable {
 
 struct ContentView: View {
     @State private var selectedTab: AppTab = .discover
+    @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
+
+    private var preferredScheme: ColorScheme {
+        appearanceMode == "dark" ? .dark : .light
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -33,5 +38,7 @@ struct ContentView: View {
         }
         .tint(accent)
         .toolbarBackground(.visible, for: .tabBar)
+        .preferredColorScheme(preferredScheme)
+        .animation(.easeInOut(duration: 0.22), value: appearanceMode)
     }
 }
