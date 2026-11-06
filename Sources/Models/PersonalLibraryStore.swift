@@ -139,7 +139,12 @@ final class PersonalLibraryStore: ObservableObject {
 
     func remove(_ id: String) {
         records.removeAll { $0.id == id }
+        for index in collections.indices {
+            collections[index].gameIDs.removeAll { $0 == id }
+            collections[index].updatedAt = Date()
+        }
         save()
+        saveCollections()
     }
 
     private func load() {
