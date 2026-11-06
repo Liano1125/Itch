@@ -27,6 +27,8 @@ struct LibraryRecord: Codable, Identifiable {
     var gameURL: String?
     var coverURL: String?
     var developer: String?
+    var developerProfileURL: String? = nil
+    var patreonAvatarURL: String? = nil
     var status: LibraryStatus
     var isFavorite: Bool
     var notes: String
@@ -201,6 +203,7 @@ final class PersonalLibraryStore: ObservableObject {
                 gameURL: game.url?.absoluteString,
                 coverURL: game.coverURL?.absoluteString,
                 developer: game.developer,
+                developerProfileURL: game.developerProfileURL?.absoluteString,
                 status: status,
                 isFavorite: false,
                 notes: "",
