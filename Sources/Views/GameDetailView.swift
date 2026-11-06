@@ -93,7 +93,7 @@ struct GameDetailView: View {
             let resolved = await PatreonAvatarService.shared.avatarURL(
                 authorURL: detail?.authorURL,
                 gameURL: game.url,
-                fallbackURL: detail?.authorAvatarURL
+                fallbackURL: URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
             )
             resolvedAuthorAvatarURL = resolved
             if let resolved, var record = library.record(for: game.id) {
@@ -213,7 +213,7 @@ struct GameDetailView: View {
                                         .fill(Color(uiColor: .tertiarySystemFill))
                                         .overlay { ProgressView() }
                                 }
-                                .frame(width: 258, height: 146)
+                                .frame(width: 310, height: 174)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(.plain)
@@ -281,7 +281,7 @@ struct GameDetailView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    CachedRemoteImage(url: resolvedAuthorAvatarURL ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "") ?? detail?.authorAvatarURL, contentMode: .fill) {
+                    CachedRemoteImage(url: resolvedAuthorAvatarURL ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? ""), contentMode: .fill) {
                         Image(systemName: "person.fill")
                             .resizable().scaledToFit().padding(11)
                             .foregroundStyle(.secondary)
@@ -550,6 +550,9 @@ struct GameDetailView: View {
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
         resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
+        Task {
+            await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
+        }
         if var record = library.record(for: game.id) {
             if let authorURL = result.authorURL {
                 record.developerProfileURL = authorURL.absoluteString
@@ -670,7 +673,7 @@ private struct DetailPageReader: UIViewRepresentable {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 40
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.cachePolicy = .useProtocolCachePolicy
         webView.load(request)
 
         return webView
