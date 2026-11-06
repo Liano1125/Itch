@@ -11,12 +11,14 @@
         <dict>
             <key>CFBundleURLName</key>
             <string>com.liano.itchPocket</string>
-
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>itchpocket</string>
             </array>
         </dict>
     </array>
+
+    <key>UILaunchScreen</key>
+    <dict/>
 </dict>
 </plist>
