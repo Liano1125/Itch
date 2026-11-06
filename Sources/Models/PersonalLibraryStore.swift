@@ -34,6 +34,20 @@ struct LibraryRecord: Codable, Identifiable {
     var updatedAt: Date
 }
 
+struct LibraryStatusEvent: Codable, Identifiable {
+    var id: String
+    var fromStatus: LibraryStatus?
+    var toStatus: LibraryStatus
+    var changedAt: Date
+
+    init(id: String = UUID().uuidString, fromStatus: LibraryStatus?, toStatus: LibraryStatus, changedAt: Date = Date()) {
+        self.id = id
+        self.fromStatus = fromStatus
+        self.toStatus = toStatus
+        self.changedAt = changedAt
+    }
+}
+
 
 struct PersonalGameCollection: Codable, Identifiable {
     var id: String
@@ -55,12 +69,15 @@ struct PersonalGameCollection: Codable, Identifiable {
 final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var records: [LibraryRecord] = []
     @Published private(set) var collections: [PersonalGameCollection] = []
+    @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
     private let storageKey = "itchPocket.personalLibrary.v1"
     private let collectionsStorageKey = "itchPocket.collections.v1"
+    private let statusEventsStorageKey = "itchPocket.statusEvents.v1"
 
     init() {
         load()
         loadCollections()
+        loadStatusEvents()
     }
 
     func contains(_ id: String) -> Bool {
@@ -69,6 +86,10 @@ final class PersonalLibraryStore: ObservableObject {
 
     func record(for id: String) -> LibraryRecord? {
         records.first { $0.id == id }
+    }
+
+    func history(for gameID: String) -> [LibraryStatusEvent] {
+        (statusEvents[gameID] ?? []).sorted { $0.changedAt > $1.changedAt }
     }
 
     func createCollection(title: String) {
@@ -126,19 +147,33 @@ final class PersonalLibraryStore: ObservableObject {
             ),
             at: 0
         )
+        statusEvents[game.id, default: []].append(
+            LibraryStatusEvent(fromStatus: nil, toStatus: status, changedAt: now)
+        )
         save()
+        saveStatusEvents()
     }
 
     func update(_ record: LibraryRecord) {
         guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
+        let previous = records[index]
         var updated = record
         updated.updatedAt = Date()
         records[index] = updated
+
+        if previous.status != updated.status {
+            statusEvents[record.id, default: []].append(
+                LibraryStatusEvent(fromStatus: previous.status, toStatus: updated.status, changedAt: updated.updatedAt)
+            )
+            saveStatusEvents()
+        }
         save()
     }
 
     func remove(_ id: String) {
         records.removeAll { $0.id == id }
+        statusEvents.removeValue(forKey: id)
+        saveStatusEvents()
         for index in collections.indices {
             collections[index].gameIDs.removeAll { $0 == id }
             collections[index].updatedAt = Date()
@@ -157,6 +192,17 @@ final class PersonalLibraryStore: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: collectionsStorageKey),
               let decoded = try? JSONDecoder().decode([PersonalGameCollection].self, from: data) else { return }
         collections = decoded
+    }
+
+    private func loadStatusEvents() {
+        guard let data = UserDefaults.standard.data(forKey: statusEventsStorageKey),
+              let decoded = try? JSONDecoder().decode([String: [LibraryStatusEvent]].self, from: data) else { return }
+        statusEvents = decoded
+    }
+
+    private func saveStatusEvents() {
+        guard let data = try? JSONEncoder().encode(statusEvents) else { return }
+        UserDefaults.standard.set(data, forKey: statusEventsStorageKey)
     }
 
     private func saveCollections() {
