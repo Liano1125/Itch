@@ -1,7 +1,11 @@
 import Foundation
+
+// MARK: - Profile
+
 struct ItchProfileResponse: Decodable {
     let user: ItchUser
 }
+
 struct ItchUser: Decodable, Identifiable {
     let id: Int
     let username: String
@@ -9,133 +13,137 @@ struct ItchUser: Decodable, Identifiable {
     let coverUrl: URL?
     let url: URL?
 }
+
+// MARK: - Credentials
+
 struct ItchCredentialsInfo: Decodable {
     let type: String
     let scopes: [String]?
 }
+
 struct ItchTokenResponse: Decodable {
     let accessToken: String
     let tokenType: String?
     let scope: String?
 }
+
 struct ItchAPIErrorResponse: Decodable {
     let errors: [String]?
     let error: String?
     let errorDescription: String?
 }
-// MARK: - Owned Games Response
-struct ItchOwnedKeysResponse: Decodable {
-    let page: Int?
-    let perPage: Int?
-    let ownedKeys: [ItchOwnedKey]
-    enum CodingKeys: String, CodingKey {
-        case page
-        case perPage
-        case ownedKeys
-    }
+
+// MARK: - Flexible Array
+
+struct ItchFlexibleArray<Element: Decodable>: Decodable {
+    let values: [Element]
+
     init(from decoder: Decoder) throws {
+        // 标准数组格式
+        if var container = try? decoder.unkeyedContainer() {
+            var result: [Element] = []
+
+            while !container.isAtEnd {
+                result.append(try container.decode(Element.self))
+            }
+
+            values = result
+            return
+        }
+
+        // 字典格式，包括 itch.io 返回的空对象 {}
         let container = try decoder.container(
-            keyedBy: CodingKeys.self
+            keyedBy: DynamicCodingKey.self
         )
-        page = try container.decodeIfPresent(
-            Int.self,
-            forKey: .page
-        )
-        perPage = try container.decodeIfPresent(
-            Int.self,
-            forKey: .perPage
-        )
-        // 格式一：标准数组
-        if let array = try? container.decode(
-            [ItchOwnedKey].self,
-            forKey: .ownedKeys
-        ) {
-            ownedKeys = array
-            return
+
+        let keys = container.allKeys.sorted {
+            let left = Int($0.stringValue) ?? Int.max
+            let right = Int($1.stringValue) ?? Int.max
+
+            if left == right {
+                return $0.stringValue < $1.stringValue
+            }
+
+            return left < right
         }
-        // 格式二：以 ID 为键的字典，值是领取记录
-        if let dictionary = try? container.decode(
-            [String: ItchOwnedKey].self,
-            forKey: .ownedKeys
-        ) {
-            ownedKeys = dictionary
-                .sorted { $0.key > $1.key }
-                .map { $0.value }
-            return
+
+        values = try keys.map {
+            try container.decode(Element.self, forKey: $0)
         }
-        // 格式三：以 ID 为键的字典，值直接是游戏
-        if let dictionary = try? container.decode(
-            [String: ItchOwnedGame].self,
-            forKey: .ownedKeys
-        ) {
-            ownedKeys = dictionary
-                .sorted { $0.key > $1.key }
-                .map { key, game in
-                    ItchOwnedKey(
-                        id: Int(key),
-                        gameId: game.id,
-                        game: game
-                    )
-                }
-            return
-        }
-        throw DecodingError.dataCorruptedError(
-            forKey: .ownedKeys,
-            in: container,
-            debugDescription: "owned_keys 既不是数组，也不是支持的游戏字典格式"
-        )
     }
 }
-// MARK: - Owned Key
-struct ItchOwnedKey: Decodable {
-    let id: Int?
-    let gameId: Int?
-    let game: ItchOwnedGame?
-    init(
-        id: Int?,
-        gameId: Int?,
-        game: ItchOwnedGame?
-    ) {
-        self.id = id
-        self.gameId = gameId
-        self.game = game
+
+private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = Int(stringValue)
     }
+
+    init?(intValue: Int) {
+        self.intValue = intValue
+        self.stringValue = String(intValue)
+    }
+}
+
+// MARK: - Collections
+
+struct ItchCollectionsResponse: Decodable {
+    let collections: ItchFlexibleArray<ItchCollection>
+}
+
+struct ItchCollection: Decodable, Identifiable {
+    let id: Int
+    let title: String
+    let url: URL?
+    let userId: Int?
+    let gamesCount: Int?
+    let isPrivate: Bool?
+    let description: String?
+    let layout: String?
+
     enum CodingKeys: String, CodingKey {
         case id
-        case gameId
-        case game
-    }
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(
-            keyedBy: CodingKeys.self
-        )
-        id = try container.decodeIfPresent(
-            Int.self,
-            forKey: .id
-        )
-        gameId = try container.decodeIfPresent(
-            Int.self,
-            forKey: .gameId
-        )
-        game = try container.decodeIfPresent(
-            ItchOwnedGame.self,
-            forKey: .game
-        )
+        case title
+        case url
+        case userId
+        case gamesCount
+        case description
+        case layout
+        case isPrivate = "private"
     }
 }
+
+// MARK: - Collection Games
+
+struct ItchCollectionGamesResponse: Decodable {
+    let page: Int?
+    let perPage: Int?
+    let collectionGames: ItchFlexibleArray<ItchCollectionGame>
+}
+
+struct ItchCollectionGame: Decodable {
+    let collectionId: Int?
+    let gameId: Int?
+    let position: Int?
+    let blurb: String?
+    let game: ItchGame?
+}
+
 // MARK: - Game
-struct ItchOwnedGame: Decodable, Identifiable {
+
+struct ItchGame: Decodable, Identifiable {
     let id: Int
     let title: String
     let url: URL?
     let coverUrl: URL?
-    let type: String?
-    let classification: String?
-    let minPrice: Int?
-    let traits: [String]?
     let user: ItchGameDeveloper?
 }
+
 // MARK: - Developer
+
 struct ItchGameDeveloper: Decodable {
     let id: Int?
     let username: String?
