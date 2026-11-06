@@ -45,6 +45,10 @@ final class PersonalLibraryStore: ObservableObject {
         records.contains { $0.id == id }
     }
 
+    func record(for id: String) -> LibraryRecord? {
+        records.first { $0.id == id }
+    }
+
     func add(_ game: PublicCollectionGame, status: LibraryStatus = .wishlist) {
         guard !contains(game.id) else { return }
         let now = Date()
