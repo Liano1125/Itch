@@ -1,23 +1,25 @@
 # itchPocket
 
-A native SwiftUI starter for an iOS itch.io companion client.
+一个基于 SwiftUI 的 iOS itch.io 第三方客户端。
 
-## Current scope
+## 当前功能
 
-- Four-tab SwiftUI shell: Discover, Library, Downloads, Me
-- iOS 26 Liquid Glass styling with a Material fallback on earlier iOS versions
-- XcodeGen project definition
-- GitHub Actions simulator build workflow
+- 发现：搜索游戏，并浏览 itch.io 的游戏分类页面
+- 游戏库：展示配置的 itch.io 游戏合集
+- 游戏详情：读取游戏介绍、开发者和封面，并可打开 itch.io 原始页面
+- 我的：itch.io OAuth 登录与账号信息
+- 使用 SwiftUI 构建，支持 iOS 18.0 及以上版本
+- GitHub Actions 自动构建 iOS 真机版本并打包构建产物
 
-This is a foundation, not a finished itch.io client. Authentication, API integration, owned-game retrieval, and the download engine are intentionally not wired yet.
+本项目不提供游戏文件下载、下载队列或本地文件管理功能。
 
-## Requirements
+## 环境要求
 
-- Xcode 26 or newer
-- iOS deployment target: 18.0
-- XcodeGen (`brew install xcodegen`)
+- Xcode 26 或更新版本
+- iOS Deployment Target：18.0
+- XcodeGen（`brew install xcodegen`）
 
-## Build locally
+## 本地构建
 
 ```bash
 xcodegen generate
@@ -26,7 +28,7 @@ xcodebuild -project itchPocket.xcodeproj \
   -destination 'generic/platform=iOS Simulator' build
 ```
 
-## Project structure
+## 项目结构
 
 ```text
 Sources/
@@ -35,15 +37,12 @@ Sources/
   Views/
     ContentView.swift
     DiscoverView.swift
+    GameDetailView.swift
     LibraryView.swift
-    DownloadsView.swift
     ProfileView.swift
+  Services/
+    ItchAPI.swift
+    ItchAuthService.swift
+    KeychainStore.swift
+    PKCE.swift
 ```
-
-## Next implementation milestones
-
-1. Verify itch.io OAuth flow and API permissions.
-2. Implement typed API models and a safe token store (Keychain).
-3. Build Discover, game detail, and owned Library screens.
-4. Implement URLSession background downloads and persistent task state.
-5. Add file export through the iOS share sheet / Files.
