@@ -61,7 +61,6 @@ struct GameDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 gallerySection
-                coverSection
                 titleSection
                 authorSection
                 linksSection
@@ -173,79 +172,32 @@ struct GameDetailView: View {
     private var gallerySection: some View {
         let images = detail?.galleryURLs ?? []
         if !images.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    Text("游戏图库").font(.title3.bold())
+                    Text("游戏图库").font(.headline)
                     Spacer()
-                    Text("\(images.count) 张截图").font(.caption).foregroundStyle(.secondary)
+                    Text("\(images.count) 张").font(.caption).foregroundStyle(.secondary)
                 }
-                ZStack(alignment: .bottomLeading) {
-                    AsyncImage(url: images[min(selectedGalleryIndex, images.count - 1)]) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            RoundedRectangle(cornerRadius: 20).fill(.quaternary)
-                                .overlay { ProgressView() }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 232)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .contentShape(Rectangle())
-                    .onTapGesture { showingGalleryViewer = true }
-
-                    LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
-                        .frame(height: 90)
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        .allowsHitTesting(false)
-
-                    HStack(alignment: .bottom) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: -13) {
-                                ForEach(Array(images.prefix(7).enumerated()), id: \.offset) { index, url in
-                                    Button {
-                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                                            selectedGalleryIndex = index
-                                        }
-                                    } label: {
-                                        AsyncImage(url: url) { phase in
-                                            if let image = phase.image {
-                                                image.resizable().scaledToFill()
-                                            } else {
-                                                RoundedRectangle(cornerRadius: 10).fill(.quaternary)
-                                            }
-                                        }
-                                        .frame(width: 70, height: 52)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .stroke(selectedGalleryIndex == index ? Color.white : Color.white.opacity(0.65), lineWidth: selectedGalleryIndex == index ? 2.5 : 1)
-                                        }
-                                        .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .zIndex(selectedGalleryIndex == index ? 2 : 1)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { index, url in
+                            Button {
+                                selectedGalleryIndex = index
+                                showingGalleryViewer = true
+                            } label: {
+                                CachedRemoteImage(url: url, contentMode: .fill) {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(uiColor: .tertiarySystemFill))
+                                        .overlay { ProgressView() }
                                 }
+                                .frame(width: 258, height: 146)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 4)
+                            .buttonStyle(.plain)
                         }
-                        Spacer(minLength: 2)
-                        Button { showingGalleryViewer = true } label: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(10)
-                                .background(.black.opacity(0.35), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.bottom, 5)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 10)
+                    .padding(.vertical, 2)
                 }
-                .accessibilityElement(children: .contain)
             }
         }
     }
@@ -254,12 +206,8 @@ struct GameDetailView: View {
         NavigationStack {
             TabView(selection: $selectedGalleryIndex) {
                 ForEach(Array((detail?.galleryURLs ?? []).enumerated()), id: \.offset) { index, url in
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFit()
-                        } else {
-                            ProgressView()
-                        }
+                    CachedRemoteImage(url: url, contentMode: .fit) {
+                        ProgressView()
                     }
                     .tag(index)
                     .background(Color.black)
@@ -285,10 +233,6 @@ struct GameDetailView: View {
                 .font(.largeTitle.bold())
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let developer = displayDeveloper, !developer.isEmpty {
-                Text(developer).font(.subheadline).foregroundStyle(.secondary)
-            }
-
             if !game.platforms.isEmpty {
                 HStack(spacing: 7) {
                     ForEach(game.platforms, id: \.self) { platform in
@@ -313,23 +257,24 @@ struct GameDetailView: View {
                     AuthorProfileView(name: developer, url: url)
                 }
             } label: {
-                HStack(spacing: 12) {
-                    AsyncImage(url: detail?.authorAvatarURL) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() }
-                        else { Image(systemName: "person.fill").resizable().scaledToFit().padding(12).foregroundStyle(.secondary).background(.quaternary) }
+                HStack(spacing: 10) {
+                    CachedRemoteImage(url: detail?.authorAvatarURL, contentMode: .fill) {
+                        Image(systemName: "person.fill")
+                            .resizable().scaledToFit().padding(11)
+                            .foregroundStyle(.secondary)
+                            .background(Color(uiColor: .tertiarySystemFill))
                     }
-                    .frame(width: 52, height: 52)
+                    .frame(width: 42, height: 42)
                     .clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("游戏作者").font(.caption).foregroundStyle(.secondary)
-                        Text(developer).font(.headline).foregroundStyle(.primary)
-                        Text("查看作者的游戏与动态").font(.caption).foregroundStyle(.secondary)
-                    }
+                    Text(developer)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(13)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -341,26 +286,48 @@ struct GameDetailView: View {
         let discord = detail?.discordURL
         if patreon != nil || discord != nil {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Link").font(.title3.bold())
-                HStack(spacing: 10) {
+                Text("Link").font(.headline)
+                HStack(spacing: 12) {
                     if let patreon {
                         Link(destination: patreon) {
-                            Label("Patreon", systemImage: "heart.fill")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                            HStack(spacing: 9) {
+                                PatreonBrandMark()
+                                    .frame(width: 23, height: 23)
+                                Text("Patreon").font(.subheadline.weight(.semibold))
+                                Spacer(minLength: 0)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Color(red: 1.0, green: 0.26, blue: 0.31), in: RoundedRectangle(cornerRadius: 13))
                         }
                     }
                     if let discord {
                         Link(destination: discord) {
-                            Label("Discord", systemImage: "bubble.left.and.bubble.right.fill")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                .background(Color.indigo.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                            HStack(spacing: 9) {
+                                Image(systemName: "gamecontroller.fill")
+                                    .font(.system(size: 21, weight: .semibold))
+                                Text("Discord").font(.subheadline.weight(.semibold))
+                                Spacer(minLength: 0)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Color(red: 0.345, green: 0.396, blue: 0.949), in: RoundedRectangle(cornerRadius: 13))
                         }
                     }
                 }
             }
+        }
+    }
+
+    private struct PatreonBrandMark: View {
+        var body: some View {
+            HStack(spacing: 3) {
+                Circle().frame(width: 8, height: 8)
+                Capsule().frame(width: 5, height: 21)
+            }
+            .foregroundStyle(.white)
         }
     }
 
