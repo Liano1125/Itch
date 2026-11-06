@@ -72,7 +72,7 @@ enum TranslationService {
         request.timeoutInterval = 90
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": "You are a professional game localization translator. Translate the user's text into \(target). Preserve game titles, proper nouns, URLs, Markdown structure, formatting and terminology where appropriate. Return only the translation, without explanations."],
@@ -80,9 +80,12 @@ enum TranslationService {
             ],
             "temperature": 0.2,
             "max_tokens": 4096,
-            "stream": false,
-            "thinking": ["type": "disabled"]
-        ])
+            "stream": false
+        ]
+        if provider == "deepseek" {
+            body["thinking"] = ["type": "disabled"]
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
