@@ -70,7 +70,9 @@ final class ItchPocketAppDelegate: NSObject, UIApplicationDelegate {
                 task.setTaskCompleted(success: false)
                 return
             }
-            DevlogAutoSync.handle(refreshTask)
+            Task { @MainActor in
+                DevlogAutoSync.handle(refreshTask)
+            }
         }
         DevlogAutoSync.scheduleNext()
         return true
