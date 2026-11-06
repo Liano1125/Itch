@@ -13,6 +13,7 @@ struct PublicCollectionGame: Decodable, Identifiable {
     let description: String?
     let developer: String?
     let platforms: [String]
+    var developerProfileURL: URL? = nil
 }
 
 struct LibraryView: View {
@@ -318,7 +319,8 @@ private struct PersonalGameCard: View {
             coverURL: URL(string: record.coverURL ?? ""),
             description: nil,
             developer: record.developer,
-            platforms: []
+            platforms: [],
+            developerProfileURL: URL(string: record.developerProfileURL ?? "")
         )
     }
 
@@ -527,6 +529,7 @@ private struct CollectionReader: UIViewRepresentable {
               coverURL: abs(img?.getAttribute("data-lazy_src") || img?.getAttribute("data-lazy-src") || img?.getAttribute("data-src") || img?.currentSrc || img?.getAttribute("src")),
               description: clean(cell.querySelector(".game_text, .game_description, .game_blurb")) || null,
               developer: clean(cell.querySelector(".game_author a, .game_author, .author")) || null,
+              developerProfileURL: abs(cell.querySelector(".game_author a[href], .author a[href]")?.getAttribute("href")),
               platforms: Array.from(cell.querySelectorAll(".game_platform, .game_platforms, .web_flag")).map(clean).filter(Boolean)
             };
           }).filter(Boolean));
