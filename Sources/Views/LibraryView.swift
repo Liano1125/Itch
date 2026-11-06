@@ -34,7 +34,7 @@ struct LibraryView: View {
     private var filteredRecords: [LibraryRecord] {
         library.records.filter { record in
             (selectedStatus == nil || record.status == selectedStatus)
-            && (selectedCollectionID == nil || library.containsGame(record.id, in: selectedCollectionID!))
+            && (selectedCollectionID.map { library.containsGame(record.id, in: $0) } ?? true)
             && (searchText.isEmpty
                 || record.title.localizedCaseInsensitiveContains(searchText)
                 || (record.developer ?? "").localizedCaseInsensitiveContains(searchText))
@@ -126,7 +126,7 @@ struct LibraryView: View {
                 .font(.title2.bold())
             Text(showingSource
                  ? "从你的 itch.io 公开合集中选择游戏，加入个人游戏库"
-                 : "\(library.records.count) 款已收藏 · 数据保存在本机")
+                 : "\(library.records.count) 款游戏 · 数据保存在本机")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -229,7 +229,9 @@ struct LibraryView: View {
             ContentUnavailableView {
                 Label(searchText.isEmpty ? "你的游戏库还是空的" : "没有找到游戏", systemImage: "gamecontroller")
             } description: {
-                Text(searchText.isEmpty ? "从右上角的加号进入公开合集，把喜欢的游戏加入这里。" : "试试其他游戏名称或开发者。")
+                Text(searchText.isEmpty
+                     ? (selectedCollectionID == nil ? "从右上角的加号进入公开合集，把喜欢的游戏加入这里。" : "这个合集还没有游戏，可以从游戏详情或游戏卡片中添加。")
+                     : "试试其他游戏名称或开发者。")
             } actions: {
                 if searchText.isEmpty {
                     Button("浏览公开合集") { showingSource = true }
