@@ -22,7 +22,7 @@ struct GameUpdateMonitorView: View {
                         Text("正在检查公开 Devlog…")
                     } else {
                         Image(systemName: monitor.lastHistoricalSyncAt == nil ? "clock" : "checkmark.circle")
-                            .foregroundStyle(monitor.lastHistoricalSyncAt == nil ? .secondary : .green)
+                            .foregroundStyle(monitor.lastHistoricalSyncAt == nil ? Color.gray : Color.green)
                         Text(monitor.lastHistoricalSyncAt == nil ? "尚未执行同步" : "最近一次同步")
                     }
                     Spacer()
@@ -45,7 +45,7 @@ struct GameUpdateMonitorView: View {
                     ForEach(monitor.lastHistoricalSyncResults) { result in
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: result.message.hasPrefix("读取失败") || result.message.contains("失败") || result.message.contains("缺少有效") ? "exclamationmark.circle" : "checkmark.circle")
-                                .foregroundStyle(result.message.hasPrefix("读取失败") || result.message.contains("失败") || result.message.contains("缺少有效") ? .orange : .secondary)
+                                .foregroundStyle(result.message.hasPrefix("读取失败") || result.message.contains("失败") || result.message.contains("缺少有效") ? Color.orange : Color.gray)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(result.gameTitle)
                                     .font(.subheadline)
