@@ -219,7 +219,6 @@ struct DiscoverView: View {
 
             explorationGroup(
                 title: "热门榜单",
-                subtitle: "从玩家正在关注的作品开始",
                 items: [
                     ("热门游戏", "flame.fill", "https://itch.io/games"),
                     ("评分最高", "star.fill", "https://itch.io/games/top-rated"),
@@ -230,7 +229,6 @@ struct DiscoverView: View {
 
             explorationGroup(
                 title: "游戏类型",
-                subtitle: "选择你感兴趣的玩法",
                 items: [
                     ("冒险", "map.fill", "https://itch.io/games/genre-adventure"),
                     ("角色扮演", "person.fill", "https://itch.io/games/genre-rpg"),
@@ -245,7 +243,6 @@ struct DiscoverView: View {
 
             explorationGroup(
                 title: "游戏平台",
-                subtitle: "按设备筛选兼容作品",
                 items: [
                     ("Windows", "desktopcomputer", "https://itch.io/games/platform-windows"),
                     ("macOS", "laptopcomputer", "https://itch.io/games/platform-osx"),
@@ -259,7 +256,6 @@ struct DiscoverView: View {
                     .font(.headline)
                 browseRow(
                     title: "全部游戏",
-                    subtitle: "探索 itch.io 的完整游戏目录",
                     symbol: "square.grid.2x2.fill",
                     tint: .blue,
                     url: "https://itch.io/games",
@@ -267,7 +263,6 @@ struct DiscoverView: View {
                 )
                 browseRow(
                     title: "Game Jam",
-                    subtitle: "看看独立开发者正在参与的创作活动",
                     symbol: "timer",
                     tint: .orange,
                     url: "https://itch.io/jams"
