@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import Foundation
+import Translation
 
 // MARK: - Models
 
@@ -8,6 +9,11 @@ private struct GamePagePayload: Decodable {
     let description: String?
     let developer: String?
     let coverURL: URL?
+    let galleryURLs: [URL]?
+    let authorURL: URL?
+    let authorAvatarURL: URL?
+    let patreonURL: URL?
+    let discordURL: URL?
     let scriptError: String?
 }
 
@@ -15,6 +21,11 @@ private struct GameDetailPayload {
     let description: String?
     let developer: String?
     let coverURL: URL?
+    let galleryURLs: [URL]
+    let authorURL: URL?
+    let authorAvatarURL: URL?
+    let patreonURL: URL?
+    let discordURL: URL?
 }
 
 // MARK: - Game Detail View
@@ -29,6 +40,9 @@ struct GameDetailView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
+    @State private var translatedDescription: String?
+    @State private var translatedUpdates: [String: String] = [:]
+    @State private var translationConfiguration: TranslationSession.Configuration?
 
     private var displayCover: URL? {
         detail?.coverURL ?? game.coverURL
@@ -46,7 +60,10 @@ struct GameDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 coverSection
+                gallerySection
                 titleSection
+                authorSection
+                linksSection
 
                 Divider()
 
@@ -64,6 +81,19 @@ struct GameDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(uiColor: .systemBackground))
+        .translationTask(translationConfiguration) { session in
+            guard let detail else { return }
+            if let description = detail.description, !description.isEmpty {
+                do { translatedDescription = try await session.translate(description).targetText }
+                catch { translatedDescription = nil }
+            }
+            for update in library.updates(for: game.id) {
+                let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+                guard !source.isEmpty else { continue }
+                do { translatedUpdates[update.id] = try await session.translate(source).targetText }
+                catch { translatedUpdates[update.id] = nil }
+            }
+        }
         .navigationTitle("游戏详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -146,6 +176,38 @@ struct GameDetailView: View {
         }
     }
 
+    // MARK: Gallery
+
+    @ViewBuilder
+    private var gallerySection: some View {
+        let images = detail?.galleryURLs ?? []
+        if !images.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("游戏图库").font(.title3.bold())
+                    Spacer()
+                    Text("\(images.count) 张图片").font(.caption).foregroundStyle(.secondary)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { index, url in
+                            AsyncImage(url: url) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    RoundedRectangle(cornerRadius: 15).fill(.quaternary)
+                                        .overlay { ProgressView() }
+                                }
+                            }
+                            .frame(width: index == 0 ? 270 : 190, height: 150)
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: Title
 
     private var titleSection: some View {
@@ -154,11 +216,8 @@ struct GameDetailView: View {
                 .font(.largeTitle.bold())
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let developer = displayDeveloper,
-               !developer.isEmpty {
-                Label(developer, systemImage: "person")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            if let developer = displayDeveloper, !developer.isEmpty {
+                Text(developer).font(.subheadline).foregroundStyle(.secondary)
             }
 
             if !game.platforms.isEmpty {
@@ -167,6 +226,69 @@ struct GameDetailView: View {
                         Text(platform)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Author and Links
+
+    @ViewBuilder
+    private var authorSection: some View {
+        if let developer = displayDeveloper, !developer.isEmpty {
+            NavigationLink {
+                if let url = detail?.authorURL {
+                    AuthorProfileView(name: developer, url: url)
+                } else if let url = game.url {
+                    AuthorProfileView(name: developer, url: url)
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    AsyncImage(url: detail?.authorAvatarURL) { phase in
+                        if let image = phase.image { image.resizable().scaledToFill() }
+                        else { Image(systemName: "person.fill").resizable().scaledToFit().padding(12).foregroundStyle(.secondary).background(.quaternary) }
+                    }
+                    .frame(width: 52, height: 52)
+                    .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("游戏作者").font(.caption).foregroundStyle(.secondary)
+                        Text(developer).font(.headline).foregroundStyle(.primary)
+                        Text("查看作者的游戏与动态").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .padding(13)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var linksSection: some View {
+        let patreon = detail?.patreonURL
+        let discord = detail?.discordURL
+        if patreon != nil || discord != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Link").font(.title3.bold())
+                HStack(spacing: 10) {
+                    if let patreon {
+                        Link(destination: patreon) {
+                            Label("Patreon", systemImage: "heart.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    if let discord {
+                        Link(destination: discord) {
+                            Label("Discord", systemImage: "bubble.left.and.bubble.right.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(Color.indigo.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        }
                     }
                 }
             }
@@ -183,7 +305,7 @@ struct GameDetailView: View {
 
             if let description = displayDescription,
                !description.isEmpty {
-                Text(description)
+                Text(translatedDescription ?? description)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -275,10 +397,11 @@ struct GameDetailView: View {
                                 .font(.title3)
                                 .foregroundStyle(.orange)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(update.title ?? update.summary)
+                                let translated = translatedUpdates[update.id]
+                                Text(translated ?? update.title ?? update.summary)
                                     .font(.subheadline.weight(.semibold))
                                 if !(update.summary.isEmpty) && update.title != nil {
-                                    Text(update.summary)
+                                    Text(translated == nil ? update.summary : translated!.components(separatedBy: "\n").dropFirst().joined(separator: "\n"))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(4)
@@ -349,6 +472,12 @@ struct GameDetailView: View {
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
+        translatedDescription = nil
+        translatedUpdates = [:]
+        translationConfiguration = TranslationSession.Configuration(
+            source: nil,
+            target: Locale.Language(identifier: "zh-Hans")
+        )
         isLoading = false
         errorMessage = nil
     }
@@ -479,7 +608,12 @@ private struct DetailPageReader: UIViewRepresentable {
                         GameDetailPayload(
                             description: payload.description,
                             developer: payload.developer,
-                            coverURL: payload.coverURL
+                            coverURL: payload.coverURL,
+                            galleryURLs: payload.galleryURLs ?? [],
+                            authorURL: payload.authorURL,
+                            authorAvatarURL: payload.authorAvatarURL,
+                            patreonURL: payload.patreonURL,
+                            discordURL: payload.discordURL
                         )
                     )
                 }
@@ -607,6 +741,11 @@ private struct DetailPageReader: UIViewRepresentable {
                     description,
                     developer,
                     coverURL,
+                    galleryURLs,
+                    authorURL,
+                    authorAvatarURL,
+                    patreonURL,
+                    discordURL,
                     scriptError: null
                 });
             } catch (error) {
@@ -614,6 +753,11 @@ private struct DetailPageReader: UIViewRepresentable {
                     description: null,
                     developer: null,
                     coverURL: null,
+                    galleryURLs: [],
+                    authorURL: null,
+                    authorAvatarURL: null,
+                    patreonURL: null,
+                    discordURL: null,
                     scriptError: String(error)
                 });
             }
