@@ -1204,7 +1204,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 gameURL: record.gameURL,
                 coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
                 description: payload.description,
-                galleryURLs: payload.galleryURLs ?? [],
+                galleryURLs: (payload.galleryURLs ?? []).map(\.absoluteString),
                 discoveryTags: payload.discoveryTags ?? [],
                 engine: payload.engine,
                 developerID: developerID,
