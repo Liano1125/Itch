@@ -3,15 +3,8 @@ import SwiftUI
 struct SparkSyncView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
     @StateObject private var spark = SparkSyncStore.shared
-    @State private var pickerTarget: PickerTarget?
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
-
-    private enum PickerTarget: String, Identifiable {
-        case saves
-        case backups
-        var id: String { rawValue }
-    }
 
     var body: some View {
         ScrollView {
@@ -32,7 +25,7 @@ struct SparkSyncView: View {
                     ContentUnavailableView(
                         "尚未读取存档数据",
                         systemImage: "folder.badge.questionmark",
-                        description: Text("分别选择「itchPocket-allsaves」和「itchPocket-backups」文件夹，应用会读取正式存档与备份。")
+                        description: Text("先用快捷指令将 Spark 存档复制到 itchPocket/Allsaves 和 itchPocket/Backups，再点击扫描。")
                     )
                     .padding(.top, 12)
                 }
@@ -56,26 +49,8 @@ struct SparkSyncView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Spark 游玩记录")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $pickerTarget) { target in
-            SparkFolderPicker(
-                onPick: { url in
-                    pickerTarget = nil
-                    Task {
-                        if target == .saves {
-                            await spark.selectSaveFolder(url, library: library)
-                        } else {
-                            await spark.selectBackupFolder(url, library: library)
-                        }
-                    }
-                },
-                onCancel: { pickerTarget = nil }
-            )
-            .ignoresSafeArea()
-        }
         .task {
-            if spark.summaries.isEmpty && (spark.saveFolderName != nil || spark.backupFolderName != nil) {
-                await spark.rescan(library: library)
-            }
+            await spark.rescan(library: library)
         }
     }
 
@@ -87,20 +62,16 @@ struct SparkSyncView: View {
                     .frame(width: 43, height: 43)
                     .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("存档目录").font(.headline)
-                    Text("分别授权两个快捷指令目标文件夹")
+                    Text("自动同步目录").font(.headline)
+                    Text("无需手动授权，应用直接读取自身文件夹")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if spark.isScanning { ProgressView() }
             }
 
-            folderRow(title: "正式存档", folderName: spark.saveFolderName, expected: "itchPocket-allsaves") {
-                pickerTarget = .saves
-            }
-            folderRow(title: "历史备份", folderName: spark.backupFolderName, expected: "itchPocket-backups") {
-                pickerTarget = .backups
-            }
+            folderPathRow(title: "正式存档", path: "itchPocket/Allsaves", detail: "对应 Spark/saves/renpy/saves")
+            folderPathRow(title: "历史备份", path: "itchPocket/Backups", detail: "对应 Spark/backups")
 
             if let lastSync = spark.lastSyncAt {
                 HStack {
@@ -115,29 +86,27 @@ struct SparkSyncView: View {
             Button {
                 Task { await spark.rescan(library: library) }
             } label: {
-                Label("重新扫描两个目录", systemImage: "arrow.clockwise")
+                Label(spark.isScanning ? "正在扫描…" : "立即扫描存档", systemImage: "arrow.clockwise")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(accent)
-            .disabled(spark.isScanning || (spark.saveFolderName == nil && spark.backupFolderName == nil))
+            .disabled(spark.isScanning)
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
     }
 
-    private func folderRow(title: String, folderName: String?, expected: String, action: @escaping () -> Void) -> some View {
+    private func folderPathRow(title: String, path: String, detail: String) -> some View {
         HStack(spacing: 10) {
+            Image(systemName: "folder.fill").foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(folderName ?? "尚未选择 · 请选择「\\(expected)」")
-                    .font(.caption).foregroundStyle(folderName == nil ? .secondary : .primary)
-                    .lineLimit(1)
+                Text(path).font(.caption.monospaced()).foregroundStyle(.primary)
+                Text(detail).font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            Button(folderName == nil ? "选择" : "更换", action: action)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         }
         .padding(11)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
@@ -147,7 +116,7 @@ struct SparkSyncView: View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text("已识别游戏").font(.headline)
-                Text("\\(spark.summaries.count) 款 Spark 游戏").font(.caption).foregroundStyle(.secondary)
+                Text("\(spark.summaries.count) 款 Spark 游戏").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             Text("只读扫描").font(.caption.weight(.semibold))
@@ -166,9 +135,9 @@ struct SparkSyncView: View {
             Divider()
             infoRow("最近存档", dateText(game.lastSaveAt))
             infoRow("最近备份", dateText(game.lastBackupAt))
-            infoRow("有效存档槽位", game.saveCount == 0 ? "未发现" : "\\(game.saveCount) 个")
+            infoRow("有效存档槽位", game.saveCount == 0 ? "未发现" : "\(game.saveCount) 个")
             if game.duplicateSaveCount > 0 {
-                infoRow("重复存档副本", "\\(game.duplicateSaveCount) 份（已去重）")
+                infoRow("重复存档副本", "\(game.duplicateSaveCount) 份（已去重）")
             }
             infoRow("存档来源", game.saveSources.isEmpty ? "备份记录" : game.saveSources.joined(separator: "、"))
             infoRow("上次启动", "Spark 未提供独立启动记录")
@@ -206,14 +175,14 @@ struct SparkSyncView: View {
         let totalMinutes = Int(seconds / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        if hours > 0 { return "\\(hours)小时\\(minutes)分钟" }
-        return "\\(minutes)分钟"
+        if hours > 0 { return "\(hours)小时\(minutes)分钟" }
+        return "\(minutes)分钟"
     }
 
     private var privacyNote: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Label("数据安全说明", systemImage: "lock.shield").font(.subheadline.weight(.semibold))
-            Text("itchPocket 只读取你通过快捷指令复制的两个目录：itchPocket-allsaves 中的 Ren'Py 正式存档，以及 itchPocket-backups 中的历史备份。不会上传、修改或删除源文件。游玩时长取有效存档记录中的最高运行时长；备份用于补充历史存档时间与 Ren'Py 版本。真实启动时间仍无法从存档中可靠推断。")
+            Label("同步方式与数据安全", systemImage: "lock.shield").font(.subheadline.weight(.semibold))
+            Text("请在「文件」App 的「我的 iPhone」中打开 itchPocket 文件夹，将 Spark 的 saves/renpy/saves 内容复制到 Allsaves，将 Spark/backups 内容复制到 Backups。建议快捷指令采用复制而非移动，并保留原有目录层级。itchPocket 只读取这两个目录，不会上传、修改或删除源文件。游玩时长取有效存档记录中的最高运行时长；备份用于补充历史存档时间与 Ren'Py 版本。真实启动时间仍无法从存档中可靠推断。")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
