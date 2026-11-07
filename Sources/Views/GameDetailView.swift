@@ -719,7 +719,7 @@ struct GameDetailView: View {
         resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
         if !result.galleryURLs.isEmpty {
             cachedGalleryURLs = result.galleryURLs
-            AppDataStore.encode(result.galleryURLs.map(\.absoluteString), forKey: galleryCacheKey)
+            try? AppDatabase.shared.setGalleryURLs(result.galleryURLs.map(\.absoluteString), for: game.id)
         }
         Task {
             await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
@@ -772,7 +772,7 @@ struct GameDetailView: View {
     }
 
     private func loadCachedDescription() async {
-        let savedGallery = AppDataStore.decode([String].self, forKey: galleryCacheKey) ?? []
+        let savedGallery = (try? AppDatabase.shared.galleryURLs(for: game.id)) ?? []
         cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }
 
         let target = AppDataStore.string(forKey: TranslationService.targetKey) ?? "zh-CN"
