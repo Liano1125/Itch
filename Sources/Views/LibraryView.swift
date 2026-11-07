@@ -52,7 +52,14 @@ struct LibraryView: View {
                 CollectionReader(
                     url: ItchPublicCollection.url,
                     reloadToken: reloadToken,
-                    onLoad: { sourceGames = $0; isLoading = false; errorMessage = nil },
+                    onLoad: { games in
+                         sourceGames = games
+                         for game in games where !library.contains(game.id) {
+                             library.add(game, status: .playing)
+                         }
+                         isLoading = false
+                         errorMessage = nil
+                     },
                     onError: { errorMessage = $0; isLoading = false }
                 )
                 .frame(width: 1, height: 1)
