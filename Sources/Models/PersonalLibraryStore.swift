@@ -144,14 +144,36 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func recordGameUpdate(gameID: String, summary: String, detectedAt: Date = Date()) {
-        guard let index = records.firstIndex(where: { $0.id == gameID }) else { return }
-        var updated = records[index]
-        var history = updated.gameUpdates ?? []
-        history.insert(GameLibraryUpdate(summary: summary, detectedAt: detectedAt), at: 0)
-        updated.gameUpdates = Array(history.prefix(30))
-        updated.updatedAt = detectedAt
-        records[index] = updated
-        persist(updated)
+        guard let record = record(for: gameID) else { return }
+        recordDetectedUpdates([
+            DetectedGameUpdate(
+                gameID: gameID,
+                gameTitle: record.title,
+                gameURL: record.gameURL ?? "",
+                summary: summary,
+                fingerprint: "manual:\(detectedAt.timeIntervalSince1970)",
+                detectedAt: detectedAt
+            )
+        ])
+    }
+
+    @discardableResult
+    func recordDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+        var inserted = 0
+        for update in updates {
+            guard let index = records.firstIndex(where: { $0.id == update.gameID }) else { continue }
+            var updated = records[index]
+            var history = updated.gameUpdates ?? []
+            guard !history.contains(where: { $0.detectedAt == update.detectedAt && $0.summary == update.summary }) else { continue }
+            history.insert(GameLibraryUpdate(summary: update.summary, detectedAt: update.detectedAt), at: 0)
+            updated.gameUpdates = Array(history.prefix(30))
+            updated.updatedAt = update.detectedAt
+            records[index] = updated
+            persist(updated, save: false)
+            inserted += 1
+        }
+        if shouldSave && inserted > 0 { try? database.save() }
+        return inserted
     }
 
     @discardableResult
