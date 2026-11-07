@@ -8,6 +8,12 @@ private struct DiscoveryTagRecommendation: Identifiable {
     let gameCount: Int
 }
 
+private struct DeveloperRecommendation: Identifiable {
+    let name: String
+    let records: [LibraryRecord]
+    var id: String { name.lowercased() }
+}
+
 struct DiscoverView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
     @State private var searchText = ""
@@ -190,13 +196,13 @@ struct DiscoverView: View {
             .map { $0 }
     }
 
-    private var libraryDevelopers: [(name: String, records: [LibraryRecord])] {
+    private var libraryDevelopers: [DeveloperRecommendation] {
         let grouped = Dictionary(grouping: library.records) {
             ($0.developer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return grouped
             .filter { !$0.key.isEmpty }
-            .map { (name: $0.key, records: $0.value) }
+            .map { DeveloperRecommendation(name: $0.key, records: $0.value) }
             .sorted {
                 if $0.records.count != $1.records.count {
                     return $0.records.count > $1.records.count
@@ -388,7 +394,7 @@ struct DiscoverView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
-                        ForEach(libraryDevelopers, id: \.name) { developer in
+                        ForEach(libraryDevelopers) { developer in
                             NavigationLink {
                                 ItchSearchResultsView(query: developer.name)
                             } label: {
