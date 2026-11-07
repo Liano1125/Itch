@@ -97,7 +97,6 @@ final class SparkSyncStore: ObservableObject {
             }.value
 
             summaries = found
-            var matchedNames = Set<String>()
             var unmatched: [String] = []
 
             for summary in found {
@@ -118,7 +117,6 @@ final class SparkSyncStore: ObservableObject {
                 // Spark 的备份时间和存档时间都不能冒充真实启动时间。
                 updated.sparkLastLaunchAt = nil
                 library.update(updated)
-                matchedNames.insert(key)
             }
 
             unmatchedGameNames = unmatched.sorted()
@@ -261,7 +259,7 @@ private enum SparkArchiveScanner {
               let timeRange = Range(match.range(at: 2), in: filename) else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = .current
         formatter.dateFormat = "yyyyMMddHHmmss"
         return formatter.date(from: String(filename[dateRange]) + String(filename[timeRange]))
     }
