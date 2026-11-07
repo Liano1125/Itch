@@ -22,7 +22,8 @@ final class AppDatabase {
             DBDiscoverySnapshot.self,
             DBUpdateWatch.self,
             DBLibraryCollection.self,
-            DBLibraryStatusEvent.self
+            DBLibraryStatusEvent.self,
+            DBAppState.self
         ])
         let configuration = ModelConfiguration(
             "itchPocket",
@@ -105,7 +106,39 @@ final class AppDatabase {
         try save()
     }
 
+    func state(for key: String) throws -> DBAppState? {
+        let descriptor = FetchDescriptor<DBAppState>(
+            predicate: #Predicate { $0.key == key }
+        )
+        return try context.fetch(descriptor).first
+    }
+
+    func setState(_ value: String?, for key: String) throws {
+        let item = try state(for: key) ?? DBAppState(key: key)
+        if item.modelContext == nil { context.insert(item) }
+        item.stringValue = value
+        item.updatedAt = .now
+        try save()
+    }
+
+    func setState(_ value: Date?, for key: String) throws {
+        let item = try state(for: key) ?? DBAppState(key: key)
+        if item.modelContext == nil { context.insert(item) }
+        item.dateValue = value
+        item.updatedAt = .now
+        try save()
+    }
+
+    func setState(_ value: Data?, for key: String) throws {
+        let item = try state(for: key) ?? DBAppState(key: key)
+        if item.modelContext == nil { context.insert(item) }
+        item.dataValue = value
+        item.updatedAt = .now
+        try save()
+    }
+
     func removeAllAppData() throws {
+        try context.delete(model: DBAppState.self)
         try context.delete(model: DBLibraryStatusEvent.self)
         try context.delete(model: DBLibraryCollection.self)
         try context.delete(model: DBUpdateWatch.self)
