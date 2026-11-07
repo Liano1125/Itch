@@ -54,8 +54,8 @@ struct LibraryView: View {
                     reloadToken: reloadToken,
                     onLoad: { games in
                          sourceGames = games
-                         for game in games where !library.contains(game.id) {
-                             library.add(game, status: .playing)
+                         if showingSource {
+                             importSourceGamesAsPlaying()
                          }
                          isLoading = false
                          errorMessage = nil
@@ -89,6 +89,9 @@ struct LibraryView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSource.toggle()
+                        if showingSource {
+                            importSourceGamesAsPlaying()
+                        }
                     } label: {
                         Image(systemName: showingSource ? "books.vertical" : "plus.circle")
                     }
@@ -108,6 +111,12 @@ struct LibraryView: View {
             .sheet(item: $editingRecord) { record in
                 LibraryNoteEditor(record: record) { library.update($0) }
             }
+        }
+    }
+
+    private func importSourceGamesAsPlaying() {
+        for game in sourceGames where !library.contains(game.id) {
+            library.add(game, status: .playing)
         }
     }
 
@@ -160,7 +169,10 @@ struct LibraryView: View {
                      : "试试其他游戏名称或开发者。")
             } actions: {
                 if searchText.isEmpty {
-                    Button("浏览公开合集") { showingSource = true }
+                    Button("浏览公开合集") {
+                        showingSource = true
+                        importSourceGamesAsPlaying()
+                    }
                         .buttonStyle(.borderedProminent)
                 }
             }
