@@ -41,7 +41,7 @@ struct SparkSyncView: View {
                         Text("尚未匹配到游戏库的存档").font(.headline)
                         Text("请确认存档文件夹名称与 itchPocket 游戏名称一致。暂不自动关联，避免匹配错误。")
                             .font(.caption).foregroundStyle(.secondary)
-                        ForEach(spark.unmatchedGameNames, id: \\.self) { name in
+                        ForEach(spark.unmatchedGameNames, id: \.self) { name in
                             Label(name, systemImage: "questionmark.folder")
                                 .font(.subheadline).padding(.vertical, 3)
                         }
