@@ -37,14 +37,43 @@ enum AppDataStore {
         set(data, forKey: key)
     }
 
+    /// Loads a durable dataset from Application Support, migrating its legacy UserDefaults value once.
+    static func loadPersistent<Value: Codable>(
+        _ type: Value.Type,
+        fileName: String,
+        legacyKey: String
+    ) -> Value? {
+        guard let url = try? applicationSupportURL(directory: "data", fileName: fileName) else {
+            return decode(type, forKey: legacyKey)
+        }
+        if let saved = readJSON(type, from: url) { return saved }
+        guard let legacy = decode(type, forKey: legacyKey) else { return nil }
+        if writeJSON(legacy, to: url) {
+            removeValue(forKey: legacyKey)
+        }
+        return legacy
+    }
+
+    @discardableResult
+    static func savePersistent<Value: Encodable>(_ value: Value, fileName: String) -> Bool {
+        guard let url = try? applicationSupportURL(directory: "data", fileName: fileName) else { return false }
+        return writeJSON(value, to: url)
+    }
+
     static func readJSON<Value: Decodable>(_ type: Value.Type, from url: URL) -> Value? {
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    static func writeJSON<Value: Encodable>(_ value: Value, to url: URL) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: url, options: .atomic)
+    @discardableResult
+    static func writeJSON<Value: Encodable>(_ value: Value, to url: URL) -> Bool {
+        guard let data = try? JSONEncoder().encode(value) else { return false }
+        do {
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
     }
 
     static func applicationSupportURL(directory name: String, fileName: String) throws -> URL {

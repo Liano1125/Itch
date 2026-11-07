@@ -43,7 +43,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         load()
         lastHistoricalSyncAt = AppDataStore.date(forKey: historicalSyncDateKey)
         lastHistoricalSyncMessage = AppDataStore.string(forKey: historicalSyncMessageKey)
-        lastHistoricalSyncResults = AppDataStore.decode([DevlogSyncGameResult].self, forKey: historicalSyncResultsKey) ?? []
+        lastHistoricalSyncResults = AppDataStore.loadPersistent([DevlogSyncGameResult].self, fileName: "devlog-sync-results-v1.json", legacyKey: historicalSyncResultsKey) ?? []
     }
 
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
@@ -236,7 +236,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         lastHistoricalSyncResults = results
         AppDataStore.set(lastHistoricalSyncAt, forKey: historicalSyncDateKey)
         AppDataStore.set(message, forKey: historicalSyncMessageKey)
-        AppDataStore.encode(results, forKey: historicalSyncResultsKey)
+        AppDataStore.savePersistent(results, fileName: "devlog-sync-results-v1.json")
         return message
     }
 
@@ -265,12 +265,12 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
     private func load() {
-        let values = AppDataStore.decode([GameUpdateWatch].self, forKey: storageKey) ?? []
+        let values = AppDataStore.loadPersistent([GameUpdateWatch].self, fileName: "update-watches-v1.json", legacyKey: storageKey) ?? []
         watches = Dictionary(uniqueKeysWithValues: values.map { ($0.gameID, $0) })
     }
 
     private func save() {
-        AppDataStore.encode(Array(watches.values), forKey: storageKey)
+        AppDataStore.savePersistent(Array(watches.values), fileName: "update-watches-v1.json")
     }
 }
 

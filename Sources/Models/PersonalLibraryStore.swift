@@ -311,26 +311,26 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func load() {
-        records = AppDataStore.decode([LibraryRecord].self, forKey: storageKey) ?? []
+        records = AppDataStore.loadPersistent([LibraryRecord].self, fileName: "personal-library-v1.json", legacyKey: storageKey) ?? []
     }
 
     private func loadCollections() {
-        collections = AppDataStore.decode([PersonalGameCollection].self, forKey: collectionsStorageKey) ?? []
+        collections = AppDataStore.loadPersistent([PersonalGameCollection].self, fileName: "game-collections-v1.json", legacyKey: collectionsStorageKey) ?? []
     }
 
     private func loadStatusEvents() {
-        statusEvents = AppDataStore.decode([String: [LibraryStatusEvent]].self, forKey: statusEventsStorageKey) ?? [:]
+        statusEvents = AppDataStore.loadPersistent([String: [LibraryStatusEvent]].self, fileName: "library-status-events-v1.json", legacyKey: statusEventsStorageKey) ?? [:]
     }
 
     private func saveStatusEvents() {
-        AppDataStore.encode(statusEvents, forKey: statusEventsStorageKey)
+        AppDataStore.savePersistent(statusEvents, fileName: "library-status-events-v1.json")
     }
 
     private func saveCollections() {
-        AppDataStore.encode(collections, forKey: collectionsStorageKey)
+        AppDataStore.savePersistent(collections, fileName: "game-collections-v1.json")
     }
 
     private func save() {
-        AppDataStore.encode(records, forKey: storageKey)
+        AppDataStore.savePersistent(records, fileName: "personal-library-v1.json")
     }
 }

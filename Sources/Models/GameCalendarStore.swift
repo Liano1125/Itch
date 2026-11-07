@@ -124,11 +124,11 @@ final class GameCalendarStore: ObservableObject {
     }
 
     private func load() {
-        events = (AppDataStore.decode([GameCalendarEvent].self, forKey: key) ?? []).sorted { $0.date < $1.date }
+        events = (AppDataStore.loadPersistent([GameCalendarEvent].self, fileName: "calendar-events-v1.json", legacyKey: key) ?? []).sorted { $0.date < $1.date }
     }
 
     private func save() {
-        AppDataStore.encode(events, forKey: key)
+        AppDataStore.savePersistent(events, fileName: "calendar-events-v1.json")
     }
 }
 
