@@ -206,7 +206,7 @@ final class PersonalLibraryStore: ObservableObject {
         saveCollections()
     }
 
-    func add(_ game: PublicCollectionGame, status: LibraryStatus = .wishlist) {
+    func add(_ game: PublicCollectionGame, status: LibraryStatus = .playing) {
         guard !contains(game.id) else { return }
         let now = Date()
         records.insert(
