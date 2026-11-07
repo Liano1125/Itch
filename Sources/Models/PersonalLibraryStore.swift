@@ -372,6 +372,7 @@ final class PersonalLibraryStore: ObservableObject {
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
                     gameUpdates: gameUpdates,
+                    discoveryTags: game.discoveryTagsData.flatMap { try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0) },
                     engine: game.engine,
                     patreonURL: developer?.patreonURL,
                     discordURL: developer?.discordURL,
@@ -441,6 +442,7 @@ final class PersonalLibraryStore: ObservableObject {
             game.gameURL = record.gameURL
             game.coverURL = record.coverURL
             game.engine = record.engine
+            game.discoveryTagsData = record.discoveryTags.flatMap { try? JSONEncoder().encode($0) }
             game.developerID = developerID
             game.updatedAt = .now
 
