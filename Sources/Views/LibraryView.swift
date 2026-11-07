@@ -18,7 +18,8 @@ struct PublicCollectionGame: Codable, Identifiable {
 
 struct LibraryView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
-    @State private var sourceGames: [PublicCollectionGame] = []
+    @State private var sourceGames: [PublicCollectionGame]
+    @State private var shouldLoadSource: Bool
     @State private var searchText = ""
     @State private var selectedStatus: LibraryStatus?
     @State private var showingSource = false
@@ -28,6 +29,13 @@ struct LibraryView: View {
     @State private var reloadToken = UUID()
 
     private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+
+    init() {
+        let cached = DiscoveryCacheStore.load([PublicCollectionGame].self, key: "public-collection:liano1125:v1") ?? []
+        _sourceGames = State(initialValue: cached)
+        _shouldLoadSource = State(initialValue: cached.isEmpty)
+        _isLoading = State(initialValue: cached.isEmpty)
+    }
 
     private var filteredRecords: [LibraryRecord] {
         library.records
@@ -64,23 +72,27 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                if shouldLoadSource {
                 CollectionReader(
                     url: ItchPublicCollection.url,
                     reloadToken: reloadToken,
                     onLoad: { games in
                          sourceGames = games
+                         DiscoveryCacheStore.save(games, key: "public-collection:liano1125:v1", timeToLive: 24 * 60 * 60)
+                         shouldLoadSource = false
                          if showingSource {
                              importSourceGamesAsPlaying()
                          }
                          isLoading = false
                          errorMessage = nil
                      },
-                    onError: { errorMessage = $0; isLoading = false }
+                    onError: { errorMessage = $0; isLoading = false; shouldLoadSource = false }
                 )
                 .frame(width: 1, height: 1)
                 .opacity(0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+                }
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
@@ -115,6 +127,7 @@ struct LibraryView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isLoading = true
+                        shouldLoadSource = true
                         reloadToken = UUID()
                     } label: {
                         Image(systemName: "arrow.clockwise")
