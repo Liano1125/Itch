@@ -78,7 +78,10 @@ final class GameCalendarStore: ObservableObject {
         )
         events.append(event)
         events.sort { $0.date < $1.date }
-        persist(event)
+        let updateID = try? database.context.fetch(FetchDescriptor<DBGameUpdate>(
+            predicate: #Predicate { $0.gameID == gameID && $0.detectedAt == detectedAt }
+        )).first?.id
+        persist(event, sourceUpdateID: updateID ?? nil)
     }
 
     @discardableResult
