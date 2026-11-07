@@ -111,9 +111,9 @@ struct GameDetailView: View {
             )
             let record = library.record(for: game.id)
             resolvedAuthorAvatarURL = resolved
-                ?? URL(string: record?.patreonAvatarURL ?? "")
                 ?? detail?.authorAvatarURL
                 ?? URL(string: record?.developerAvatarURL ?? "")
+                ?? URL(string: record?.patreonAvatarURL ?? "")
             if var updated = record {
                 var changed = false
                 if let resolved, updated.patreonAvatarURL != resolved.absoluteString {
@@ -347,9 +347,9 @@ struct GameDetailView: View {
                 HStack(spacing: 10) {
                     CachedRemoteImage(
                         url: resolvedAuthorAvatarURL
-                            ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
                             ?? detail?.authorAvatarURL
-                            ?? URL(string: library.record(for: game.id)?.developerAvatarURL ?? ""),
+                            ?? URL(string: library.record(for: game.id)?.developerAvatarURL ?? "")
+                            ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? ""),
                         contentMode: .fill
                     ) {
                         Image(systemName: "person.fill")
@@ -1077,10 +1077,16 @@ private struct DetailPageReader: UIViewRepresentable {
 
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
-                const authorAvatar = document.querySelector(".game_author img, .user_avatar img, .user_link img, .header_links img");
-                const authorAvatarURL = authorAvatar ? absolute(
-                    authorAvatar.getAttribute("data-lazy_src") || authorAvatar.getAttribute("data-src") || authorAvatar.currentSrc || authorAvatar.getAttribute("src")
-                ) : null;
+                const authorAvatar = document.querySelector(
+                    ".game_author img, .user_avatar img, .user_avatar, .user_avatar_image, .user_link img, .header_links img, img.avatar"
+                );
+                const authorAvatarRaw = authorAvatar
+                    ? (authorAvatar.getAttribute("data-lazy_src") || authorAvatar.getAttribute("data-lazy-src")
+                        || authorAvatar.getAttribute("data-src") || authorAvatar.currentSrc
+                        || authorAvatar.getAttribute("src")
+                        || (authorAvatar.getAttribute("style") || "").match(/url\\(['"]?([^)'"]+)/i)?.[1])
+                    : null;
+                const authorAvatarURL = absolute(authorAvatarRaw);
 
                 const links = Array.from(document.querySelectorAll("a[href]")).map(a => absolute(a.getAttribute("href"))).filter(Boolean);
                 const patreonURL = links.find(value => /(^|\\.)patreon\\.com$/i.test(new URL(value).hostname)) || null;
