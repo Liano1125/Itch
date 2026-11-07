@@ -6,6 +6,7 @@ final class PatreonAvatarService {
 
     private let failureCacheDuration: TimeInterval = 6 * 60 * 60
     private let database = AppDatabase.shared
+    private var inFlight: [String: Task<URL?, Never>] = [:]
 
     private init() {}
 
@@ -14,6 +15,17 @@ final class PatreonAvatarService {
     /// Resolves a creator avatar once and stores it on the canonical Developer row.
     /// All games by the same creator then read the same avatar metadata.
     func avatarURL(authorURL: URL?, gameURL: URL? = nil) async -> URL? {
+        guard let identity = authorURL ?? gameURL else { return nil }
+        let key = canonicalKey(for: identity)
+        if let task = inFlight[key] { return await task.value }
+        let task = Task { await self.resolveAvatarURL(authorURL: authorURL, gameURL: gameURL) }
+        inFlight[key] = task
+        let result = await task.value
+        inFlight.removeValue(forKey: key)
+        return result
+    }
+
+    private func resolveAvatarURL(authorURL: URL?, gameURL: URL?) async -> URL? {
         if let authorURL, let cached = cachedAvatar(for: authorURL) { return cached }
         if let authorURL, isFailureCached(for: authorURL) { return nil }
 
