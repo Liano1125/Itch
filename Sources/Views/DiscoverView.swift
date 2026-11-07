@@ -217,7 +217,8 @@ struct DiscoverView: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button {
-                        shouldLoadCurated = true\n                        curatedReloadToken = UUID()
+                        shouldLoadCurated = true
+                        curatedReloadToken = UUID()
                     } label: {
                         Label("刷新", systemImage: "arrow.clockwise")
                             .font(.caption.weight(.semibold))
