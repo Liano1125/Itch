@@ -25,7 +25,7 @@ struct SparkSyncView: View {
                     ContentUnavailableView(
                         "尚未读取存档数据",
                         systemImage: "folder.badge.questionmark",
-                        description: Text("先用快捷指令将 Spark 存档复制到 itchPocket/Allsaves 和 itchPocket/Backups，再点击扫描。")
+                        description: Text("先用快捷指令将 Spark/saves/renpy/saves 中的存档复制到 itchPocket/Allsaves，再点击扫描。")
                     )
                     .padding(.top, 12)
                 }
@@ -71,7 +71,6 @@ struct SparkSyncView: View {
             }
 
             folderPathRow(title: "正式存档", path: "itchPocket/Allsaves", detail: "对应 Spark/saves/renpy/saves")
-            folderPathRow(title: "历史备份", path: "itchPocket/Backups", detail: "对应 Spark/backups")
 
             if let lastSync = spark.lastSyncAt {
                 HStack {
@@ -134,13 +133,11 @@ struct SparkSyncView: View {
             }
             Divider()
             infoRow("最近存档", dateText(game.lastSaveAt))
-            infoRow("最近备份", dateText(game.lastBackupAt))
             infoRow("有效存档槽位", game.saveCount == 0 ? "未发现" : "\(game.saveCount) 个")
             if game.duplicateSaveCount > 0 {
                 infoRow("重复存档副本", "\(game.duplicateSaveCount) 份（已去重）")
             }
             infoRow("存档来源", game.saveSources.isEmpty ? "备份记录" : game.saveSources.joined(separator: "、"))
-            infoRow("上次启动", "Spark 未提供独立启动记录")
         }
         .padding(15)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
@@ -182,7 +179,7 @@ struct SparkSyncView: View {
     private var privacyNote: some View {
         VStack(alignment: .leading, spacing: 7) {
             Label("同步方式与数据安全", systemImage: "lock.shield").font(.subheadline.weight(.semibold))
-            Text("请在「文件」App 的「我的 iPhone」中打开 itchPocket 文件夹，将 Spark 的 saves/renpy/saves 内容复制到 Allsaves，将 Spark/backups 内容复制到 Backups。建议快捷指令采用复制而非移动，并保留原有目录层级。itchPocket 只读取这两个目录，不会上传、修改或删除源文件。游玩时长取有效存档记录中的最高运行时长；备份用于补充历史存档时间与 Ren'Py 版本。真实启动时间仍无法从存档中可靠推断。")
+            Text("请在「文件」App 的「我的 iPhone」中打开 itchPocket 文件夹，将 Spark/saves/renpy/saves 中的内容复制到 Allsaves。建议快捷指令采用复制而非移动，并保留每款游戏的原有文件夹层级。itchPocket 只读取 Allsaves，不会上传、修改或删除源文件。游玩时长取有效存档记录中的最高运行时长。")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
