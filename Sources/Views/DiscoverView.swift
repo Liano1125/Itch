@@ -956,7 +956,7 @@ private struct DiscoveryFeedReader: UIViewRepresentable {
                     let games = try JSONDecoder().decode([PublicCollectionGame].self, from: data)
                     DispatchQueue.main.async { self.parent.onLoad(games) }
                 } catch {
-                    DispatchQueue.main.async { self.parent.onError("推荐数据解析失败：\\(error.localizedDescription)") }
+                    DispatchQueue.main.async { self.parent.onError("推荐数据解析失败：\(error.localizedDescription)") }
                 }
             }
         }
