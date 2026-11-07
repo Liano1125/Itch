@@ -800,7 +800,7 @@ struct GameDetailView: View {
             cachedOriginalDescription = try? AppDatabase.shared.game(id: game.id)?.descriptionText
         }
 
-        let target = AppDataStore.string(forKey: TranslationService.targetKey) ?? "zh-CN"
+        let target = AppPreferences.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         for update in library.updates(for: game.id) {
             let scope = "devlog:\(game.id):\(update.id)"
             if let cached = await TranslationCache.shared.latest(scope: scope, target: target) {
