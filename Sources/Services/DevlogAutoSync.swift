@@ -49,8 +49,7 @@ enum DevlogAutoSync {
             await refreshIfNeeded(
                 monitor: .shared,
                 library: .shared,
-                calendar: .shared,
-                force: true
+                calendar: .shared
             )
             task.setTaskCompleted(success: !Task.isCancelled)
         }
