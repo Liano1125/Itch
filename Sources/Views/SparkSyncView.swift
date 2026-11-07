@@ -70,7 +70,7 @@ struct SparkSyncView: View {
             }
         }
         .task {
-            if spark.summaries.isEmpty && spark.lastSyncAt == nil {
+            if spark.summaries.isEmpty && spark.folderName != nil {
                 await spark.rescan(library: library)
             }
         }
