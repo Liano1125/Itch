@@ -76,26 +76,21 @@ final class SparkSyncStore: ObservableObject {
 
             summaries = found
             var unmatched: [String] = []
+            var metadataByGameID: [String: SparkPlayMetadata] = [:]
             for summary in found {
                 let key = Self.normalized(summary.gameName)
                 guard let record = library.records.first(where: { Self.normalized($0.title) == key }) else {
                     unmatched.append(summary.gameName)
                     continue
                 }
-                var updated = record
-                updated.sparkPlaytimeSeconds = max(updated.sparkPlaytimeSeconds ?? 0, summary.runtimeSeconds)
-                if let lastSaveAt = summary.lastSaveAt,
-                   updated.sparkLastSaveAt == nil || lastSaveAt > updated.sparkLastSaveAt! {
-                    updated.sparkLastSaveAt = lastSaveAt
-                }
-                if let version = summary.renpyVersion {
-                    updated.sparkRenpyVersion = version
-                }
-                if summary.saveSources.contains("正式存档") {
-                    updated.sparkSaveCount = summary.saveCount
-                }
-                library.update(updated)
+                metadataByGameID[record.id] = SparkPlayMetadata(
+                    runtimeSeconds: summary.runtimeSeconds,
+                    lastSaveAt: summary.lastSaveAt,
+                    renpyVersion: summary.renpyVersion,
+                    saveCount: summary.saveSources.contains("正式存档") ? summary.saveCount : nil
+                )
             }
+            library.updateSparkMetadata(metadataByGameID)
 
             unmatchedGameNames = unmatched.sorted()
             let now = Date()

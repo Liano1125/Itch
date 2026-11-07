@@ -27,6 +27,13 @@ struct LibraryDiscoveryTag: Codable, Hashable, Identifiable {
     var id: String { url }
 }
 
+struct SparkPlayMetadata {
+    let runtimeSeconds: Double
+    let lastSaveAt: Date?
+    let renpyVersion: String?
+    let saveCount: Int?
+}
+
 struct LibraryRecord: Codable, Identifiable {
     var id: String
     var title: String
@@ -250,6 +257,45 @@ final class PersonalLibraryStore: ObservableObject {
             saveStatusEvents()
         }
         save()
+    }
+
+    /// Applies a complete Spark scan in one pass and persists only when values changed.
+    /// Sync metadata does not touch updatedAt, so background scans do not reorder user activity.
+    func updateSparkMetadata(_ metadataByGameID: [String: SparkPlayMetadata]) {
+        guard !metadataByGameID.isEmpty else { return }
+        var didChange = false
+
+        for index in records.indices {
+            guard let metadata = metadataByGameID[records[index].id] else { continue }
+            var updated = records[index]
+            var recordChanged = false
+
+            let runtime = max(updated.sparkPlaytimeSeconds ?? 0, metadata.runtimeSeconds)
+            if updated.sparkPlaytimeSeconds != runtime {
+                updated.sparkPlaytimeSeconds = runtime
+                recordChanged = true
+            }
+            if let lastSaveAt = metadata.lastSaveAt,
+               updated.sparkLastSaveAt == nil || lastSaveAt > updated.sparkLastSaveAt! {
+                updated.sparkLastSaveAt = lastSaveAt
+                recordChanged = true
+            }
+            if let version = metadata.renpyVersion, updated.sparkRenpyVersion != version {
+                updated.sparkRenpyVersion = version
+                recordChanged = true
+            }
+            if let saveCount = metadata.saveCount, updated.sparkSaveCount != saveCount {
+                updated.sparkSaveCount = saveCount
+                recordChanged = true
+            }
+
+            if recordChanged {
+                records[index] = updated
+                didChange = true
+            }
+        }
+
+        if didChange { save() }
     }
 
     func remove(_ id: String) {
