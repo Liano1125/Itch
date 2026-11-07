@@ -1,6 +1,13 @@
 import SwiftUI
 import WebKit
 
+private struct DiscoveryTagRecommendation: Identifiable {
+    let id: String
+    let name: String
+    let url: String
+    let gameCount: Int
+}
+
 struct DiscoverView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
     @State private var searchText = ""
@@ -201,6 +208,31 @@ struct DiscoverView: View {
             .map { $0 }
     }
 
+    private var libraryDiscoveryTags: [DiscoveryTagRecommendation] {
+        var counts: [String: (name: String, count: Int)] = [:]
+        for record in library.records {
+            for tag in record.discoveryTags ?? [] {
+                let key = tag.url.lowercased()
+                let current = counts[key]
+                counts[key] = (tag.name, (current?.count ?? 0) + 1)
+            }
+        }
+        return counts.map { key, value in
+            DiscoveryTagRecommendation(
+                id: key,
+                name: value.name,
+                url: key,
+                gameCount: value.count
+            )
+        }
+        .sorted {
+            if $0.gameCount != $1.gameCount { return $0.gameCount > $1.gameCount }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        .prefix(10)
+        .map { $0 }
+    }
+
     private var personalizedSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -300,6 +332,48 @@ struct DiscoverView: View {
                                     }
                                     .buttonStyle(.plain)
                                 }
+                            }
+                        }
+                    }
+                }
+
+                if !libraryDiscoveryTags.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack {
+                            Text("你常玩的题材")
+                                .font(.headline)
+                            Spacer()
+                            Text("来自游戏页面标签")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
+                            ForEach(libraryDiscoveryTags) { tag in
+                                NavigationLink {
+                                    ItchSearchResultsView(query: "", customURL: tag.url)
+                                } label: {
+                                    HStack(spacing: 9) {
+                                        Image(systemName: "tag.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(Color.accentColor)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(tag.name)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(.primary)
+                                                .lineLimit(1)
+                                            Text("\(tag.gameCount) 款游戏")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "arrow.up.right")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .padding(11)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
