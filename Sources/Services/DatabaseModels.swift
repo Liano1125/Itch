@@ -103,17 +103,17 @@ final class DBCalendarEvent {
     var gameID: String
     // Snapshot is intentionally retained so a calendar item remains readable
     // even if its game is later removed from the personal library.
-    var gameTitleSnapshot: String
-    var title: String
-    var date: Date
+    var gameTitleSnapshot: String?
+    var title: String?
+    var date: Date?
     var kind: String
     var reminderEnabled: Bool
     var reminderMinutes: Int
-    var notes: String
+    var notes: String?
     var sourceFingerprint: String?
     var sourceUpdateID: String?
 
-    init(id: String, gameID: String, gameTitleSnapshot: String, title: String, date: Date, kind: String, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String = "", sourceFingerprint: String? = nil, sourceUpdateID: String? = nil) {
+    init(id: String, gameID: String, gameTitleSnapshot: String? = nil, title: String? = nil, date: Date? = nil, kind: String, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String? = nil, sourceFingerprint: String? = nil, sourceUpdateID: String? = nil) {
         self.id = id
         self.gameID = gameID
         self.gameTitleSnapshot = gameTitleSnapshot
