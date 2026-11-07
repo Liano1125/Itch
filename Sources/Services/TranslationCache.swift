@@ -10,6 +10,7 @@ final class TranslationCache {
     struct Entry {
         let translation: String
         let sourceHash: String
+        let sourceText: String
         let scope: String
         let target: String
         let updatedAt: Date
@@ -29,6 +30,7 @@ final class TranslationCache {
             return Entry(
                 translation: item.translatedText,
                 sourceHash: item.sourceHash,
+                sourceText: item.sourceText,
                 scope: item.scope,
                 target: item.targetLanguage,
                 updatedAt: item.updatedAt
@@ -68,12 +70,14 @@ final class TranslationCache {
                 cacheKey: key,
                 scope: scope,
                 sourceHash: Self.hash(source),
+                sourceText: source,
                 targetLanguage: target,
                 translatedText: translation
             )
             if item.modelContext == nil { context.insert(item) }
             item.scope = scope
             item.sourceHash = Self.hash(source)
+            item.sourceText = source
             item.targetLanguage = target
             item.translatedText = translation
             item.updatedAt = .now
