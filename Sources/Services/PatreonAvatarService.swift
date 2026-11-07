@@ -6,6 +6,8 @@ final class PatreonAvatarService {
 
     private let defaults = UserDefaults.standard
     private let cachePrefix = "itchPocket.patreonAvatarURL.v2."
+    private let failurePrefix = "itchPocket.patreonAvatarFailure.v1."
+    private let failureCacheDuration: TimeInterval = 6 * 60 * 60
 
     private init() {}
 
