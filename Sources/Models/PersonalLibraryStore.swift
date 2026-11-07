@@ -365,7 +365,7 @@ final class PersonalLibraryStore: ObservableObject {
                     developer: developer?.name,
                     developerProfileURL: developer?.profileURL,
                     patreonAvatarURL: developer?.avatarSource == "patreon" ? developer?.avatarURL : nil,
-                    developerAvatarURL: developer?.avatarSource == "itch" ? developer?.avatarURL : nil,
+                    developerAvatarURL: developer?.avatarSource != "patreon" ? developer?.avatarURL : nil,
                     status: LibraryStatus(rawValue: entry.status) ?? .playing,
                     isFavorite: entry.isFavorite,
                     notes: entry.notes,
