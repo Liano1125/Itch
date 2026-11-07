@@ -64,24 +64,50 @@ final class GameCalendarStore: ObservableObject {
     }
 
     func addDetectedUpdate(gameID: String, gameTitle: String, gameURL: String, fingerprint: String, detectedAt: Date = Date()) {
-        guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return }
-        let event = GameCalendarEvent(
+        let update = DetectedGameUpdate(
             gameID: gameID,
             gameTitle: gameTitle,
             gameURL: gameURL,
-            title: "检测到游戏页面更新",
-            date: detectedAt,
-            kind: .update,
-            reminderEnabled: false,
-            notes: "由更新监控自动记录。此日期是页面变化的检测日期，并非经确认的官方发布日期。",
-            sourceFingerprint: fingerprint
+            summary: "itch.io 游戏页面发生变化。",
+            fingerprint: fingerprint,
+            detectedAt: detectedAt
         )
-        events.append(event)
-        events.sort { $0.date < $1.date }
-        let updateID = try? database.context.fetch(FetchDescriptor<DBGameUpdate>(
-            predicate: #Predicate { $0.gameID == gameID && $0.detectedAt == detectedAt }
-        )).first?.id
-        persist(event, sourceUpdateID: updateID ?? nil)
+        _ = addDetectedUpdates([update])
+    }
+
+    @discardableResult
+    func addDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+        let context = database.context
+        var inserted = 0
+        for update in updates {
+            guard !events.contains(where: { $0.gameID == update.gameID && $0.sourceFingerprint == update.fingerprint }) else { continue }
+            let descriptor = FetchDescriptor<DBGameUpdate>(
+                predicate: #Predicate { $0.gameID == update.gameID && $0.detectedAt == update.detectedAt }
+            )
+            let updateID = try? context.fetch(descriptor).first?.id
+            let event = GameCalendarEvent(
+                gameID: update.gameID,
+                gameTitle: update.gameTitle,
+                gameURL: update.gameURL,
+                title: "检测到游戏页面更新",
+                date: update.detectedAt,
+                kind: .update,
+                reminderEnabled: false,
+                notes: "由更新监控自动记录。此日期是页面变化的检测日期，并非经确认的官方发布日期。",
+                sourceFingerprint: update.fingerprint
+            )
+            events.append(event)
+            persist(event, sourceUpdateID: updateID ?? nil, save: false)
+            inserted += 1
+        }
+        if inserted > 0 {
+            events.sort { $0.date < $1.date }
+            if shouldSave {
+                do { try database.save() }
+                catch { print("itchPocket detected calendar batch save failed: \(error)") }
+            }
+        }
+        return inserted
     }
 
     @discardableResult
