@@ -28,7 +28,7 @@ final class SparkSyncStore: ObservableObject {
     private let savesFolderName = "Allsaves"
 
     private init() {
-        lastSyncAt = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+        lastSyncAt = AppDataStore.date(forKey: lastSyncKey)
     }
 
     /// Creates the fixed Allsaves folder inside the app's shared Documents directory.
@@ -100,7 +100,7 @@ final class SparkSyncStore: ObservableObject {
             unmatchedGameNames = unmatched.sorted()
             let now = Date()
             lastSyncAt = now
-            UserDefaults.standard.set(now, forKey: lastSyncKey)
+            AppDataStore.set(now, forKey: lastSyncKey)
         } catch {
             errorMessage = "扫描 itchPocket 存档目录失败：\(error.localizedDescription)"
         }
