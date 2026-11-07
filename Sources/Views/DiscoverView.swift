@@ -770,22 +770,12 @@ private struct ItchWebView: UIViewRepresentable {
 
 
 private struct DeveloperPatreonAvatar: View {
-    @EnvironmentObject private var library: PersonalLibraryStore
     let record: LibraryRecord
     @State private var avatarURL: URL?
 
-    private var cachedPatreonURL: URL? {
-        URL(string: record.patreonAvatarURL ?? "")
-    }
-
-    private var fallbackURL: URL? {
-        URL(string: record.developerAvatarURL ?? "")
-    }
-
     var body: some View {
         CachedRemoteImage(
-            url: avatarURL ?? cachedPatreonURL,
-            fallbackURL: fallbackURL,
+            url: avatarURL,
             contentMode: .fill
         ) {
             Image(systemName: "person.fill")
@@ -796,14 +786,10 @@ private struct DeveloperPatreonAvatar: View {
                 .background(Color(uiColor: .tertiarySystemFill))
         }
         .task(id: "\(record.id)|\(record.developerProfileURL ?? "")|\(record.gameURL ?? "")") {
-            let resolved = await PatreonAvatarService.shared.avatarURL(
+            avatarURL = await PatreonAvatarService.shared.avatarURL(
                 authorURL: URL(string: record.developerProfileURL ?? ""),
                 gameURL: URL(string: record.gameURL ?? "")
             )
-            guard let resolved else { return }
-            avatarURL = resolved
-            // The canonical creator-avatar cache is shared with game detail pages.
-            // Do not duplicate the same avatar URL into every LibraryRecord.
         }
     }
 }
