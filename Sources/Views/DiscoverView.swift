@@ -22,6 +22,7 @@ struct DiscoverView: View {
     @State private var recommendedGames: [PublicCollectionGame] = []
     @State private var isLoadingRecommendations = false
     @State private var recommendationError: String?
+    @State private var recommendationReloadToken = UUID()
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -47,6 +48,7 @@ struct DiscoverView: View {
             .overlay(alignment: .topLeading) {
                 DiscoveryFeedReader(
                     url: recommendationURL,
+                    reloadToken: recommendationReloadToken,
                     onLoad: { games in
                         recommendedGames = games.filter { !library.contains($0.id) }
                         isLoadingRecommendations = false
