@@ -169,12 +169,14 @@ final class PatreonAvatarService {
                 return String(html[lower..<upper]).lowercased()
             }()
 
-            let raw = attribute("data-src", from: tag)
-                ?? attribute("data-lazy-src", from: tag)
-                ?? attribute("data-original", from: tag)
-                ?? attribute("src", from: tag)
-                ?? attribute("srcset", from: tag)?.split(separator: ",").last
-                    .map { String($0).split(separator: " ").first.map(String.init) ?? String($0) }
+            var raw = attribute("data-src", from: tag)
+            if raw == nil { raw = attribute("data-lazy-src", from: tag) }
+            if raw == nil { raw = attribute("data-original", from: tag) }
+            if raw == nil { raw = attribute("src", from: tag) }
+            if raw == nil, let srcset = attribute("srcset", from: tag),
+               let largest = srcset.split(separator: ",").last {
+                raw = String(largest).split(separator: " ").first.map(String.init)
+            }
             var score = 0
             if normalizedName.map({ !$0.isEmpty && alt == $0 }) == true { score += 120 }
             if className.contains("avatar") || id.contains("avatar") || testID.contains("avatar") { score += 90 }
