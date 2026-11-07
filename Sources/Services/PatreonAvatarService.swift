@@ -41,7 +41,7 @@ final class PatreonAvatarService {
         }
 
         let patreonURL = pages.lazy.compactMap {
-            extractPatreonURL(from: $0.1, baseURL: $0.0)
+            self.extractPatreonURL(from: $0.1, baseURL: $0.0)
         }.first
         guard let patreonURL,
               let patreonHTML = try? await fetchHTML(patreonURL),
