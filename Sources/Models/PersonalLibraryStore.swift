@@ -258,6 +258,7 @@ final class PersonalLibraryStore: ObservableObject {
     func updateSparkMetadata(_ metadataByGameID: [String: SparkPlayMetadata]) {
         guard !metadataByGameID.isEmpty else { return }
         var didChange = false
+        var changedGameIDs = Set<String>()
         let context = database.context
 
         for index in records.indices {
@@ -284,13 +285,14 @@ final class PersonalLibraryStore: ObservableObject {
             }
             if recordChanged {
                 records[index] = updated
+                changedGameIDs.insert(updated.id)
                 didChange = true
             }
         }
 
         guard didChange else { return }
         do {
-            for record in records {
+            for record in records where changedGameIDs.contains(record.id) {
                 guard let runtime = record.sparkPlaytimeSeconds else { continue }
                 let gameID = record.id
                 let descriptor = FetchDescriptor<DBSparkMetadata>(
