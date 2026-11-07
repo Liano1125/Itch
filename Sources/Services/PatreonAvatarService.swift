@@ -4,34 +4,18 @@ import Foundation
 final class PatreonAvatarService {
     static let shared = PatreonAvatarService()
 
-    private let cachePrefix = "itchPocket.creatorAvatarURL.v5."
-    private let legacyCachePrefix = "itchPocket.creatorAvatarURL.v4."
-    private let failurePrefix = "itchPocket.creatorAvatarFailure.v3."
-    private let legacyFailurePrefix = "itchPocket.creatorAvatarFailure.v2."
     private let failureCacheDuration: TimeInterval = 6 * 60 * 60
+    private let database = AppDatabase.shared
 
     private init() {}
 
     /// Resolves and caches one avatar per canonical creator profile, shared by all games.
     /// Avatar priority: Patreon → itch.io → F95Zone → Discord.
+    /// Resolves a creator avatar once and stores it on the canonical Developer row.
+    /// All games by the same creator then read the same avatar metadata.
     func avatarURL(authorURL: URL?, gameURL: URL? = nil) async -> URL? {
-        let candidateURLs = [authorURL, gameURL].compactMap { $0 }
         if let authorURL, let cached = cachedAvatar(for: authorURL) { return cached }
-        if authorURL == nil, let gameURL, let cached = cachedAvatar(for: gameURL) { return cached }
-
-        // Migrate old per-game/per-page URL entries into the canonical profile key.
-        for candidate in candidateURLs {
-            let legacyKey = legacyCachePrefix + candidate.absoluteString
-            if let cachedString = AppDataStore.string(forKey: legacyKey),
-               let cached = URL(string: cachedString) {
-                let identity = authorURL ?? candidate
-                AppDataStore.set(cachedString, forKey: cachePrefix + canonicalKey(for: identity))
-                return cached
-            }
-        }
-
-        let initialIdentity = authorURL ?? gameURL
-        if let initialIdentity, isFailureCached(for: initialIdentity) { return nil }
+        if let authorURL, isFailureCached(for: authorURL) { return nil }
 
         var pages: [(URL, String)] = []
         if let authorURL, let html = try? await fetchHTML(authorURL) {
@@ -53,67 +37,64 @@ final class PatreonAvatarService {
             }
         }
 
-        // 1. Patreon creator avatar
         var avatar: URL?
+        var avatarSource: String?
         if let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(patreonURL) {
             avatar = extractOpenGraphImage(from: html, baseURL: patreonURL)
                 ?? extractProfileAvatar(from: html, baseURL: patreonURL)
+            if avatar != nil { avatarSource = "patreon" }
         }
 
-        // 2. itch.io creator avatar
         if avatar == nil {
             avatar = pages.lazy.compactMap { self.extractItchAvatar(from: $0.1, baseURL: $0.0) }.first
+            if avatar != nil { avatarSource = "itch" }
         }
 
-        // 3. F95Zone avatar
         if avatar == nil,
            let f95URL = pages.lazy.compactMap({ self.extractExternalURL(domains: ["f95zone.to"], from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(f95URL) {
             avatar = extractProfileAvatar(from: html, baseURL: f95URL)
                 ?? extractOpenGraphImage(from: html, baseURL: f95URL)
+            if avatar != nil { avatarSource = "f95zone" }
         }
 
-        // 4. Discord metadata as the final fallback
         if avatar == nil,
            let discordURL = pages.lazy.compactMap({ self.extractExternalURL(domains: ["discord.gg", "discord.com"], from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(discordURL) {
             avatar = extractOpenGraphImage(from: html, baseURL: discordURL)
                 ?? extractProfileAvatar(from: html, baseURL: discordURL)
+            if avatar != nil { avatarSource = "discord" }
         }
 
-        let identity = resolvedAuthorURL ?? authorURL ?? gameURL
-        guard let identity else { return avatar }
-        let key = cachePrefix + canonicalKey(for: identity)
-        guard let avatar else {
-            AppDataStore.set(Date(), forKey: failurePrefix + canonicalKey(for: identity))
-            return nil
+        guard let identity = resolvedAuthorURL ?? authorURL else { return avatar }
+        let key = canonicalKey(for: identity)
+        do {
+            if try database.developer(id: key) == nil {
+                try database.upsertDeveloper(id: key, name: "itch.io 开发者", profileURL: identity.absoluteString)
+            }
+            guard let avatar else {
+                try database.setState(Date(), for: "avatarFailure.\(key)")
+                return nil
+            }
+            try database.setDeveloperAvatar(id: key, url: avatar.absoluteString, source: avatarSource)
+            try database.setState(nil as Date?, for: "avatarFailure.\(key)")
+            return avatar
+        } catch {
+            print("itchPocket developer avatar persistence failed: \(error)")
+            return avatar
         }
-
-        AppDataStore.set(avatar.absoluteString, forKey: key)
-        AppDataStore.removeValue(forKey: failurePrefix + canonicalKey(for: identity))
-        return avatar
     }
 
     private func cachedAvatar(for url: URL) -> URL? {
         let key = canonicalKey(for: url)
-        if let cached = AppDataStore.string(forKey: cachePrefix + key),
-           let resolved = URL(string: cached) {
-            return resolved
-        }
-        // Read the v4 cache once as a migration fallback.
-        if let legacy = AppDataStore.string(forKey: legacyCachePrefix + url.absoluteString),
-           let resolved = URL(string: legacy) {
-            AppDataStore.set(legacy, forKey: cachePrefix + key)
-            return resolved
-        }
-        return nil
+        guard let value = try? database.developer(id: key)?.avatarURL else { return nil }
+        return value.flatMap(URL.init(string:))
     }
 
     private func isFailureCached(for url: URL) -> Bool {
         let key = canonicalKey(for: url)
-        let failedAt = AppDataStore.date(forKey: failurePrefix + key)
-            ?? AppDataStore.date(forKey: legacyFailurePrefix + url.absoluteString)
+        guard let failedAt = try? database.state(for: "avatarFailure.\(key)")?.dateValue else { return false }
         return failedAt.map { Date().timeIntervalSince($0) < failureCacheDuration } ?? false
     }
 
