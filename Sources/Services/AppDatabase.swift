@@ -137,6 +137,14 @@ final class AppDatabase {
         try save()
     }
 
+    func setGameDescription(_ description: String, for gameID: String) throws {
+        guard let item = try game(id: gameID) else { return }
+        guard item.descriptionText != description else { return }
+        item.descriptionText = description
+        item.updatedAt = .now
+        try save()
+    }
+
     func galleryURLs(for gameID: String) throws -> [String] {
         try game(id: gameID)?.galleryURLs ?? []
     }
