@@ -167,7 +167,11 @@ struct SparkSyncView: View {
 
             infoRow("最近存档", dateText(game.lastSaveAt))
             infoRow("最近备份", dateText(game.lastBackupAt))
-            infoRow("有效存档数", game.saveCount == 0 ? "未发现" : "\(game.saveCount) 个")
+            infoRow("有效存档槽位", game.saveCount == 0 ? "未发现" : "\(game.saveCount) 个")
+            if game.duplicateSaveCount > 0 {
+                infoRow("重复存档副本", "\(game.duplicateSaveCount) 份（已去重）")
+            }
+            infoRow("存档来源", game.saveSources.isEmpty ? "备份记录" : game.saveSources.joined(separator: "、"))
             infoRow("上次启动", "Spark 未提供独立启动记录")
         }
         .padding(15)
