@@ -14,8 +14,8 @@ private struct DiscoveryFeed: Identifiable {
     let subtitle: String
     let url: URL
     static let curated: [DiscoveryFeed] = [
-        DiscoveryFeed(id: "adjacent-renpy", title: "Adult Ren'Py Games", subtitle: "更多成人 Ren'Py 游戏", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult-themes")!),
-        DiscoveryFeed(id: "adjacent-3d", title: "Other 3D Adult Games", subtitle: "其他 3D 成人游戏", url: URL(string: "https://itch.io/games/tag-3d/tag-adult-themes")!)
+        DiscoveryFeed(id: "adjacent-renpy", title: "Adult Ren'Py Games", subtitle: "更多成人 Ren'Py 游戏", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult")!),
+        DiscoveryFeed(id: "adjacent-3d", title: "Other 3D Adult Games", subtitle: "其他 3D 成人游戏", url: URL(string: "https://itch.io/games/tag-3d/tag-adult")!)
     ]
 }
 
@@ -216,7 +216,7 @@ struct DiscoverView: View {
             if !games.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
-                        ForEach(games.prefix(10)) { game in
+                        ForEach(games.prefix(24)) { game in
                             NavigationLink {
                                 GameDetailView(game: game)
                             } label: {
@@ -889,6 +889,9 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
         var parent: CuratedDiscoveryFeedReader
         var reloadToken: UUID
         private var index = 0
+        private var page = 1
+        private var pageGames: [PublicCollectionGame] = []
+        private let maximumPages = 4
 
         init(parent: CuratedDiscoveryFeedReader) {
             self.parent = parent
@@ -897,6 +900,8 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
 
         func begin(in view: WKWebView) {
             index = 0
+            page = 1
+            pageGames = []
             parent.onStart()
             loadCurrent(in: view)
         }
@@ -906,7 +911,19 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
                 DispatchQueue.main.async { self.parent.onFinish() }
                 return
             }
-            view.load(URLRequest(url: parent.feeds[index].url, timeoutInterval: 30))
+            guard var components = URLComponents(url: parent.feeds[index].url, resolvingAgainstBaseURL: false) else {
+                advanceFeed(in: view)
+                return
+            }
+            components.queryItems = (components.queryItems ?? []).filter { $0.name != "page" }
+            if page > 1 {
+                components.queryItems?.append(URLQueryItem(name: "page", value: String(page)))
+            }
+            guard let url = components.url else {
+                advanceFeed(in: view)
+                return
+            }
+            view.load(URLRequest(url: url, timeoutInterval: 30))
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -915,32 +932,46 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
             webView.evaluateJavaScript(Self.script) { result, error in
                 if let error {
                     DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
-                } else if let json = result as? String, let data = json.data(using: .utf8) {
-                    do {
-                        let games = try JSONDecoder().decode([PublicCollectionGame].self, from: data)
-                        DispatchQueue.main.async { self.parent.onLoad(feed.id, games) }
-                    } catch {
-                        DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
-                    }
-                } else {
-                    DispatchQueue.main.async { self.parent.onError("没有读取到作品列表。") }
+                    self.advanceFeed(in: webView)
+                    return
                 }
-                self.advance(in: webView)
+                guard let json = result as? String, let data = json.data(using: .utf8) else {
+                    DispatchQueue.main.async { self.parent.onError("没有读取到作品列表。") }
+                    self.advanceFeed(in: webView)
+                    return
+                }
+                do {
+                    let games = try JSONDecoder().decode([PublicCollectionGame].self, from: data)
+                    var seen = Set(self.pageGames.map { $0.id })
+                    self.pageGames.append(contentsOf: games.filter { seen.insert($0.id).inserted })
+                    DispatchQueue.main.async { self.parent.onLoad(feed.id, self.pageGames) }
+                    if games.isEmpty || self.page >= self.maximumPages {
+                        self.advanceFeed(in: webView)
+                    } else {
+                        self.page += 1
+                        self.loadCurrent(in: webView)
+                    }
+                } catch {
+                    DispatchQueue.main.async { self.parent.onError("推荐数据解析失败：\\(error.localizedDescription)") }
+                    self.advanceFeed(in: webView)
+                }
             }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
-            advance(in: webView)
+            advanceFeed(in: webView)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
-            advance(in: webView)
+            advanceFeed(in: webView)
         }
 
-        private func advance(in view: WKWebView) {
+        private func advanceFeed(in view: WKWebView) {
             index += 1
+            page = 1
+            pageGames = []
             loadCurrent(in: view)
         }
 
