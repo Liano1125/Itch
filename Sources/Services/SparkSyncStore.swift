@@ -280,13 +280,15 @@ private enum SparkArchiveScanner {
     }
 
     private static func containsSaveFiles(_ directory: URL) -> Bool {
-        guard let children = try? FileManager.default.contentsOfDirectory(
+        guard let enumerator = FileManager.default.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+            includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else { return false }
-        return children.contains { $0.pathExtension.lowercased() == "save" } ||
-            children.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        for case let fileURL as URL in enumerator {
+            if fileURL.pathExtension.lowercased() == "save" { return true }
+        }
+        return false
     }
 
     private static func locateDirectory(named name: String, under root: URL, maxDepth: Int) -> URL? {
