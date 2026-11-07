@@ -234,23 +234,25 @@ final class PersonalLibraryStore: ObservableObject {
         statusEvents[game.id, default: []].append(
             LibraryStatusEvent(fromStatus: nil, toStatus: status, changedAt: now)
         )
-        persist(record)
-        saveStatusEvents()
+        persist(record, save: false)
+        saveStatusEvents(save: false)
+        try? database.save()
     }
 
     func update(_ record: LibraryRecord) {
         guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
         let previous = records[index]
         var updated = record
+        updated.updatedAt = Date()
         if previous.status != updated.status {
-            updated.updatedAt = Date()
             statusEvents[record.id, default: []].append(
                 LibraryStatusEvent(fromStatus: previous.status, toStatus: updated.status, changedAt: updated.updatedAt)
             )
-            saveStatusEvents()
+            saveStatusEvents(save: false)
         }
         records[index] = updated
-        persist(updated)
+        persist(updated, save: false)
+        try? database.save()
     }
 
     /// Persists one complete scan in a single database save, and only writes
@@ -328,12 +330,13 @@ final class PersonalLibraryStore: ObservableObject {
         } catch {
             print("itchPocket library removal failed: \(error)")
         }
-        saveStatusEvents()
-        for index in collections.indices {
+        saveStatusEvents(save: false)
+        for index in collections.indices where collections[index].gameIDs.contains(id) {
             collections[index].gameIDs.removeAll { $0 == id }
             collections[index].updatedAt = Date()
         }
-        saveCollections()
+        saveCollections(save: false)
+        try? database.save()
     }
 
     private func load() {
@@ -411,7 +414,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-    private func persist(_ record: LibraryRecord) {
+    private func persist(_ record: LibraryRecord, save shouldSave: Bool = true) {
         let context = database.context
         do {
             let developerID: String?
@@ -427,98 +430,132 @@ final class PersonalLibraryStore: ObservableObject {
                 let descriptor = FetchDescriptor<DBDeveloper>(predicate: #Predicate { $0.id == developerID })
                 let developer = try context.fetch(descriptor).first ?? DBDeveloper(id: developerID, name: name)
                 if developer.modelContext == nil { context.insert(developer) }
-                developer.name = name
-                developer.profileURL = record.developerProfileURL ?? developer.profileURL
-                developer.patreonURL = record.patreonURL ?? developer.patreonURL
-                developer.discordURL = record.discordURL ?? developer.discordURL
-                if let avatar = record.patreonAvatarURL {
+                var changed = false
+                if developer.name != name { developer.name = name; changed = true }
+                if let profileURL = record.developerProfileURL, developer.profileURL != profileURL {
+                    developer.profileURL = profileURL
+                    changed = true
+                }
+                if let patreonURL = record.patreonURL, developer.patreonURL != patreonURL {
+                    developer.patreonURL = patreonURL
+                    changed = true
+                }
+                if let discordURL = record.discordURL, developer.discordURL != discordURL {
+                    developer.discordURL = discordURL
+                    changed = true
+                }
+                if let avatar = record.patreonAvatarURL,
+                   developer.avatarURL != avatar || developer.avatarSource != "patreon" {
                     developer.avatarURL = avatar
                     developer.avatarSource = "patreon"
+                    changed = true
                 } else if let avatar = record.developerAvatarURL, developer.avatarURL == nil {
                     developer.avatarURL = avatar
                     developer.avatarSource = "itch"
+                    changed = true
                 }
-                developer.updatedAt = .now
+                if changed { developer.updatedAt = .now }
             }
 
-            let gameDescriptor = FetchDescriptor<DBGame>(predicate: #Predicate { $0.id == record.id })
-            let game = try context.fetch(gameDescriptor).first ?? DBGame(id: record.id, title: record.title)
+            let gameID = record.id
+            let gameDescriptor = FetchDescriptor<DBGame>(predicate: #Predicate { $0.id == gameID })
+            let game = try context.fetch(gameDescriptor).first ?? DBGame(id: gameID, title: record.title)
             if game.modelContext == nil { context.insert(game) }
-            game.title = record.title
-            game.gameURL = record.gameURL
-            game.coverURL = record.coverURL
-            game.engine = record.engine
-            game.discoveryTagsData = record.discoveryTags.flatMap { try? JSONEncoder().encode($0) }
-            game.developerID = developerID
-            game.updatedAt = .now
+            var gameChanged = false
+            if game.title != record.title { game.title = record.title; gameChanged = true }
+            if game.gameURL != record.gameURL { game.gameURL = record.gameURL; gameChanged = true }
+            if game.coverURL != record.coverURL { game.coverURL = record.coverURL; gameChanged = true }
+            if game.engine != record.engine { game.engine = record.engine; gameChanged = true }
+            if game.developerID != developerID { game.developerID = developerID; gameChanged = true }
+            let tagsData = record.discoveryTags.flatMap { try? JSONEncoder().encode($0) }
+            if game.discoveryTagsData != tagsData { game.discoveryTagsData = tagsData; gameChanged = true }
+            if gameChanged { game.updatedAt = .now }
 
-            let entryDescriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == record.id })
-            let entry = try context.fetch(entryDescriptor).first ?? DBLibraryEntry(gameID: record.id, status: record.status.rawValue)
+            let entryDescriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
+            let entry = try context.fetch(entryDescriptor).first ?? DBLibraryEntry(gameID: gameID, status: record.status.rawValue)
             if entry.modelContext == nil { context.insert(entry) }
-            entry.status = record.status.rawValue
-            entry.isFavorite = record.isFavorite
-            entry.notes = record.notes
-            entry.addedAt = record.addedAt
-            entry.updatedAt = record.updatedAt
+            if entry.status != record.status.rawValue { entry.status = record.status.rawValue }
+            if entry.isFavorite != record.isFavorite { entry.isFavorite = record.isFavorite }
+            if entry.notes != record.notes { entry.notes = record.notes }
+            if entry.addedAt != record.addedAt { entry.addedAt = record.addedAt }
+            if entry.updatedAt != record.updatedAt { entry.updatedAt = record.updatedAt }
 
-            let oldUpdates = try context.fetch(FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.gameID == record.id }))
-            let currentIDs = Set((record.gameUpdates ?? []).map(\.id))
+            let oldUpdates = try context.fetch(FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.gameID == gameID }))
+            let updates = record.gameUpdates ?? []
+            let currentIDs = Set(updates.map(\.id))
             for old in oldUpdates where !currentIDs.contains(old.id) { context.delete(old) }
-            for update in record.gameUpdates ?? [] {
+            for update in updates {
                 let updateID = update.id
                 let updateDescriptor = FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.id == updateID })
-                let item = try context.fetch(updateDescriptor).first ?? DBGameUpdate(id: update.id, gameID: record.id, summary: update.summary)
+                let item = try context.fetch(updateDescriptor).first ?? DBGameUpdate(id: updateID, gameID: gameID, summary: update.summary)
                 if item.modelContext == nil { context.insert(item) }
-                item.gameID = record.id
-                item.title = update.title
-                item.summary = update.summary
-                item.detectedAt = update.detectedAt
-                item.publishedAt = update.publishedAt
-                item.url = update.url
-                item.sourceID = update.sourceID
-                item.isHistorical = update.isHistorical ?? false
+                if item.gameID != gameID { item.gameID = gameID }
+                if item.title != update.title { item.title = update.title }
+                if item.summary != update.summary { item.summary = update.summary }
+                if item.detectedAt != update.detectedAt { item.detectedAt = update.detectedAt }
+                if item.publishedAt != update.publishedAt { item.publishedAt = update.publishedAt }
+                if item.url != update.url { item.url = update.url }
+                if item.sourceID != update.sourceID { item.sourceID = update.sourceID }
+                let isHistorical = update.isHistorical ?? false
+                if item.isHistorical != isHistorical { item.isHistorical = isHistorical }
             }
-            try database.save()
+            if shouldSave { try database.save() }
         } catch {
             print("itchPocket library database write failed: \(error)")
         }
     }
 
-    private func saveStatusEvents() {
+    private func saveStatusEvents(save shouldSave: Bool = true) {
         let context = database.context
         do {
-            try context.delete(model: DBLibraryStatusEvent.self)
-            for (gameID, events) in statusEvents {
-                for event in events {
-                    context.insert(DBLibraryStatusEvent(
-                        id: event.id,
-                        gameID: gameID,
-                        fromStatus: event.fromStatus?.rawValue,
-                        toStatus: event.toStatus.rawValue,
-                        changedAt: event.changedAt
-                    ))
-                }
+            let desired = statusEvents.flatMap { gameID, events in events.map { (gameID, $0) } }
+            let existing = try context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
+            let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+            let desiredIDs = Set(desired.map { $0.1.id })
+            for item in existing where !desiredIDs.contains(item.id) { context.delete(item) }
+            for (gameID, event) in desired {
+                let item = existingByID[event.id] ?? DBLibraryStatusEvent(
+                    id: event.id,
+                    gameID: gameID,
+                    fromStatus: event.fromStatus?.rawValue,
+                    toStatus: event.toStatus.rawValue,
+                    changedAt: event.changedAt
+                )
+                if item.modelContext == nil { context.insert(item) }
+                if item.gameID != gameID { item.gameID = gameID }
+                let fromStatus = event.fromStatus?.rawValue
+                if item.fromStatus != fromStatus { item.fromStatus = fromStatus }
+                if item.toStatus != event.toStatus.rawValue { item.toStatus = event.toStatus.rawValue }
+                if item.changedAt != event.changedAt { item.changedAt = event.changedAt }
             }
-            try database.save()
+            if shouldSave { try database.save() }
         } catch {
             print("itchPocket status history save failed: \(error)")
         }
     }
 
-    private func saveCollections() {
+    private func saveCollections(save shouldSave: Bool = true) {
         let context = database.context
         do {
-            try context.delete(model: DBLibraryCollection.self)
+            let existing = try context.fetch(FetchDescriptor<DBLibraryCollection>())
+            let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+            let desiredIDs = Set(collections.map(\.id))
+            for item in existing where !desiredIDs.contains(item.id) { context.delete(item) }
             for collection in collections {
-                context.insert(DBLibraryCollection(
+                let item = existingByID[collection.id] ?? DBLibraryCollection(
                     id: collection.id,
                     title: collection.title,
                     gameIDs: collection.gameIDs,
                     createdAt: collection.createdAt,
                     updatedAt: collection.updatedAt
-                ))
+                )
+                if item.modelContext == nil { context.insert(item) }
+                if item.title != collection.title { item.title = collection.title }
+                if item.gameIDs != collection.gameIDs { item.gameIDs = collection.gameIDs }
+                if item.createdAt != collection.createdAt { item.createdAt = collection.createdAt }
+                if item.updatedAt != collection.updatedAt { item.updatedAt = collection.updatedAt }
             }
-            try database.save()
+            if shouldSave { try database.save() }
         } catch {
             print("itchPocket collections save failed: \(error)")
         }
