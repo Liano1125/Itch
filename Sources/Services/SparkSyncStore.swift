@@ -89,6 +89,8 @@ final class SparkSyncStore: ObservableObject {
         guard !isScanning else { return }
         isScanning = true
         errorMessage = nil
+        summaries = []
+        unmatchedGameNames = []
         defer { isScanning = false }
 
         do {
@@ -171,10 +173,25 @@ private struct SparkAggregate {
 }
 
 private enum SparkArchiveScanner {
+    enum ScanError: LocalizedError {
+        case sparkFoldersNotFound
+
+        var errorDescription: String? {
+            switch self {
+            case .sparkFoldersNotFound:
+                return "所选文件夹内没有找到 Saves 或 Backups。请在 iCloud Drive 中选择包含这两个目录的 icloud-spark 文件夹，并确认 Spark 文件已同步到本机。"
+            }
+        }
+    }
+
     static func scan(rootURL: URL) throws -> [SparkGameSummary] {
         let fileManager = FileManager.default
-        let savesURL = childDirectory(named: "Saves", in: rootURL)
-        let backupsURL = childDirectory(named: "Backups", in: rootURL)
+        // 兼容 iCloud Drive 中间多套一层目录的情况，最多向下查找 4 层。
+        let savesURL = locateDirectory(named: "Saves", under: rootURL, maxDepth: 4)
+        let backupsURL = locateDirectory(named: "Backups", under: rootURL, maxDepth: 4)
+        guard savesURL != nil || backupsURL != nil else {
+            throw ScanError.sparkFoldersNotFound
+        }
         var aggregates: [String: SparkAggregate] = [:]
 
         if let savesURL,
@@ -222,15 +239,30 @@ private enum SparkArchiveScanner {
         }.sorted { $0.gameName.localizedCaseInsensitiveCompare($1.gameName) == .orderedAscending }
     }
 
-    private static func childDirectory(named name: String, in root: URL) -> URL? {
-        guard let children = try? FileManager.default.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return nil }
-        return children.first {
-            $0.lastPathComponent.caseInsensitiveCompare(name) == .orderedSame
+    private static func locateDirectory(named name: String, under root: URL, maxDepth: Int) -> URL? {
+        var queue: [(url: URL, depth: Int)] = [(root, 0)]
+        var visited = Set<String>()
+
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            guard visited.insert(current.url.standardizedFileURL.path).inserted,
+                  current.depth < maxDepth,
+                  let children = try? FileManager.default.contentsOfDirectory(
+                    at: current.url,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                  ) else { continue }
+
+            for child in children {
+                let values = try? child.resourceValues(forKeys: [.isDirectoryKey])
+                guard values?.isDirectory == true else { continue }
+                if child.lastPathComponent.caseInsensitiveCompare(name) == .orderedSame {
+                    return child
+                }
+                queue.append((child, current.depth + 1))
+            }
         }
+        return nil
     }
 
     private static func gameNameForSave(_ url: URL, root: URL) -> String? {
