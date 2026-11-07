@@ -71,6 +71,13 @@ final class PersistentImageCache {
         }
     }
 
+    func prune() async {
+        let cacheDirectory = directory
+        await Task.detached(priority: .utility) {
+            prunePersistentImageCache(at: cacheDirectory)
+        }.value
+    }
+
     func clear() async {
         memory.removeAllObjects()
         let cacheDirectory = directory
