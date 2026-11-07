@@ -17,6 +17,7 @@ final class PersistentImageCache {
             ?? FileManager.default.temporaryDirectory.appendingPathComponent("itchPocket-images", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         memory.countLimit = 300
+        memory.totalCostLimit = 100 * 1024 * 1024
     }
 
     func image(for url: URL?) async -> UIImage? {
@@ -42,7 +43,7 @@ final class PersistentImageCache {
             try? Data(contentsOf: file, options: .mappedIfSafe)
         }.value
         if let data = diskData, let image = UIImage(data: data) {
-            memory.setObject(image, forKey: key)
+            memory.setObject(image, forKey: key, cost: data.count)
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
             return image
         }
@@ -68,6 +69,19 @@ final class PersistentImageCache {
         } catch {
             return nil
         }
+    }
+
+    func clear() async {
+        memory.removeAllObjects()
+        let cacheDirectory = directory
+        await Task.detached(priority: .utility) {
+            let files = (try? FileManager.default.contentsOfDirectory(
+                at: cacheDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )) ?? []
+            for file in files { try? FileManager.default.removeItem(at: file) }
+        }.value
     }
 
     func prefetch(_ urls: [URL]) async {
