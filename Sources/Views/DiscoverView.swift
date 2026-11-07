@@ -35,9 +35,25 @@ struct DiscoverView: View {
     @State private var recommendationError: String?
     @State private var recommendationReloadToken = UUID()
     @State private var curatedReloadToken = UUID()
-    @State private var curatedGames: [String: [PublicCollectionGame]] = [:]
+    @State private var curatedGames: [String: [PublicCollectionGame]] = Self.loadCuratedCache()
     @State private var isLoadingCurated = false
     @State private var curatedError: String?
+
+    private static let curatedCacheKey = "itchPocket.curatedFeeds.v1"
+
+    private static func loadCuratedCache() -> [String: [PublicCollectionGame]] {
+        guard let data = UserDefaults.standard.data(forKey: curatedCacheKey),
+              let cached = try? JSONDecoder().decode([String: [PublicCollectionGame]].self, from: data) else {
+            return [:]
+        }
+        return cached
+    }
+
+    private func persistCuratedCache() {
+        let compact = curatedGames.mapValues { Array($0.prefix(24)) }
+        guard let data = try? JSONEncoder().encode(compact) else { return }
+        UserDefaults.standard.set(data, forKey: Self.curatedCacheKey)
+    }
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -85,6 +101,7 @@ struct DiscoverView: View {
                             // Never replace a populated feed with an empty page/result.
                             if !available.isEmpty || curatedGames[feedID] == nil {
                                 curatedGames[feedID] = available
+                                persistCuratedCache()
                             }
                             if !available.isEmpty { curatedError = nil }
                         },
@@ -181,7 +198,6 @@ struct DiscoverView: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button {
-                        curatedGames = [:]
                         curatedReloadToken = UUID()
                     } label: {
                         Label("刷新", systemImage: "arrow.clockwise")
@@ -200,7 +216,7 @@ struct DiscoverView: View {
 
     @ViewBuilder
     private func curatedFeedRow(_ feed: DiscoveryFeed) -> some View {
-        let games = curatedGames[feed.id] ?? []
+        let games = (curatedGames[feed.id] ?? []).filter { !library.contains($0.id) }
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
