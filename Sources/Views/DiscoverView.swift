@@ -14,12 +14,8 @@ private struct DiscoveryFeed: Identifiable {
     let subtitle: String
     let url: URL
     static let curated: [DiscoveryFeed] = [
-        DiscoveryFeed(id: "core", title: "成人视觉小说", subtitle: "Visual Novel · Adult themes", url: URL(string: "https://itch.io/games/new-and-popular/genre-visual-novel/tag-adult-themes")!),
-        DiscoveryFeed(id: "renpy", title: "Ren'Py 视觉小说", subtitle: "成人题材 · Ren'Py 引擎", url: URL(string: "https://itch.io/games/genre-visual-novel/tag-renpy/tag-adult-themes")!),
-        DiscoveryFeed(id: "3d", title: "3D 成人作品", subtitle: "成人题材 · 3D 视觉体验", url: URL(string: "https://itch.io/games/genre-visual-novel/tag-3d/tag-adult-themes")!),
-        DiscoveryFeed(id: "free", title: "免费成人视觉小说", subtitle: "只筛选符合定位的免费作品", url: URL(string: "https://itch.io/games/free/genre-visual-novel/tag-adult-themes")!),
-        DiscoveryFeed(id: "adjacent-renpy", title: "其他成人 Ren'Py 游戏", subtitle: "未标记 Visual Novel，但符合成人与 Ren'Py 标签", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult-themes")!),
-        DiscoveryFeed(id: "adjacent-3d", title: "其他 3D 成人游戏", subtitle: "未标记 Visual Novel，但符合成人与 3D 标签", url: URL(string: "https://itch.io/games/tag-3d/tag-adult-themes")!)
+        DiscoveryFeed(id: "adjacent-renpy", title: "More Adult Ren'Py Games", subtitle: "更多成人 Ren'Py 游戏", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult-themes")!),
+        DiscoveryFeed(id: "adjacent-3d", title: "Other 3D Adult Game", subtitle: "其他 3D 成人游戏", url: URL(string: "https://itch.io/games/tag-3d/tag-adult-themes")!)
     ]
 }
 
@@ -55,7 +51,7 @@ struct DiscoverView: View {
                     searchBar
                     curatedFeedSection
                     personalizedSection
-                    browseSection
+                    developerSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
@@ -117,7 +113,7 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("发现值得玩的\n成人视觉小说")
+            Text("发现值得玩的\\n视觉小说游戏")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
@@ -174,12 +170,8 @@ struct DiscoverView: View {
     }
 
     private var curatedFeedSection: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("成人视觉小说发现").font(.title3.bold())
-                    Text("围绕 Adult、Visual Novel、Ren'Py 与 3D 筛选").font(.caption).foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
                 Spacer()
                 if isLoadingCurated {
                     ProgressView().controlSize(.small)
@@ -188,14 +180,16 @@ struct DiscoverView: View {
                         curatedGames = [:]
                         curatedReloadToken = UUID()
                     } label: {
-                        Image(systemName: "arrow.clockwise").font(.subheadline.weight(.semibold))
+                        Label("刷新", systemImage: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
                     }
-                    .accessibilityLabel("刷新精选内容")
+                    .accessibilityLabel("刷新作品")
                 }
             }
             ForEach(DiscoveryFeed.curated) { feed in curatedFeedRow(feed) }
             if let curatedError, curatedGames.isEmpty, !isLoadingCurated {
-                Text("暂时无法加载作品：\\(curatedError)").font(.caption).foregroundStyle(.secondary)
+                Text("暂时无法加载作品：\\(curatedError)")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -497,314 +491,87 @@ struct DiscoverView: View {
     }
 
     private var personalizedSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(library.records.isEmpty ? "开启你的探索之旅" : "为你的游戏口味寻找新灵感")
-                        .font(.title3.bold())
-                    Text(library.records.isEmpty
-                         ? "把喜欢的作品加入游戏库，发现页就能逐渐了解你的偏好。"
-                         : "从你收藏和正在玩的作品出发，继续发现值得关注的创作者。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("为你的游戏口味寻找新灵感")
+                    .font(.title3.bold())
                 Spacer()
                 Image(systemName: "sparkles")
                     .font(.title3)
                     .foregroundStyle(Color(red: 0.98, green: 0.48, blue: 0.38))
             }
-
-            if library.records.isEmpty {
-                NavigationLink {
-                    ItchSearchResultsView(query: "", customURL: "https://itch.io/games/featured")
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "bookmark.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 42, height: 42)
-                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 13))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("先从精选作品开始")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("浏览作品，遇到喜欢的游戏时加入游戏库")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(14)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            } else {
-                if !recommendedSeedGames.isEmpty {
-                    VStack(alignment: .leading, spacing: 9) {
-                        HStack {
-                            Text("从这些作品继续探索")
-                                .font(.headline)
-                            Spacer()
-                            Text("基于你的游戏库")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 11) {
-                                ForEach(recommendedSeedGames) { record in
-                                    NavigationLink {
-                                        ItchSearchResultsView(query: record.title)
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            ZStack(alignment: .bottomLeading) {
-                                                CachedRemoteImage(
-                                                    url: URL(string: record.coverURL ?? ""),
-                                                    contentMode: .fill
-                                                ) {
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .fill(Color(uiColor: .tertiarySystemFill))
-                                                        .overlay {
-                                                            Image(systemName: "gamecontroller.fill")
-                                                                .foregroundStyle(.tertiary)
-                                                        }
-                                                }
-                                                .frame(width: 158, height: 94)
-                                                .clipped()
-                                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                Text(record.isFavorite ? "已收藏" : record.status.rawValue)
-                                                    .font(.caption2.weight(.semibold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.horizontal, 7)
-                                                    .padding(.vertical, 4)
-                                                    .background(.black.opacity(0.58), in: Capsule())
-                                                    .padding(7)
-                                            }
-                                            Text(record.title)
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundStyle(.primary)
-                                                .lineLimit(1)
-                                                .frame(width: 158, alignment: .leading)
-                                            Text("搜索相关作品")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .frame(width: 158, alignment: .leading)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !libraryDiscoveryTags.isEmpty {
-                    VStack(alignment: .leading, spacing: 9) {
-                        HStack {
-                            Text("你常玩的题材")
-                                .font(.headline)
-                            Spacer()
-                            Text("来自游戏页面标签")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
-                            ForEach(libraryDiscoveryTags) { tag in
-                                NavigationLink {
-                                    ItchSearchResultsView(query: "", customURL: tag.url)
-                                } label: {
-                                    HStack(spacing: 9) {
-                                        Image(systemName: "tag.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(Color.accentColor)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(tag.name)
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundStyle(.primary)
-                                                .lineLimit(1)
-                                            Text("\(tag.gameCount) 款游戏")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer(minLength: 0)
-                                        Image(systemName: "arrow.up.right")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    .padding(11)
-                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-
-                if !libraryDevelopers.isEmpty {
-                    VStack(alignment: .leading, spacing: 9) {
-                        HStack {
-                            Text("你关注过的开发者")
-                                .font(.headline)
-                            Spacer()
-                            Text("按游戏库出现次数")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        ForEach(libraryDevelopers) { developer in
+            if !recommendedSeedGames.isEmpty {
+                Text("从这些作品继续探索")
+                    .font(.headline)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 11) {
+                        ForEach(recommendedSeedGames) { record in
                             NavigationLink {
-                                ItchSearchResultsView(query: developer.name)
+                                ItchSearchResultsView(query: record.title)
                             } label: {
-                                HStack(spacing: 12) {
-                                    DeveloperPatreonAvatar(record: developer.records[0])
-                                        .frame(width: 44, height: 44)
-                                        .clipShape(Circle())
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(developer.name)
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(.primary)
-                                        Text("游戏库中有 \(developer.records.count) 款作品 · 查看更多作品")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ZStack(alignment: .bottomLeading) {
+                                        CachedRemoteImage(url: URL(string: record.coverURL ?? ""), contentMode: .fill) {
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(Color(uiColor: .tertiarySystemFill))
+                                                .overlay { Image(systemName: "gamecontroller.fill").foregroundStyle(.tertiary) }
+                                        }
+                                        .frame(width: 158, height: 94)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        Text(record.isFavorite ? "已收藏" : record.status.rawValue)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 7).padding(.vertical, 4)
+                                            .background(.black.opacity(0.58), in: Capsule()).padding(7)
                                     }
-                                    Spacer()
-                                    Image(systemName: "arrow.up.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
+                                    Text(record.title).font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary).lineLimit(1)
+                                        .frame(width: 158, alignment: .leading)
+                                    Text("搜索相关作品").font(.caption).foregroundStyle(.secondary)
                                 }
-                                .padding(11)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                .frame(width: 158, alignment: .leading)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
+            } else {
+                Text("将喜欢的作品加入游戏库，这里就会根据你的收藏和游玩记录提供探索入口。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
 
-    private var browseSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("按偏好继续探索")
-                .font(.title3.bold())
-
-            explorationGroup(
-                title: "成人视觉小说",
-                items: [
-                    ("最新热门", "flame.fill", "https://itch.io/games/new-and-popular/genre-visual-novel/tag-adult-themes"),
-                    ("最新发布", "clock.fill", "https://itch.io/games/most-recent/genre-visual-novel/tag-adult-themes"),
-                    ("评分较高", "star.fill", "https://itch.io/games/top-rated/genre-visual-novel/tag-adult-themes"),
-                    ("免费作品", "gift.fill", "https://itch.io/games/free/genre-visual-novel/tag-adult-themes")
-                ]
-            )
-
-            explorationGroup(
-                title: "引擎与画面",
-                items: [
-                    ("Ren'Py", "book.fill", "https://itch.io/games/genre-visual-novel/tag-renpy/tag-adult-themes"),
-                    ("3D 作品", "cube.fill", "https://itch.io/games/genre-visual-novel/tag-3d/tag-adult-themes"),
-                    ("成人 Ren'Py 扩展", "terminal.fill", "https://itch.io/games/tag-renpy/tag-adult-themes"),
-                    ("成人 3D 扩展", "view.3d", "https://itch.io/games/tag-3d/tag-adult-themes")
-                ]
-            )
-
-            browseRow(
-                title: "itch.io 成人视觉小说目录",
-                subtitle: "在站内查看完整筛选结果",
-                symbol: "square.grid.2x2.fill",
-                tint: .pink,
-                url: "https://itch.io/games/genre-visual-novel/tag-adult-themes"
-            )
-        }
-    }
-
-    private func explorationGroup(
-        title: String,
-        items: [(String, String, String)]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            Text(title).font(.headline)
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(items, id: \.0) { item in
-                    NavigationLink {
-                        ItchSearchResultsView(query: "", customURL: item.2)
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: item.1 == "棋盘图标占位" ? "square.grid.3x3.fill" : item.1)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.accentColor)
-                                .frame(width: 34, height: 34)
-                                .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 10))
-                            Text(item.0)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.tertiary)
+    private var developerSection: some View {
+        Group {
+            if !libraryDevelopers.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("你关注过的开发者").font(.title3.bold())
+                    ForEach(libraryDevelopers) { developer in
+                        NavigationLink {
+                            ItchSearchResultsView(query: developer.name)
+                        } label: {
+                            HStack(spacing: 12) {
+                                DeveloperPatreonAvatar(record: developer.records[0])
+                                    .frame(width: 44, height: 44).clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(developer.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                    Text("游戏库中有 \\(developer.records.count) 款作品 · 查看更多作品")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
+                            .padding(11)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                         }
-                        .padding(12)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
-    }
-
-    private func browseRow(
-        title: String,
-        subtitle: String,
-        symbol: String,
-        tint: Color,
-        url: String,
-        requiresWebLogin: Bool = false
-    ) -> some View {
-        NavigationLink {
-            ItchSearchResultsView(
-                query: "",
-                customURL: url,
-                requiresWebLogin: requiresWebLogin
-            )
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: symbol)
-                    .font(.headline)
-                    .foregroundStyle(tint)
-                    .frame(width: 44, height: 44)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(13)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private func performSearch() {
