@@ -565,4 +565,3 @@ final class PersonalLibraryStore: ObservableObject {
         AppDatabase.canonicalDeveloperID(rawURL)
     }
 }
-}
