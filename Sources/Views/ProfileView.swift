@@ -65,13 +65,13 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Patreon")
                             .font(.headline)
-                        Text(patreon.account == nil ? "连接创作者账户，同步授权范围内的账户资料" : "已连接 Patreon 账户")
+                        Text(patreon.isRestoring ? "正在检查 Patreon 连接状态…" : (patreon.account == nil ? "连接创作者账户，同步授权范围内的账户资料" : "已连接 Patreon 账户"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Circle()
-                        .fill(patreon.account == nil ? Color.secondary.opacity(0.4) : Color.green)
+                        .fill(patreon.isRestoring ? Color.orange : (patreon.account == nil ? Color.secondary.opacity(0.4) : Color.green))
                         .frame(width: 8, height: 8)
                 }
 
@@ -106,6 +106,15 @@ struct ProfileView: View {
                         Label("断开 Patreon 连接", systemImage: "xmark.circle")
                             .font(.subheadline.weight(.medium))
                     }
+                } else if patreon.isRestoring {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("正在恢复账户状态")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
                 } else {
                     Button {
                         Task { await patreon.connect() }
