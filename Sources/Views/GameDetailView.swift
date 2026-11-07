@@ -738,8 +738,8 @@ struct GameDetailView: View {
             engine: result.engine,
             developerID: developerID
         )
-        if let tags = result.discoveryTags {
-            try? AppDatabase.shared.setDiscoveryTags(tags, for: game.id)
+        if !result.discoveryTags.isEmpty {
+            try? AppDatabase.shared.setDiscoveryTags(result.discoveryTags, for: game.id)
         }
         resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
         if !result.galleryURLs.isEmpty {
