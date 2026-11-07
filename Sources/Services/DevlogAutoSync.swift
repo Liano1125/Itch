@@ -24,7 +24,7 @@ enum DevlogAutoSync {
         calendar: GameCalendarStore,
         force: Bool = false
     ) async {
-        let lastAttempt = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+        let lastAttempt = AppDataStore.date(forKey: lastSyncKey)
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < interval {
             scheduleNext()
             return
@@ -39,7 +39,7 @@ enum DevlogAutoSync {
             calendarStore: calendar,
             libraryStore: library
         )
-        UserDefaults.standard.set(Date(), forKey: lastSyncKey)
+        AppDataStore.set(Date(), forKey: lastSyncKey)
         scheduleNext()
     }
 
