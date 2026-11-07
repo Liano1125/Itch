@@ -703,8 +703,19 @@ struct GameDetailView: View {
         cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }
 
         let target = UserDefaults.standard.string(forKey: TranslationService.targetKey) ?? "zh-CN"
+        for update in library.updates(for: game.id) {
+            let scope = "devlog:\(game.id):\(update.id)"
+            if let cached = await TranslationCache.shared.latest(scope: scope, target: target) {
+                translatedUpdates[update.id] = cached.translation
+            }
+        }
         let scope = "game-description:\(game.id)"
-        guard let cached = await TranslationCache.shared.latest(scope: scope, target: target) else { return }
+        guard let cached = await TranslationCache.shared.latest(scope: scope, target: target) else {
+            if !translatedUpdates.isEmpty {
+                translationStatus = "已显示本地更新译文"
+            }
+            return
+        }
         cachedOriginalDescription = cached.sourceText
         translatedDescription = cached.translation
         translationStatus = "已显示本地译文 · 正在检查更新"
