@@ -80,6 +80,7 @@ struct CachedRemoteImage<Placeholder: View>: View {
             }
         }
         .task(id: url) {
+            image = nil
             image = await PersistentImageCache.shared.image(for: url)
         }
     }
