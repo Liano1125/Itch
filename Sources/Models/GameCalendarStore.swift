@@ -51,14 +51,15 @@ struct GameCalendarEvent: Codable, Identifiable {
 final class GameCalendarStore: ObservableObject {
     static let shared = GameCalendarStore()
     @Published private(set) var events: [GameCalendarEvent] = []
-    private let key = "itchPocket.gameCalendar.v1"
+    private let database = AppDatabase.shared
 
     init() { load() }
 
     func add(_ event: GameCalendarEvent) {
+        guard !events.contains(where: { $0.id == event.id }) else { return }
         events.append(event)
         events.sort { $0.date < $1.date }
-        save()
+        persist(event)
         Task { await GameNotificationManager.shared.schedule(event) }
     }
 
@@ -77,14 +78,18 @@ final class GameCalendarStore: ObservableObject {
         )
         events.append(event)
         events.sort { $0.date < $1.date }
-        save()
+        persist(event)
     }
 
     @discardableResult
     func addHistoricalUpdate(gameID: String, gameTitle: String, gameURL: String?, title: String, summary: String, publishedAt: Date, sourceID: String, postURL: String?) -> Bool {
         let fingerprint = "devlog:\(sourceID)"
         guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return false }
-        let linkNote = postURL.map { "\n\($0)" } ?? ""
+
+        let context = database.context
+        let update = try? context.fetch(FetchDescriptor<DBGameUpdate>(
+            predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
+        )).first
         let event = GameCalendarEvent(
             gameID: gameID,
             gameTitle: gameTitle,
@@ -93,12 +98,12 @@ final class GameCalendarStore: ObservableObject {
             date: publishedAt,
             kind: .update,
             reminderEnabled: false,
-            notes: summary + linkNote + "\n来源：itch.io Devlog（历史发布日期）",
+            notes: summary + (postURL.map { "\n\($0)" } ?? "") + "\n来源：itch.io Devlog（历史发布日期）",
             sourceFingerprint: fingerprint
         )
         events.append(event)
         events.sort { $0.date < $1.date }
-        save()
+        persist(event, sourceUpdateID: update?.id)
         return true
     }
 
@@ -106,7 +111,7 @@ final class GameCalendarStore: ObservableObject {
         guard let index = events.firstIndex(where: { $0.id == event.id }) else { return }
         events[index] = event
         events.sort { $0.date < $1.date }
-        save()
+        persist(event)
         Task {
             GameNotificationManager.shared.cancel(event.id)
             await GameNotificationManager.shared.schedule(event)
@@ -115,7 +120,15 @@ final class GameCalendarStore: ObservableObject {
 
     func delete(_ id: String) {
         events.removeAll { $0.id == id }
-        save()
+        do {
+            let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == id })
+            if let item = try database.context.fetch(descriptor).first {
+                database.context.delete(item)
+                try database.save()
+            }
+        } catch {
+            print("itchPocket calendar deletion failed: \(error)")
+        }
         GameNotificationManager.shared.cancel(id)
     }
 
@@ -124,11 +137,74 @@ final class GameCalendarStore: ObservableObject {
     }
 
     private func load() {
-        events = (AppDataStore.loadPersistent([GameCalendarEvent].self, fileName: "calendar-events-v1.json", legacyKey: key) ?? []).sorted { $0.date < $1.date }
+        let context = database.context
+        do {
+            let storedEvents = try context.fetch(FetchDescriptor<DBCalendarEvent>())
+            let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
+            let updates = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGameUpdate>()).map { ($0.id, $0) })
+            events = storedEvents.compactMap { stored in
+                let update = stored.sourceUpdateID.flatMap { updates[$0] }
+                let game = games[stored.gameID]
+                let title = update.map { "更新：\($0.title ?? "游戏更新")" } ?? stored.title ?? "日历事件"
+                let date = update?.publishedAt ?? update?.detectedAt ?? stored.date ?? .now
+                let notes: String
+                if let update {
+                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + "\n来源：itch.io Devlog（历史发布日期）"
+                } else {
+                    notes = stored.notes ?? ""
+                }
+                return GameCalendarEvent(
+                    id: stored.id,
+                    gameID: stored.gameID,
+                    gameTitle: game?.title ?? stored.gameTitleSnapshot ?? "未知游戏",
+                    gameURL: game?.gameURL,
+                    title: title,
+                    date: date,
+                    kind: GameCalendarEventKind(rawValue: stored.kind) ?? .custom,
+                    reminderEnabled: stored.reminderEnabled,
+                    reminderMinutes: stored.reminderMinutes,
+                    notes: notes,
+                    sourceFingerprint: stored.sourceFingerprint
+                )
+            }.sorted { $0.date < $1.date }
+        } catch {
+            print("itchPocket calendar database load failed: \(error)")
+            events = []
+        }
     }
 
-    private func save() {
-        AppDataStore.savePersistent(events, fileName: "calendar-events-v1.json")
+    private func persist(_ event: GameCalendarEvent, sourceUpdateID: String? = nil) {
+        let context = database.context
+        do {
+            let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == event.id })
+            let item = try context.fetch(descriptor).first ?? DBCalendarEvent(
+                id: event.id,
+                gameID: event.gameID,
+                kind: event.kind.rawValue
+            )
+            if item.modelContext == nil { context.insert(item) }
+            item.gameID = event.gameID
+            item.gameTitleSnapshot = event.gameTitle
+            item.kind = event.kind.rawValue
+            item.reminderEnabled = event.reminderEnabled
+            item.reminderMinutes = event.reminderMinutes
+            item.sourceFingerprint = event.sourceFingerprint
+            if let sourceUpdateID {
+                // Devlog title, summary and published date are read from DBGameUpdate.
+                item.sourceUpdateID = sourceUpdateID
+                item.title = nil
+                item.date = nil
+                item.notes = nil
+            } else {
+                item.sourceUpdateID = nil
+                item.title = event.title
+                item.date = event.date
+                item.notes = event.notes
+            }
+            try database.save()
+        } catch {
+            print("itchPocket calendar database write failed: \(error)")
+        }
     }
 }
 
