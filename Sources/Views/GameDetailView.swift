@@ -505,7 +505,6 @@ struct GameDetailView: View {
         if let record = library.record(for: game.id),
            record.sparkPlaytimeSeconds != nil
             || record.sparkLastSaveAt != nil
-            || record.sparkLastBackupAt != nil
             || record.sparkRenpyVersion != nil {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -529,9 +528,7 @@ struct GameDetailView: View {
                     )
                 }
                 sparkInfoRow("最近存档", date: record.sparkLastSaveAt)
-                sparkInfoRow("最近备份", date: record.sparkLastBackupAt)
                 sparkInfoRow("有效存档数", value: record.sparkSaveCount.map { "\($0) 个" } ?? "未读取")
-                sparkInfoRow("上次启动", value: record.sparkLastLaunchAt.map { Self.sparkDate($0) } ?? "Spark 未提供独立启动记录")
             }
             .padding(15)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
