@@ -152,7 +152,7 @@ final class GameCalendarStore: ObservableObject {
                 let date = update?.publishedAt ?? update?.detectedAt ?? stored.date ?? .now
                 let notes: String
                 if let update {
-                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + "\n来源：itch.io Devlog（历史发布日期）"
+                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical ? "\n来源：itch.io Devlog（历史发布日期）" : "")
                 } else {
                     notes = stored.notes ?? ""
                 }
