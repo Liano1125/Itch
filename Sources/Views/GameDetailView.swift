@@ -553,8 +553,8 @@ struct GameDetailView: View {
         .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11))
     }
 
-    private func sparkInfoRow(_ title: String, date: Date) -> some View {
-        sparkInfoRow(title, value: Self.sparkDate(date))
+    private func sparkInfoRow(_ title: String, date: Date?) -> some View {
+        sparkInfoRow(title, value: date.map { Self.sparkDate($0) } ?? "暂无记录")
     }
 
     private func sparkInfoRow(_ title: String, value: String) -> some View {
