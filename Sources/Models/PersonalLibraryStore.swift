@@ -282,7 +282,10 @@ final class PersonalLibraryStore: ObservableObject {
                 updated.sparkSaveCount = saveCount
                 recordChanged = true
             }
-            if recordChanged {\n                records[index] = updated\n                didChange = true\n            }
+            if recordChanged {
+                records[index] = updated
+                didChange = true
+            }
         }
 
         guard didChange else { return }
