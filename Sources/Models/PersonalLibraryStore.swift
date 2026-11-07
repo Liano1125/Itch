@@ -47,9 +47,7 @@ struct LibraryRecord: Codable, Identifiable {
     var patreonURL: String? = nil
     var discordURL: String? = nil
     var sparkPlaytimeSeconds: Double? = nil
-    var sparkLastLaunchAt: Date? = nil
     var sparkLastSaveAt: Date? = nil
-    var sparkLastBackupAt: Date? = nil
     var sparkRenpyVersion: String? = nil
     var sparkSaveCount: Int? = nil
 }
