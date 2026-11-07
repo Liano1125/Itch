@@ -51,6 +51,7 @@ final class TranslationCache {
             return Entry(
                 translation: item.translatedText,
                 sourceHash: item.sourceHash,
+                sourceText: item.sourceText,
                 scope: item.scope,
                 target: item.targetLanguage,
                 updatedAt: item.updatedAt
