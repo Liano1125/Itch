@@ -56,18 +56,17 @@ struct SparkSyncView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Spark 游玩记录")
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(
-            isPresented: $showingFolderPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                Task { await spark.selectFolder(url, library: library) }
-            case .failure(let error):
-                spark.errorMessage = error.localizedDescription
-            }
+        .sheet(isPresented: $showingFolderPicker) {
+            SparkFolderPicker(
+                onPick: { url in
+                    showingFolderPicker = false
+                    Task { await spark.selectFolder(url, library: library) }
+                },
+                onCancel: {
+                    showingFolderPicker = false
+                }
+            )
+            .ignoresSafeArea()
         }
         .task {
             if spark.summaries.isEmpty && spark.folderName != nil {
