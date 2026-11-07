@@ -89,6 +89,16 @@ final class AppDatabase {
         try save()
     }
 
+    func invalidateDeveloperAvatarCaches() throws {
+        let developers = try context.fetch(FetchDescriptor<DBDeveloper>())
+        for developer in developers {
+            developer.avatarURL = nil
+            developer.avatarSource = nil
+            developer.avatarResolvedAt = nil
+        }
+        try save()
+    }
+
     func game(id: String) throws -> DBGame? {
         let descriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == id }
