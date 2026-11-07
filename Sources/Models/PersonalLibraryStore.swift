@@ -21,6 +21,12 @@ enum LibraryStatus: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+struct LibraryDiscoveryTag: Codable, Hashable, Identifiable {
+    var name: String
+    var url: String
+    var id: String { url }
+}
+
 struct LibraryRecord: Codable, Identifiable {
     var id: String
     var title: String
@@ -36,6 +42,7 @@ struct LibraryRecord: Codable, Identifiable {
     var addedAt: Date
     var updatedAt: Date
     var gameUpdates: [GameLibraryUpdate]? = nil
+    var discoveryTags: [LibraryDiscoveryTag]? = nil
 }
 
 struct GameLibraryUpdate: Codable, Identifiable {
