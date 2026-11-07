@@ -82,7 +82,6 @@ struct DiscoverView: View {
                         reloadToken: curatedReloadToken,
                         onLoad: { feedID, games in
                             curatedGames[feedID] = games.filter { !library.contains($0.id) }
-                            curatedError = nil
                         },
                         onError: { curatedError = $0 },
                         onStart: { isLoadingCurated = true; curatedError = nil },
@@ -843,7 +842,6 @@ private struct DiscoveryFeedReader: UIViewRepresentable {
 
         private static let script = """
         (() => {
-          if (/You must be 18\\+ to view this content/i.test(document.body?.innerText || "")) return "AGE_GATE";
           const clean = el => (el?.innerText || el?.textContent || "").replace(/\\s+/g, " ").trim();
           const abs = value => { try { return value ? new URL(value, location.href).href : null; } catch (_) { return null; } };
           const seen = new Set();
@@ -1002,6 +1000,7 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
 
         private static let script = """
         (() => {
+          if (/You must be 18\\+ to view this content/i.test(document.body?.innerText || "")) return "AGE_GATE";
           const clean = el => (el?.innerText || el?.textContent || "").replace(/\\s+/g, " ").trim();
           const abs = value => { try { return value ? new URL(value, location.href).href : null; } catch (_) { return null; } };
           const seen = new Set();
