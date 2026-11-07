@@ -920,9 +920,11 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
             guard let rawURL = record.gameURL, URL(string: rawURL) != nil else { return nil }
             let stored = try? database.game(id: record.id)
             let isComplete = stored?.descriptionText?.isEmpty == false && !(stored?.galleryURLs.isEmpty ?? true)
-            let isFresh = stored.map { Date().timeIntervalSince($0.updatedAt) < 3 * 24 * 60 * 60 } ?? false
+            let lastPrefetch = try? database.state(for: "detailPrefetch.lastSuccess.\(record.id)")?.dateValue
+            let freshnessDate = lastPrefetch ?? stored?.updatedAt
+            let isFresh = freshnessDate.map { Date().timeIntervalSince($0) < 3 * 24 * 60 * 60 } ?? false
             guard !isComplete || !isFresh else { return nil }
-            return (record, stored?.updatedAt ?? .distantPast)
+            return (record, freshnessDate ?? .distantPast)
         }
         .sorted { $0.updatedAt < $1.updatedAt }
         .prefix(max(1, limit))
@@ -1002,6 +1004,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 } catch {
                     print("itchPocket detail prefetch persistence failed: \(error)")
                 }
+                try? self.database.setState(Date(), for: "detailPrefetch.lastSuccess.\(record.id)")
                 if let authorURL {
                     Task {
                         _ = await PatreonAvatarService.shared.avatarURL(
