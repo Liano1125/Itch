@@ -509,12 +509,19 @@ private struct DeveloperPatreonAvatar: View {
     let record: LibraryRecord
     @State private var avatarURL: URL?
 
-    private var fallbackURL: URL? {
+    private var cachedPatreonURL: URL? {
         URL(string: record.patreonAvatarURL ?? "")
     }
 
+    private var fallbackURL: URL? {
+        URL(string: record.developerAvatarURL ?? "")
+    }
+
     var body: some View {
-        CachedRemoteImage(url: avatarURL ?? fallbackURL, contentMode: .fill) {
+        CachedRemoteImage(
+            url: avatarURL ?? cachedPatreonURL ?? fallbackURL,
+            contentMode: .fill
+        ) {
             Image(systemName: "person.fill")
                 .resizable()
                 .scaledToFit()
@@ -522,11 +529,10 @@ private struct DeveloperPatreonAvatar: View {
                 .foregroundStyle(.secondary)
                 .background(Color(uiColor: .tertiarySystemFill))
         }
-        .task(id: record.id) {
+        .task(id: "\(record.id)|\(record.developerProfileURL ?? "")|\(record.gameURL ?? "")") {
             let resolved = await PatreonAvatarService.shared.avatarURL(
                 authorURL: URL(string: record.developerProfileURL ?? ""),
-                gameURL: URL(string: record.gameURL ?? ""),
-                fallbackURL: fallbackURL
+                gameURL: URL(string: record.gameURL ?? "")
             )
             guard let resolved else { return }
             avatarURL = resolved
