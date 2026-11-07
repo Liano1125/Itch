@@ -34,16 +34,23 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncAt: Date?
     @Published private(set) var lastHistoricalSyncMessage: String?
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
-    private let storageKey = "itchPocket.updateWatches.v1"
-    private let historicalSyncDateKey = "itchPocket.devlogSync.lastDate"
-    private let historicalSyncMessageKey = "itchPocket.devlogSync.lastMessage"
-    private let historicalSyncResultsKey = "itchPocket.devlogSync.lastResults"
+
+    private let database = AppDatabase.shared
+    private let historicalSyncDateKey = "devlogSync.lastDate"
+    private let historicalSyncMessageKey = "devlogSync.lastMessage"
+    private let historicalSyncResultsKey = "devlogSync.lastResults"
 
     init() {
         load()
-        lastHistoricalSyncAt = AppDataStore.date(forKey: historicalSyncDateKey)
-        lastHistoricalSyncMessage = AppDataStore.string(forKey: historicalSyncMessageKey)
-        lastHistoricalSyncResults = AppDataStore.loadPersistent([DevlogSyncGameResult].self, fileName: "devlog-sync-results-v1.json", legacyKey: historicalSyncResultsKey) ?? []
+        do {
+            lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
+            lastHistoricalSyncMessage = try database.state(for: historicalSyncMessageKey)?.stringValue
+            if let data = try database.state(for: historicalSyncResultsKey)?.dataValue {
+                lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
+            }
+        } catch {
+            print("itchPocket update monitor state load failed: \(error)")
+        }
     }
 
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
@@ -66,7 +73,7 @@ final class GameUpdateMonitorStore: ObservableObject {
             watches.removeValue(forKey: record.id)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationID(record.id)])
         }
-        save()
+        persistWatches()
     }
 
     func checkAll(calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async {
@@ -132,6 +139,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                             summary = "itch.io 游戏页面内容指纹发生变化；请打开页面确认具体更新内容。"
                         }
                         let detectedAt = Date()
+                        libraryStore.recordGameUpdate(gameID: current.gameID, summary: summary, detectedAt: detectedAt)
                         calendarStore.addDetectedUpdate(
                             gameID: current.gameID,
                             gameTitle: current.gameTitle,
@@ -139,7 +147,6 @@ final class GameUpdateMonitorStore: ObservableObject {
                             fingerprint: fingerprint,
                             detectedAt: detectedAt
                         )
-                        libraryStore.recordGameUpdate(gameID: current.gameID, summary: summary, detectedAt: detectedAt)
                         await sendUpdateNotification(for: current)
                         updated += 1
                     }
@@ -149,7 +156,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                     current.lastCheckedAt = Date()
                 }
                 watches[target.gameID] = current
-                save()
+                persistWatches()
             } catch {
                 failed += 1
             }
@@ -234,9 +241,13 @@ final class GameUpdateMonitorStore: ObservableObject {
         lastHistoricalSyncAt = Date()
         lastHistoricalSyncMessage = message
         lastHistoricalSyncResults = results
-        AppDataStore.set(lastHistoricalSyncAt, forKey: historicalSyncDateKey)
-        AppDataStore.set(message, forKey: historicalSyncMessageKey)
-        AppDataStore.savePersistent(results, fileName: "devlog-sync-results-v1.json")
+        do {
+            try database.setState(lastHistoricalSyncAt, for: historicalSyncDateKey)
+            try database.setState(message, for: historicalSyncMessageKey)
+            try database.setState(try JSONEncoder().encode(results), for: historicalSyncResultsKey)
+        } catch {
+            print("itchPocket historical sync state save failed: \(error)")
+        }
         return message
     }
 
@@ -252,7 +263,7 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private func sendUpdateNotification(for watch: GameUpdateWatch) async {
         let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
         guard granted else { return }
         let content = UNMutableNotificationContent()
         content.title = "游戏页面可能已更新"
@@ -265,12 +276,47 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
     private func load() {
-        let values = AppDataStore.loadPersistent([GameUpdateWatch].self, fileName: "update-watches-v1.json", legacyKey: storageKey) ?? []
-        watches = Dictionary(uniqueKeysWithValues: values.map { ($0.gameID, $0) })
+        do {
+            watches = Dictionary(uniqueKeysWithValues: try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).map {
+                ($0.gameID, GameUpdateWatch(
+                    gameID: $0.gameID,
+                    gameTitle: $0.gameTitle,
+                    gameURL: $0.gameURL,
+                    entityTag: $0.entityTag,
+                    lastModified: $0.lastModified,
+                    contentHash: $0.contentHash,
+                    lastCheckedAt: $0.lastCheckedAt,
+                    hasBaseline: $0.hasBaseline,
+                    isEnabled: $0.isEnabled
+                ))
+            })
+        } catch {
+            print("itchPocket update watches load failed: \(error)")
+            watches = [:]
+        }
     }
 
-    private func save() {
-        AppDataStore.savePersistent(Array(watches.values), fileName: "update-watches-v1.json")
+    private func persistWatches() {
+        let context = database.context
+        do {
+            try context.delete(model: DBUpdateWatch.self)
+            for watch in watches.values {
+                context.insert(DBUpdateWatch(
+                    gameID: watch.gameID,
+                    gameTitle: watch.gameTitle,
+                    gameURL: watch.gameURL,
+                    entityTag: watch.entityTag,
+                    lastModified: watch.lastModified,
+                    contentHash: watch.contentHash,
+                    lastCheckedAt: watch.lastCheckedAt,
+                    hasBaseline: watch.hasBaseline,
+                    isEnabled: watch.isEnabled
+                ))
+            }
+            try database.save()
+        } catch {
+            print("itchPocket update watches save failed: \(error)")
+        }
     }
 }
 
