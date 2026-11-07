@@ -89,13 +89,13 @@ final class PatreonAvatarService {
     private func cachedAvatar(for url: URL) -> URL? {
         let key = canonicalKey(for: url)
         guard let value = try? database.developer(id: key)?.avatarURL else { return nil }
-        return value.flatMap(URL.init(string:))
+        return URL(string: value)
     }
 
     private func isFailureCached(for url: URL) -> Bool {
         let key = canonicalKey(for: url)
         guard let failedAt = try? database.state(for: "avatarFailure.\(key)")?.dateValue else { return false }
-        return failedAt.map { Date().timeIntervalSince($0) < failureCacheDuration } ?? false
+        return Date().timeIntervalSince(failedAt) < failureCacheDuration
     }
 
     private func canonicalKey(for url: URL) -> String {
