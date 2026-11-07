@@ -265,35 +265,26 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([LibraryRecord].self, from: data) else { return }
-        records = decoded
+        records = AppDataStore.decode([LibraryRecord].self, forKey: storageKey) ?? []
     }
 
     private func loadCollections() {
-        guard let data = UserDefaults.standard.data(forKey: collectionsStorageKey),
-              let decoded = try? JSONDecoder().decode([PersonalGameCollection].self, from: data) else { return }
-        collections = decoded
+        collections = AppDataStore.decode([PersonalGameCollection].self, forKey: collectionsStorageKey) ?? []
     }
 
     private func loadStatusEvents() {
-        guard let data = UserDefaults.standard.data(forKey: statusEventsStorageKey),
-              let decoded = try? JSONDecoder().decode([String: [LibraryStatusEvent]].self, from: data) else { return }
-        statusEvents = decoded
+        statusEvents = AppDataStore.decode([String: [LibraryStatusEvent]].self, forKey: statusEventsStorageKey) ?? [:]
     }
 
     private func saveStatusEvents() {
-        guard let data = try? JSONEncoder().encode(statusEvents) else { return }
-        UserDefaults.standard.set(data, forKey: statusEventsStorageKey)
+        AppDataStore.encode(statusEvents, forKey: statusEventsStorageKey)
     }
 
     private func saveCollections() {
-        guard let data = try? JSONEncoder().encode(collections) else { return }
-        UserDefaults.standard.set(data, forKey: collectionsStorageKey)
+        AppDataStore.encode(collections, forKey: collectionsStorageKey)
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        AppDataStore.encode(records, forKey: storageKey)
     }
 }
