@@ -13,6 +13,7 @@ private struct GamePagePayload: Decodable {
     let authorAvatarURL: URL?
     let patreonURL: URL?
     let discordURL: URL?
+    let discoveryTags: [LibraryDiscoveryTag]?
     let scriptError: String?
 }
 
@@ -25,6 +26,7 @@ private struct GameDetailPayload {
     let authorAvatarURL: URL?
     let patreonURL: URL?
     let discordURL: URL?
+    let discoveryTags: [LibraryDiscoveryTag]
 }
 
 // MARK: - Game Detail View
@@ -634,6 +636,11 @@ struct GameDetailView: View {
                 record.developerAvatarURL = avatarURL.absoluteString
                 changed = true
             }
+            if !result.discoveryTags.isEmpty,
+               record.discoveryTags != result.discoveryTags {
+                record.discoveryTags = result.discoveryTags
+                changed = true
+            }
             if changed { library.update(record) }
         }
         if let currentDescription = result.description {
@@ -835,7 +842,8 @@ private struct DetailPageReader: UIViewRepresentable {
                             authorURL: payload.authorURL,
                             authorAvatarURL: payload.authorAvatarURL,
                             patreonURL: payload.patreonURL,
-                            discordURL: payload.discordURL
+                            discordURL: payload.discordURL,
+                            discoveryTags: payload.discoveryTags ?? []
                         )
                     )
                 }
@@ -990,6 +998,15 @@ private struct DetailPageReader: UIViewRepresentable {
                     .filter((value, index, array) => array.indexOf(value) === index)
                     .slice(0, 30);
 
+                const discoveryTags = Array.from(document.querySelectorAll(
+                    'a.game_tag[href], .game_tags a[href], .game_info_panel_widget a[href*="/games/tag-"]'
+                )).map(anchor => ({
+                    name: clean(anchor),
+                    url: absolute(anchor.getAttribute("href"))
+                })).filter(tag => tag.name && tag.url && /\\/games\\/tag-/i.test(new URL(tag.url).pathname))
+                  .filter((tag, index, array) => array.findIndex(item => item.url === tag.url) === index)
+                  .slice(0, 20);
+
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
                 const authorAvatar = document.querySelector(".game_author img, .user_avatar img, .user_link img, .header_links img");
@@ -1010,6 +1027,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     authorAvatarURL,
                     patreonURL,
                     discordURL,
+                    discoveryTags,
                     scriptError: null
                 });
             } catch (error) {
@@ -1022,6 +1040,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     authorAvatarURL: null,
                     patreonURL: null,
                     discordURL: null,
+                    discoveryTags: [],
                     scriptError: String(error)
                 });
             }
