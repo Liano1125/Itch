@@ -81,7 +81,12 @@ struct DiscoverView: View {
                         feeds: DiscoveryFeed.curated,
                         reloadToken: curatedReloadToken,
                         onLoad: { feedID, games in
-                            curatedGames[feedID] = games.filter { !library.contains($0.id) }
+                            let available = games.filter { !library.contains($0.id) }
+                            // Never replace a populated feed with an empty page/result.
+                            if !available.isEmpty || curatedGames[feedID] == nil {
+                                curatedGames[feedID] = available
+                            }
+                            if !available.isEmpty { curatedError = nil }
                         },
                         onError: { curatedError = $0 },
                         onStart: { isLoadingCurated = true; curatedError = nil },
@@ -982,11 +987,15 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            // Loading the next page cancels the previous navigation by design.
+            // A cancellation must not advance to the next feed or discard pagination state.
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
             DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
             advanceFeed(in: webView)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
             DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
             advanceFeed(in: webView)
         }
