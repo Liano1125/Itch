@@ -19,79 +19,51 @@ struct SparkGameSummary: Identifiable {
 final class SparkSyncStore: ObservableObject {
     static let shared = SparkSyncStore()
 
-    @Published private(set) var saveFolderName: String?
-    @Published private(set) var backupFolderName: String?
     @Published private(set) var lastSyncAt: Date?
     @Published private(set) var summaries: [SparkGameSummary] = []
     @Published private(set) var unmatchedGameNames: [String] = []
     @Published private(set) var isScanning = false
     @Published var errorMessage: String?
 
-    private let saveBookmarkKey = "itchPocket.sparkAllSavesBookmark.v1"
-    private let backupBookmarkKey = "itchPocket.sparkBackupsBookmark.v1"
-    private let lastSyncKey = "itchPocket.sparkLastSyncAt.v1"
+    private let lastSyncKey = "itchPocket.sparkLastSyncAt.v2"
+    private let savesFolderName = "Allsaves"
+    private let backupsFolderName = "Backups"
 
     private init() {
-        saveFolderName = UserDefaults.standard.string(forKey: "itchPocket.sparkAllSavesFolderName.v1")
-        backupFolderName = UserDefaults.standard.string(forKey: "itchPocket.sparkBackupsFolderName.v1")
         lastSyncAt = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
     }
 
-    func selectSaveFolder(_ url: URL, library: PersonalLibraryStore) async {
-        await saveFolder(url, bookmarkKey: saveBookmarkKey, nameKey: "itchPocket.sparkAllSavesFolderName.v1")
-        await rescan(library: library)
-    }
-
-    func selectBackupFolder(_ url: URL, library: PersonalLibraryStore) async {
-        await saveFolder(url, bookmarkKey: backupBookmarkKey, nameKey: "itchPocket.sparkBackupsFolderName.v1")
-        await rescan(library: library)
-    }
-
-    private func saveFolder(_ url: URL, bookmarkKey: String, nameKey: String) async {
-        let hasAccess = url.startAccessingSecurityScopedResource()
-        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
-        let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-        if let bookmark {
-            UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
-            UserDefaults.standard.set(url.lastPathComponent, forKey: nameKey)
-            if bookmarkKey == saveBookmarkKey { saveFolderName = url.lastPathComponent }
-            if bookmarkKey == backupBookmarkKey { backupFolderName = url.lastPathComponent }
-        } else {
-            errorMessage = "无法保存文件夹授权，请重新选择该目录。"
+    /// Creates the two fixed folders inside the app's shared Documents directory.
+    /// With file sharing enabled, Shortcuts and Files can copy into these folders.
+    func prepareFolders() throws {
+        let documents = try documentsDirectory()
+        let manager = FileManager.default
+        for name in [savesFolderName, backupsFolderName] {
+            let folder = documents.appendingPathComponent(name, isDirectory: true)
+            try manager.createDirectory(at: folder, withIntermediateDirectories: true)
         }
     }
 
     func rescan(library: PersonalLibraryStore) async {
         guard !isScanning else { return }
-        let saveURL = resolveFolder(bookmarkKey: saveBookmarkKey)
-        let backupURL = resolveFolder(bookmarkKey: backupBookmarkKey)
-        guard saveURL != nil || backupURL != nil else {
-            errorMessage = "请分别选择 itchPocket-allsaves 和 itchPocket-backups 文件夹。"
-            return
+        do {
+            try prepareFolders()
+            let documents = try documentsDirectory()
+            let savesURL = documents.appendingPathComponent(savesFolderName, isDirectory: true)
+            let backupsURL = documents.appendingPathComponent(backupsFolderName, isDirectory: true)
+            await scanFolders(saveURL: savesURL, backupURL: backupsURL, library: library)
+        } catch {
+            errorMessage = "无法准备 itchPocket 存档目录：\(error.localizedDescription)"
         }
-
-        let saveAccess = saveURL?.startAccessingSecurityScopedResource() ?? false
-        let backupAccess = backupURL?.startAccessingSecurityScopedResource() ?? false
-        defer {
-            if saveAccess, let saveURL { saveURL.stopAccessingSecurityScopedResource() }
-            if backupAccess, let backupURL { backupURL.stopAccessingSecurityScopedResource() }
-        }
-
-        await scanFolders(saveURL: saveURL, backupURL: backupURL, library: library)
     }
 
-    private func resolveFolder(bookmarkKey: String) -> URL? {
-        guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return nil }
-        do {
-            var isStale = false
-            let url = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
-            if isStale, let refreshed = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
-                UserDefaults.standard.set(refreshed, forKey: bookmarkKey)
-            }
-            return url
-        } catch {
-            return nil
+    private func documentsDirectory() throws -> URL {
+        guard let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "itchPocket.SparkSync", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "无法访问应用 Documents 目录。"
+            ])
         }
+        return url
     }
 
     private func scanFolders(saveURL: URL?, backupURL: URL?, library: PersonalLibraryStore) async {
@@ -139,7 +111,7 @@ final class SparkSyncStore: ObservableObject {
             lastSyncAt = now
             UserDefaults.standard.set(now, forKey: lastSyncKey)
         } catch {
-            errorMessage = "扫描 itchPocket 存档目录失败：\\(error.localizedDescription)"
+            errorMessage = "扫描 itchPocket 存档目录失败：\(error.localizedDescription)"
         }
     }
 
