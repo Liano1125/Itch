@@ -47,7 +47,17 @@ struct GameDetailView: View {
     @State private var isRefreshingTranslation = false
     @State private var selectedGalleryIndex = 0
     @State private var showingGalleryViewer = false
+    @State private var cachedGalleryURLs: [URL] = []
     @State private var resolvedAuthorAvatarURL: URL?
+
+    private var galleryImages: [URL] {
+        if let latest = detail?.galleryURLs, !latest.isEmpty { return latest }
+        return cachedGalleryURLs
+    }
+
+    private var galleryCacheKey: String {
+        "itchPocket.gallery.v1.\(game.id)"
+    }
 
     private var displayCover: URL? {
         detail?.coverURL ?? game.coverURL
@@ -207,7 +217,7 @@ struct GameDetailView: View {
 
     @ViewBuilder
     private var gallerySection: some View {
-        let images = detail?.galleryURLs ?? []
+        let images = galleryImages
 
         VStack(alignment: .leading, spacing: 9) {
             HStack {
@@ -277,7 +287,7 @@ struct GameDetailView: View {
     private var galleryViewer: some View {
         NavigationStack {
             TabView(selection: $selectedGalleryIndex) {
-                ForEach(Array((detail?.galleryURLs ?? []).enumerated()), id: \.offset) { index, url in
+                ForEach(Array(galleryImages.enumerated()), id: \.offset) { index, url in
                     CachedRemoteImage(url: url, contentMode: .fit) {
                         ProgressView()
                     }
@@ -605,6 +615,10 @@ struct GameDetailView: View {
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
         resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
+        if !result.galleryURLs.isEmpty {
+            cachedGalleryURLs = result.galleryURLs
+            UserDefaults.standard.set(result.galleryURLs.map(\.absoluteString), forKey: galleryCacheKey)
+        }
         Task {
             await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
         }
@@ -637,6 +651,9 @@ struct GameDetailView: View {
     }
 
     private func loadCachedDescription() async {
+        let savedGallery = UserDefaults.standard.stringArray(forKey: galleryCacheKey) ?? []
+        cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }
+
         let target = UserDefaults.standard.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         let scope = "game-description:\(game.id)"
         guard let cached = await TranslationCache.shared.latest(scope: scope, target: target) else { return }
