@@ -5,7 +5,7 @@ private enum ItchPublicCollection {
     static let url = URL(string: "https://itch.io/c/5891862/liano1125s-collection")!
 }
 
-struct PublicCollectionGame: Decodable, Identifiable {
+struct PublicCollectionGame: Codable, Identifiable {
     let id: String
     let title: String
     let url: URL?
