@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import SwiftData
 import UserNotifications
 
 enum GameCalendarEventKind: String, CaseIterable, Codable, Identifiable {
@@ -86,7 +87,8 @@ final class GameCalendarStore: ObservableObject {
             let descriptor = FetchDescriptor<DBGameUpdate>(
                 predicate: #Predicate { $0.gameID == gameID && $0.detectedAt == detectedAt }
             )
-            let updateID = (try? context.fetch(descriptor).first)?.id
+            let updateRows = (try? context.fetch(descriptor)) ?? []
+            let updateID = updateRows.first?.id
             let event = GameCalendarEvent(
                 gameID: update.gameID,
                 gameTitle: update.gameTitle,
@@ -136,7 +138,8 @@ final class GameCalendarStore: ObservableObject {
             let descriptor = FetchDescriptor<DBGameUpdate>(
                 predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
             )
-            guard let storedUpdate = (try? context.fetch(descriptor).first) else { continue }
+            let storedUpdates = (try? context.fetch(descriptor)) ?? []
+            guard let storedUpdate = storedUpdates.first else { continue }
             let event = GameCalendarEvent(
                 gameID: gameID,
                 gameTitle: gameTitle,
