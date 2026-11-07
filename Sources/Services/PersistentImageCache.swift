@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 import SwiftUI
 import UIKit
+import ImageIO
 
 @MainActor
 final class PersistentImageCache {
@@ -42,7 +43,7 @@ final class PersistentImageCache {
         let diskData = await Task.detached(priority: .userInitiated) {
             try? Data(contentsOf: file, options: .mappedIfSafe)
         }.value
-        if let data = diskData, let image = UIImage(data: data) {
+        if let data = diskData, let image = decodeImage(data) {
             memory.setObject(image, forKey: key, cost: data.count)
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
             return image
@@ -54,7 +55,7 @@ final class PersistentImageCache {
             request.timeoutInterval = 30
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                  let image = UIImage(data: data) else { return nil }
+                  let image = decodeImage(data) else { return nil }
             try? data.write(to: file, options: .atomic)
             memory.setObject(image, forKey: key, cost: data.count)
             downloadsSincePrune += 1
@@ -69,6 +70,31 @@ final class PersistentImageCache {
         } catch {
             return nil
         }
+    }
+
+    private func decodeImage(_ data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return UIImage(data: data)
+        }
+
+        let frameCount = CGImageSourceGetCount(source)
+        guard frameCount > 1 else { return UIImage(data: data) }
+
+        var frames: [UIImage] = []
+        var duration: TimeInterval = 0
+        for index in 0..<frameCount {
+            guard let cgImage = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+            let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+            let unclamped = (gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? NSNumber)?.doubleValue
+            let clamped = (gifProperties?[kCGImagePropertyGIFDelayTime] as? NSNumber)?.doubleValue
+            let frameDelay = max(0.02, unclamped ?? clamped ?? 0.1)
+            frames.append(UIImage(cgImage: cgImage))
+            duration += frameDelay
+        }
+
+        guard frames.count > 1 else { return UIImage(data: data) }
+        return UIImage.animatedImage(with: frames, duration: max(duration, 0.1)) ?? UIImage(data: data)
     }
 
     func prune() async {
@@ -122,9 +148,14 @@ struct CachedRemoteImage<Placeholder: View>: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
+                if (image.images?.count ?? 0) > 1 {
+                    CachedAnimatedImageView(image: image, contentMode: contentMode)
+                        .aspectRatio(contentMode: contentMode)
+                } else {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                }
             } else {
                 placeholder()
             }
@@ -137,6 +168,32 @@ struct CachedRemoteImage<Placeholder: View>: View {
             } else {
                 image = await PersistentImageCache.shared.image(for: fallbackURL)
             }
+        }
+    }
+}
+
+private struct CachedAnimatedImageView: UIViewRepresentable {
+    let image: UIImage
+    let contentMode: ContentMode
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView()
+        view.clipsToBounds = true
+        view.contentMode = contentMode == .fit ? .scaleAspectFit : .scaleAspectFill
+        view.image = image
+        if (image.images?.count ?? 0) > 1 { view.startAnimating() }
+        return view
+    }
+
+    func updateUIView(_ view: UIImageView, context: Context) {
+        view.contentMode = contentMode == .fit ? .scaleAspectFit : .scaleAspectFill
+        if view.image !== image {
+            view.image = image
+        }
+        if (image.images?.count ?? 0) > 1 {
+            if !view.isAnimating { view.startAnimating() }
+        } else {
+            view.stopAnimating()
         }
     }
 }
