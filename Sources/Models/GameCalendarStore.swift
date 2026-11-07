@@ -124,14 +124,11 @@ final class GameCalendarStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([GameCalendarEvent].self, from: data) else { return }
-        events = decoded.sorted { $0.date < $1.date }
+        events = (AppDataStore.decode([GameCalendarEvent].self, forKey: key) ?? []).sorted { $0.date < $1.date }
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(events) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        AppDataStore.encode(events, forKey: key)
     }
 }
 
