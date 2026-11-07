@@ -81,8 +81,10 @@ final class GameCalendarStore: ObservableObject {
         var inserted = 0
         for update in updates {
             guard !events.contains(where: { $0.gameID == update.gameID && $0.sourceFingerprint == update.fingerprint }) else { continue }
+            let gameID = update.gameID
+            let detectedAt = update.detectedAt
             let descriptor = FetchDescriptor<DBGameUpdate>(
-                predicate: #Predicate { $0.gameID == update.gameID && $0.detectedAt == update.detectedAt }
+                predicate: #Predicate { $0.gameID == gameID && $0.detectedAt == detectedAt }
             )
             let updateID = try? context.fetch(descriptor).first?.id
             let event = GameCalendarEvent(
