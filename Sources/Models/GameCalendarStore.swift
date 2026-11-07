@@ -194,7 +194,7 @@ final class GameCalendarStore: ObservableObject {
             if let sourceUpdateID {
                 // Devlog title, summary and published date are read from DBGameUpdate.
                 item.sourceUpdateID = sourceUpdateID
-                item.title = nil
+                item.title = event.title == "检测到游戏页面更新" ? event.title : nil
                 item.date = nil
                 item.notes = nil
             } else {
