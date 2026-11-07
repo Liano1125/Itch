@@ -14,8 +14,8 @@ private struct DiscoveryFeed: Identifiable {
     let subtitle: String
     let url: URL
     static let curated: [DiscoveryFeed] = [
-        DiscoveryFeed(id: "adjacent-renpy", title: "More Adult Ren'Py Games", subtitle: "更多成人 Ren'Py 游戏", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult-themes")!),
-        DiscoveryFeed(id: "adjacent-3d", title: "Other 3D Adult Game", subtitle: "其他 3D 成人游戏", url: URL(string: "https://itch.io/games/tag-3d/tag-adult-themes")!)
+        DiscoveryFeed(id: "adjacent-renpy", title: "Adult Ren'Py Games", subtitle: "更多成人 Ren'Py 游戏", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult-themes")!),
+        DiscoveryFeed(id: "adjacent-3d", title: "Other 3D Adult Games", subtitle: "其他 3D 成人游戏", url: URL(string: "https://itch.io/games/tag-3d/tag-adult-themes")!)
     ]
 }
 
