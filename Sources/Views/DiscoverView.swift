@@ -757,8 +757,8 @@ private struct DeveloperPatreonAvatar: View {
 
     var body: some View {
         CachedRemoteImage(
-            url: avatarURL ?? fallbackURL,
-            fallbackURL: cachedPatreonURL,
+            url: avatarURL ?? cachedPatreonURL,
+            fallbackURL: fallbackURL,
             contentMode: .fill
         ) {
             Image(systemName: "person.fill")
@@ -775,11 +775,8 @@ private struct DeveloperPatreonAvatar: View {
             )
             guard let resolved else { return }
             avatarURL = resolved
-            if var updated = library.record(for: record.id),
-               updated.patreonAvatarURL != resolved.absoluteString {
-                updated.patreonAvatarURL = resolved.absoluteString
-                library.update(updated)
-            }
+            // The canonical creator-avatar cache is shared with game detail pages.
+            // Do not duplicate the same avatar URL into every LibraryRecord.
         }
     }
 }

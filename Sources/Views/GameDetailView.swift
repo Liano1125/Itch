@@ -113,22 +113,13 @@ struct GameDetailView: View {
             let record = library.record(for: game.id)
             resolvedAuthorAvatarURL = resolved
                 ?? detail?.authorAvatarURL
-                ?? URL(string: record?.developerAvatarURL ?? "")
                 ?? URL(string: record?.patreonAvatarURL ?? "")
+                ?? URL(string: record?.developerAvatarURL ?? "")
             if var updated = record {
                 var changed = false
-                if let resolved, updated.patreonAvatarURL != resolved.absoluteString {
-                    updated.patreonAvatarURL = resolved.absoluteString
-                    changed = true
-                }
                 if let authorURL = detail?.authorURL,
                    updated.developerProfileURL != authorURL.absoluteString {
                     updated.developerProfileURL = authorURL.absoluteString
-                    changed = true
-                }
-                if let avatarURL = detail?.authorAvatarURL,
-                   updated.developerAvatarURL != avatarURL.absoluteString {
-                    updated.developerAvatarURL = avatarURL.absoluteString
                     changed = true
                 }
                 if changed { library.update(updated) }
