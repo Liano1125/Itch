@@ -65,9 +65,14 @@ final class PersistentImageCache {
 
 struct CachedRemoteImage<Placeholder: View>: View {
     let url: URL?
+    var fallbackURL: URL? = nil
     var contentMode: ContentMode = .fill
     @ViewBuilder let placeholder: () -> Placeholder
     @State private var image: UIImage?
+
+    private var requestKey: String {
+        "\(url?.absoluteString ?? "")|\(fallbackURL?.absoluteString ?? "")"
+    }
 
     var body: some View {
         Group {
@@ -79,9 +84,14 @@ struct CachedRemoteImage<Placeholder: View>: View {
                 placeholder()
             }
         }
-        .task(id: url) {
+        .task(id: requestKey) {
             image = nil
-            image = await PersistentImageCache.shared.image(for: url)
+            let primaryImage = await PersistentImageCache.shared.image(for: url)
+            if let primaryImage {
+                image = primaryImage
+            } else {
+                image = await PersistentImageCache.shared.image(for: fallbackURL)
+            }
         }
     }
 }
