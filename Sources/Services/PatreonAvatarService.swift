@@ -68,7 +68,7 @@ final class PatreonAvatarService {
 
         // 4. Discord metadata as the final fallback
         if avatar == nil,
-           let discordURL = pages.lazy.compactMap({ extractExternalURL(domains: ["discord.gg", "discord.com"], from: $0.1, baseURL: $0.0) }).first,
+           let discordURL = pages.lazy.compactMap({ self.extractExternalURL(domains: ["discord.gg", "discord.com"], from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(discordURL) {
             avatar = extractOpenGraphImage(from: html, baseURL: discordURL)
                 ?? extractProfileAvatar(from: html, baseURL: discordURL)
@@ -103,25 +103,30 @@ final class PatreonAvatarService {
     }
 
     private func extractItchAvatar(from html: String, baseURL: URL) -> URL? {
-        for tag in matches(#"<img\b[^>]*>"#, in: html) {
+        for tag in matches(#"<(?:img|div)\b[^>]*>"#, in: html) {
             let className = (attribute("class", from: tag) ?? "").lowercased()
             let alt = (attribute("alt", from: tag) ?? "").lowercased()
             guard className.contains("avatar") || alt.contains("avatar") else { continue }
+            let style = attribute("style", from: tag) ?? ""
+            let background = firstCapture(#"url\(['"]?([^)'"]+)['"]?\)"#, in: style, options: [.caseInsensitive])
             let raw = attribute("data-lazy_src", from: tag)
                 ?? attribute("data-lazy-src", from: tag)
                 ?? attribute("data-src", from: tag)
                 ?? attribute("src", from: tag)
+                ?? background
             if let raw, let url = imageURL(raw, relativeTo: baseURL) { return url }
         }
         return nil
     }
 
     private func extractProfileAvatar(from html: String, baseURL: URL) -> URL? {
-        for tag in matches(#"<img\b[^>]*>"#, in: html) {
+        for tag in matches(#"<(?:img|div)\b[^>]*>"#, in: html) {
             let className = (attribute("class", from: tag) ?? "").lowercased()
             let id = (attribute("id", from: tag) ?? "").lowercased()
             guard className.contains("avatar") || id.contains("avatar") else { continue }
-            let raw = attribute("data-src", from: tag) ?? attribute("src", from: tag)
+            let style = attribute("style", from: tag) ?? ""
+            let background = firstCapture(#"url\(['"]?([^)'"]+)['"]?\)"#, in: style, options: [.caseInsensitive])
+            let raw = attribute("data-src", from: tag) ?? attribute("src", from: tag) ?? background
             if let raw, let url = imageURL(raw, relativeTo: baseURL) { return url }
         }
         return nil
