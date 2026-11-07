@@ -35,7 +35,7 @@ enum AppCacheManager {
             game.descriptionText = nil
             game.galleryURLs = []
         }
-        for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
+        for state in try context.fetch(FetchDescriptor<DBAppState>()) where state.key.hasPrefix("avatarFailure.") {\n            context.delete(state)\n        }\n        for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
             developer.avatarURL = nil
             developer.avatarSource = nil
             developer.avatarResolvedAt = nil
@@ -46,7 +46,7 @@ enum AppCacheManager {
         URLCache.shared.removeAllCachedResponses()
     }
 
-    static func pruneExpiredCaches(now: Date = .now) throws {
+    static func pruneExpiredCaches(now: Date = .now) async throws {
         let context = AppDatabase.shared.context
         let expired = try context.fetch(FetchDescriptor<DBDiscoverySnapshot>(
             predicate: #Predicate { $0.expiresAt <= now }
