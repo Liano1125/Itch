@@ -51,7 +51,7 @@ final class PatreonAvatarService {
 
     private func resolveAvatarURL(authorURL: URL?, gameURL: URL?, forceRefresh: Bool = false) async -> URL? {
         if !forceRefresh, let authorURL, let cached = cachedAvatar(for: authorURL) { return cached }
-        if let authorURL, isFailureCached(for: authorURL) { return nil }
+        if !forceRefresh, let authorURL, isFailureCached(for: authorURL) { return cachedAvatar(for: authorURL) }
 
         var pages: [(URL, String)] = []
         if let authorURL, let html = try? await fetchHTML(authorURL) {
@@ -111,7 +111,7 @@ final class PatreonAvatarService {
             }
             guard let avatar else {
                 try database.setState(Date(), for: "avatarFailure.\(key)")
-                return nil
+                return cachedAvatar(for: identity)
             }
             try database.setDeveloperAvatar(id: key, url: avatar.absoluteString, source: avatarSource)
             try database.setState(nil as Date?, for: "avatarFailure.\(key)")
@@ -130,8 +130,7 @@ final class PatreonAvatarService {
 
     private func isAvatarFresh(for url: URL) -> Bool {
         let key = canonicalKey(for: url)
-        guard let resolvedAt = try? database.developer(id: key)?.avatarResolvedAt,
-              let resolvedAt else { return false }
+        guard let resolvedAt = try? database.developer(id: key)?.avatarResolvedAt else { return false }
         return Date().timeIntervalSince(resolvedAt) < avatarCacheDuration
     }
 
@@ -140,7 +139,7 @@ final class PatreonAvatarService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
 
-        var candidates: [(URL, Bool)] = []
+        var candidates: [URL] = []
         for tag in matches(#"<img\\b[^>]*>"#, in: html) {
             let alt = (attribute("alt", from: tag) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -150,6 +149,8 @@ final class PatreonAvatarService {
             let raw = attribute("data-src", from: tag)
                 ?? attribute("data-lazy-src", from: tag)
                 ?? attribute("src", from: tag)
+                ?? attribute("srcset", from: tag)?.split(separator: ",").first
+                    .map { String($0).split(separator: " ").first.map(String.init) ?? String($0) }
             guard let raw, let url = imageURL(raw, relativeTo: baseURL),
                   let host = url.host?.lowercased(),
                   host.contains("patreonusercontent.com") else { continue }
@@ -158,10 +159,10 @@ final class PatreonAvatarService {
             let avatarContainer = className.contains("avatar") || className.contains("profile")
                 || id.contains("avatar") || id.contains("profile")
             if nameMatches { return url }
-            if avatarContainer { candidates.append((url, false)) }
+            if avatarContainer { candidates.append(url) }
         }
 
-        return candidates.first?.0
+        return candidates.first
     }
 
     private func isFailureCached(for url: URL) -> Bool {
