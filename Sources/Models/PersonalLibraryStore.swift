@@ -249,7 +249,6 @@ final class PersonalLibraryStore: ObservableObject {
             )
             saveStatusEvents()
         }
-        guard previous != updated else { return }
         records[index] = updated
         persist(updated)
     }
@@ -289,8 +288,9 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             for record in records {
                 guard let runtime = record.sparkPlaytimeSeconds else { continue }
+                let gameID = record.id
                 let descriptor = FetchDescriptor<DBSparkMetadata>(
-                    predicate: #Predicate { $0.gameID == record.id }
+                    predicate: #Predicate { $0.gameID == gameID }
                 )
                 let item = try context.fetch(descriptor).first
                     ?? DBSparkMetadata(gameID: record.id, runtimeSeconds: runtime)
@@ -457,7 +457,8 @@ final class PersonalLibraryStore: ObservableObject {
             let currentIDs = Set((record.gameUpdates ?? []).map(\.id))
             for old in oldUpdates where !currentIDs.contains(old.id) { context.delete(old) }
             for update in record.gameUpdates ?? [] {
-                let updateDescriptor = FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.id == update.id })
+                let updateID = update.id
+                let updateDescriptor = FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.id == updateID })
                 let item = try context.fetch(updateDescriptor).first ?? DBGameUpdate(id: update.id, gameID: record.id, summary: update.summary)
                 if item.modelContext == nil { context.insert(item) }
                 item.gameID = record.id
