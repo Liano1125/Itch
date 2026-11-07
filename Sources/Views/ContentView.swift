@@ -75,6 +75,13 @@ struct ContentView: View {
                 library: personalLibrary,
                 calendar: gameCalendar
             )
+            Task(priority: .utility) {
+                await DevlogAutoSync.prefetchCalendarTranslations(events: gameCalendar.events)
+                await GameDetailPrefetchService.shared.prefetch(
+                    records: personalLibrary.records,
+                    library: personalLibrary
+                )
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -84,6 +91,11 @@ struct ContentView: View {
                     monitor: updateMonitor,
                     library: personalLibrary,
                     calendar: gameCalendar
+                )
+                await DevlogAutoSync.prefetchCalendarTranslations(events: gameCalendar.events)
+                await GameDetailPrefetchService.shared.prefetch(
+                    records: personalLibrary.records,
+                    library: personalLibrary
                 )
             }
         }
