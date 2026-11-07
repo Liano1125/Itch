@@ -66,6 +66,7 @@ struct ContentView: View {
         .environmentObject(gameCalendar)
         .environmentObject(updateMonitor)
         .task {
+            try? await AppCacheManager.pruneExpiredCaches()
             await sparkSync.rescan(library: personalLibrary)
             DevlogAutoSync.scheduleNext()
             // Respect the six-hour throttle on cold launch as well as foregrounding.
