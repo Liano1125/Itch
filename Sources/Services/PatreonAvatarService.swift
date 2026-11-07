@@ -140,7 +140,7 @@ final class PatreonAvatarService {
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
 
         var candidates: [URL] = []
-        for tag in matches(#"<img\\b[^>]*>"#, in: html) {
+        for tag in matches(#"<img\b[^>]*>"#, in: html) {
             let alt = (attribute("alt", from: tag) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
