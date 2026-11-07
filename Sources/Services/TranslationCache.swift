@@ -52,14 +52,11 @@ actor TranslationCache {
     private func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([String: Entry].self, from: data) else { return }
-        entries = decoded
+        entries = AppDataStore.readJSON([String: Entry].self, from: fileURL) ?? [:]
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        AppDataStore.writeJSON(entries, to: fileURL)
     }
 }
 
