@@ -200,31 +200,27 @@ final class GameUpdateMonitorStore: ObservableObject {
                     continue
                 }
                 let posts = try DevlogRSSParser.parse(data: data)
-                let before = imported
-                for post in posts {
-                    guard let publishedAt = post.publishedAt else { continue }
+                let candidates = posts.compactMap { post -> GameLibraryUpdate? in
+                    guard let publishedAt = post.publishedAt else { return nil }
                     let stableID = post.guid ?? post.url ?? "\(post.title)|\(publishedAt.timeIntervalSince1970)"
-                    let libraryAdded = libraryStore.recordHistoricalUpdate(
-                        gameID: record.id,
+                    return GameLibraryUpdate(
                         title: post.title,
                         summary: post.summary,
                         publishedAt: publishedAt,
                         url: post.url,
-                        sourceID: stableID
-                    )
-                    let calendarAdded = calendarStore.addHistoricalUpdate(
-                        gameID: record.id,
-                        gameTitle: record.title,
-                        gameURL: record.gameURL,
-                        title: post.title,
-                        summary: post.summary,
-                        publishedAt: publishedAt,
                         sourceID: stableID,
-                        postURL: post.url
+                        isHistorical: true
                     )
-                    if libraryAdded || calendarAdded { imported += 1 }
                 }
-                let addedForGame = imported - before
+                let libraryAdded = libraryStore.recordHistoricalUpdates(gameID: record.id, updates: candidates)
+                let calendarAdded = calendarStore.addHistoricalUpdates(
+                    gameID: record.id,
+                    gameTitle: record.title,
+                    gameURL: record.gameURL,
+                    updates: candidates
+                )
+                let addedForGame = max(libraryAdded, calendarAdded)
+                imported += addedForGame
                 if posts.isEmpty {
                     unchanged += 1
                     results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "没有公开的 Devlog 更新"))
