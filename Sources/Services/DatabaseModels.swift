@@ -37,16 +37,18 @@ final class DBGame {
     var gameURL: String?
     var coverURL: String?
     var descriptionText: String?
+    var galleryURLs: [String]
     var engine: String?
     var developerID: String?
     var updatedAt: Date
 
-    init(id: String, title: String, gameURL: String? = nil, coverURL: String? = nil, descriptionText: String? = nil, engine: String? = nil, developerID: String? = nil, updatedAt: Date = .now) {
+    init(id: String, title: String, gameURL: String? = nil, coverURL: String? = nil, descriptionText: String? = nil, galleryURLs: [String] = [], engine: String? = nil, developerID: String? = nil, updatedAt: Date = .now) {
         self.id = id
         self.title = title
         self.gameURL = gameURL
         self.coverURL = coverURL
         self.descriptionText = descriptionText
+        self.galleryURLs = galleryURLs
         self.engine = engine
         self.developerID = developerID
         self.updatedAt = updatedAt
@@ -152,14 +154,16 @@ final class DBTranslation {
     @Attribute(.unique) var cacheKey: String
     var scope: String
     var sourceHash: String
+    var sourceText: String
     var targetLanguage: String
     var translatedText: String
     var updatedAt: Date
 
-    init(cacheKey: String, scope: String, sourceHash: String, targetLanguage: String, translatedText: String, updatedAt: Date = .now) {
+    init(cacheKey: String, scope: String, sourceHash: String, sourceText: String, targetLanguage: String, translatedText: String, updatedAt: Date = .now) {
         self.cacheKey = cacheKey
         self.scope = scope
         self.sourceHash = sourceHash
+        self.sourceText = sourceText
         self.targetLanguage = targetLanguage
         self.translatedText = translatedText
         self.updatedAt = updatedAt
