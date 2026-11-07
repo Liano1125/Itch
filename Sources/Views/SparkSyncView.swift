@@ -29,7 +29,7 @@ struct SparkSyncView: View {
                     ContentUnavailableView(
                         "尚未读取 Spark 数据",
                         systemImage: "folder.badge.questionmark",
-                        description: Text("选择 iCloud Drive 中的 Spark 文件夹，itchPocket 会只读扫描 Saves 和 Backups。")
+                        description: Text("选择 Spark 应用的本地数据文件夹（包含 saves 与 backups），itchPocket 会自动扫描正式存档、临时存档和备份。")
                     )
                     .padding(.top, 12)
                 }
@@ -87,7 +87,7 @@ struct SparkSyncView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Spark 文件夹")
                         .font(.headline)
-                    Text(spark.folderName ?? "尚未授权文件夹")
+                    Text(spark.folderName ?? "尚未选择文件夹")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -113,7 +113,7 @@ struct SparkSyncView: View {
                 Button {
                     showingFolderPicker = true
                 } label: {
-                    Label(spark.folderName == nil ? "选择 Spark 文件夹" : "更换文件夹", systemImage: "folder")
+                    Label(spark.folderName == nil ? "选择 Spark 本地文件夹" : "更换文件夹", systemImage: "folder")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -218,7 +218,7 @@ struct SparkSyncView: View {
         VStack(alignment: .leading, spacing: 7) {
             Label("数据安全说明", systemImage: "lock.shield")
                 .font(.subheadline.weight(.semibold))
-            Text("itchPocket 只读取 Saves 与 Backups 中的 Ren'Py 存档元数据，不会上传、修改或删除存档内容。游玩时长取有效存档记录中的最高运行时长，历史备份用于补充记录。备份时间、存档时间与真实启动时间分开显示。")
+            Text("itchPocket 只读取 Spark 本地数据目录中的 Ren'Py 存档元数据，不会上传、修改或删除存档内容。扫描 saves/renpy/saves、saves/staging/saves 和 backups。游玩时长取有效存档记录中的最高运行时长，历史备份用于补充记录。备份时间、存档时间与真实启动时间分开显示。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
