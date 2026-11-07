@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UserNotifications
 import CryptoKit
+import SwiftData
 
 struct DetectedGameUpdate {
     let gameID: String
