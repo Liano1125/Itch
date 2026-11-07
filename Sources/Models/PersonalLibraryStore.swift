@@ -562,12 +562,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private static func canonicalDeveloperID(_ rawURL: String) -> String {
-        guard var components = URLComponents(string: rawURL) else { return rawURL.lowercased() }
-        components.scheme = components.scheme?.lowercased()
-        components.host = components.host?.lowercased()
-        components.query = nil
-        components.fragment = nil
-        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return components.string ?? rawURL.lowercased()
+        AppDatabase.canonicalDeveloperID(rawURL)
     }
+}
 }
