@@ -61,7 +61,11 @@ struct DiscoverView: View {
         DiscoveryCacheStore.save(compact, key: Self.curatedCacheKey, timeToLive: 12 * 60 * 60)
     }
 
-    private var visibleRecommendedGames: [PublicCollectionGame] {\n        recommendedGames.filter { !library.contains($0.id) }\n    }\n\n    private var trimmedSearchText: String {
+    private var visibleRecommendedGames: [PublicCollectionGame] {
+        recommendedGames.filter { !library.contains($0.id) }
+    }
+
+    private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
