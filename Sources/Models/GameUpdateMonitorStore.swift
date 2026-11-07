@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import CryptoKit
 
 struct DevlogSyncGameResult: Codable, Identifiable {
     var id: String { gameID }
@@ -17,6 +18,7 @@ struct GameUpdateWatch: Codable, Identifiable {
     var gameURL: String
     var entityTag: String?
     var lastModified: String?
+    var contentHash: String? = nil
     var lastCheckedAt: Date?
     var hasBaseline: Bool
     var isEnabled: Bool
@@ -58,6 +60,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                 gameURL: record.gameURL ?? "",
                 entityTag: existing?.entityTag,
                 lastModified: existing?.lastModified,
+                contentHash: existing?.contentHash,
                 lastCheckedAt: existing?.lastCheckedAt,
                 hasBaseline: existing?.hasBaseline ?? false,
                 isEnabled: true
@@ -89,26 +92,49 @@ final class GameUpdateMonitorStore: ObservableObject {
                 request.httpMethod = "GET"
                 request.timeoutInterval = 25
                 request.setValue("text/html", forHTTPHeaderField: "Accept")
-                let (_, response) = try await URLSession.shared.data(for: request)
+                let (body, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) else {
                     failed += 1
                     continue
                 }
                 let etag = http.value(forHTTPHeaderField: "ETag")
                 let modified = http.value(forHTTPHeaderField: "Last-Modified")
+                let normalizedBody = String(data: body, encoding: .utf8)?
+                    .split(whereSeparator: \.isWhitespace)
+                    .joined(separator: " ") ?? body.base64EncodedString()
+                let bodyHash = SHA256.hash(data: Data(normalizedBody.utf8))
+                    .map { String(format: "%02x", $0) }
+                    .joined()
                 guard var current = watches[target.gameID] else { continue }
                 if !current.hasBaseline {
                     current.entityTag = etag
                     current.lastModified = modified
+                    current.contentHash = bodyHash
                     current.lastCheckedAt = Date()
                     current.hasBaseline = true
                 } else {
-                    let changed = (modified != nil && current.lastModified != nil && modified != current.lastModified)
-                        || (modified == nil && etag != nil && current.entityTag != nil && etag != current.entityTag)
+                    let hasComparableHeaders =
+                        (modified != nil && current.lastModified != nil)
+                        || (etag != nil && current.entityTag != nil)
+                    let headerChanged =
+                        (modified != nil && current.lastModified != nil && modified != current.lastModified)
+                        || (etag != nil && current.entityTag != nil && etag != current.entityTag)
+                    let contentChanged = !hasComparableHeaders
+                        && current.contentHash != nil
+                        && current.contentHash != bodyHash
+                    let changed = hasComparableHeaders ? headerChanged : contentChanged
+
                     if changed {
-                        let fingerprint = "modified:\(modified ?? current.lastModified ?? "")|etag:\(etag ?? current.entityTag ?? "")"
+                        let fingerprint: String
+                        let summary: String
+                        if hasComparableHeaders {
+                            fingerprint = "modified:\(modified ?? current.lastModified ?? "")|etag:\(etag ?? current.entityTag ?? "")"
+                            summary = "itch.io 游戏页面响应信息发生变化（ETag / Last-Modified）；请打开页面确认具体更新内容。"
+                        } else {
+                            fingerprint = "content:\(bodyHash)"
+                            summary = "itch.io 游戏页面内容指纹发生变化；请打开页面确认具体更新内容。"
+                        }
                         let detectedAt = Date()
-                        let summary = "itch.io 游戏页面响应信息发生变化（ETag / Last-Modified）；请打开页面确认具体更新内容。"
                         calendarStore.addDetectedUpdate(
                             gameID: current.gameID,
                             gameTitle: current.gameTitle,
@@ -120,6 +146,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                         await sendUpdateNotification(for: current)
                         updated += 1
                     }
+                    current.contentHash = bodyHash
                     if etag != nil { current.entityTag = etag }
                     if modified != nil { current.lastModified = modified }
                     current.lastCheckedAt = Date()
