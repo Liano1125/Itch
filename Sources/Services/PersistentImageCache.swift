@@ -11,8 +11,8 @@ final class PersistentImageCache {
     private let directory: URL
 
     private init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        directory = caches.appendingPathComponent("itchPocket-images", isDirectory: true)
+        directory = (try? AppDataStore.cachesDirectory(named: "itchPocket-images"))
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent("itchPocket-images", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         memory.countLimit = 300
     }
