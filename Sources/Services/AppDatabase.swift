@@ -69,12 +69,13 @@ final class AppDatabase {
         discordURL: String? = nil
     ) throws {
         let item = try developer(id: id) ?? DBDeveloper(id: id, name: name)
+        var changed = item.modelContext == nil
         if item.modelContext == nil { context.insert(item) }
-        if !name.isEmpty { item.name = name }
-        if let profileURL { item.profileURL = profileURL }
-        if let patreonURL { item.patreonURL = patreonURL }
-        if let discordURL { item.discordURL = discordURL }
-        item.updatedAt = .now
+        if !name.isEmpty && item.name != name { item.name = name; changed = true }
+        if let profileURL, item.profileURL != profileURL { item.profileURL = profileURL; changed = true }
+        if let patreonURL, item.patreonURL != patreonURL { item.patreonURL = patreonURL; changed = true }
+        if let discordURL, item.discordURL != discordURL { item.discordURL = discordURL; changed = true }
+        if changed { item.updatedAt = .now }
         try save()
     }
 
@@ -105,14 +106,15 @@ final class AppDatabase {
         developerID: String? = nil
     ) throws {
         let item = try game(id: id) ?? DBGame(id: id, title: title)
+        var changed = item.modelContext == nil
         if item.modelContext == nil { context.insert(item) }
-        item.title = title
-        if let gameURL { item.gameURL = gameURL }
-        if let coverURL { item.coverURL = coverURL }
-        if let description { item.descriptionText = description }
-        if let engine { item.engine = engine }
-        if let developerID { item.developerID = developerID }
-        item.updatedAt = .now
+        if item.title != title { item.title = title; changed = true }
+        if let gameURL, item.gameURL != gameURL { item.gameURL = gameURL; changed = true }
+        if let coverURL, item.coverURL != coverURL { item.coverURL = coverURL; changed = true }
+        if let description, item.descriptionText != description { item.descriptionText = description; changed = true }
+        if let engine, item.engine != engine { item.engine = engine; changed = true }
+        if let developerID, item.developerID != developerID { item.developerID = developerID; changed = true }
+        if changed { item.updatedAt = .now }
         try save()
     }
 
