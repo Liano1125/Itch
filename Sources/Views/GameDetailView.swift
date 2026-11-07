@@ -923,7 +923,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
             let hasCachedAvatar: Bool = {
                 guard let developerID = stored?.developerID,
                       let developer = try? database.developer(id: developerID) else { return false }
-                return developer?.avatarURL != nil
+                return developer.avatarURL != nil
             }()
             let lastPrefetch = try? database.state(for: "detailPrefetch.lastSuccess.\(record.id)")?.dateValue
             let freshnessDate = lastPrefetch ?? stored?.updatedAt
