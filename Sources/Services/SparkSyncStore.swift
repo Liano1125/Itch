@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftUI
 import ZIPFoundation
 
@@ -226,8 +227,17 @@ private enum SparkArchiveScanner {
                       let metadata = readSaveMetadata(at: fileURL) else { continue }
                 let key = normalizedGameName(gameName)
                 var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
-                let slotIdentity = fileURL.deletingPathExtension().lastPathComponent
-                aggregate.merge(metadata, saveIdentity: slotIdentity, source: sourceLabel)
+                // Only byte-identical archives are true duplicates. The same slot
+                // filename in staging and primary storage may contain different progress.
+                let saveIdentity: String
+                if let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) {
+                    saveIdentity = SHA256.hash(data: data)
+                        .map { String(format: "%02x", $0) }
+                        .joined()
+                } else {
+                    saveIdentity = fileURL.standardizedFileURL.path
+                }
+                aggregate.merge(metadata, saveIdentity: saveIdentity, source: sourceLabel)
                 aggregates[key] = aggregate
             }
         }
