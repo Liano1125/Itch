@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var auth: ItchAuthService
     @EnvironmentObject private var library: PersonalLibraryStore
+    @StateObject private var patreon = PatreonAccountService.shared
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
     @AppStorage("itchPocket.launchTab") private var launchTab = "discover"
 
@@ -21,6 +22,7 @@ struct ProfileView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     accountCard
+                    accountServicesSection
                     personalStatsSection
 
                     if let error = auth.errorMessage {
@@ -45,9 +47,97 @@ struct ProfileView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.large)
+            .task { await patreon.restore() }
         }
     }
 
+
+    private var accountServicesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("账户与服务")
+                .font(.title3.bold())
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Image(systemName: "heart.circle.fill")
+                        .font(.system(size: 34))
+                        .foregroundStyle(Color(red: 0.96, green: 0.35, blue: 0.48))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Patreon")
+                            .font(.headline)
+                        Text(patreon.account == nil ? "连接创作者账户，同步授权范围内的账户资料" : "已连接 Patreon 账户")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Circle()
+                        .fill(patreon.account == nil ? Color.secondary.opacity(0.4) : Color.green)
+                        .frame(width: 8, height: 8)
+                }
+
+                if let account = patreon.account {
+                    HStack(spacing: 12) {
+                        CachedRemoteImage(url: account.imageURL, contentMode: .fill) {
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(account.name ?? "Patreon 用户")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Patreon ID：\(account.userID)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let profileURL = account.profileURL {
+                            Link(destination: profileURL) {
+                                Image(systemName: "arrow.up.right")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                        }
+                    }
+
+                    Button(role: .destructive) {
+                        Task { await patreon.disconnect() }
+                    } label: {
+                        Label("断开 Patreon 连接", systemImage: "xmark.circle")
+                            .font(.subheadline.weight(.medium))
+                    }
+                } else {
+                    Button {
+                        Task { await patreon.connect() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if patreon.isLoading {
+                                ProgressView().tint(.white)
+                            } else {
+                                Label("连接 Patreon 账户", systemImage: "link")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            Spacer()
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 13)
+                        .background(Color(red: 0.96, green: 0.35, blue: 0.48),
+                                    in: RoundedRectangle(cornerRadius: 13))
+                    }
+                    .disabled(patreon.isLoading)
+                }
+
+                if let error = patreon.errorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(16)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
 
     private var personalStatsSection: some View {
         let total = library.records.count
