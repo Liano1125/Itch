@@ -797,7 +797,7 @@ struct GameDetailView: View {
                 description: savedGame.descriptionText,
                 developer: developer?.name ?? game.developer,
                 coverURL: URL(string: savedGame.coverURL ?? game.coverURL?.absoluteString ?? ""),
-                galleryURLs: savedGame.galleryURLs.compactMap(URL.init(string:)),
+                galleryURLs: savedGame.galleryURLs.compactMap { URL(string: $0) },
                 authorURL: URL(string: developer?.profileURL ?? game.developerProfileURL?.absoluteString ?? ""),
                 authorAvatarURL: URL(string: developer?.avatarURL ?? ""),
                 patreonURL: URL(string: developer?.patreonURL ?? ""),
@@ -816,7 +816,7 @@ struct GameDetailView: View {
         let savedGallery = (try? database.galleryURLs(for: game.id)) ?? []
         cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }.isEmpty
             ? cachedGalleryURLs
-            : savedGallery.compactMap(URL.init(string:))
+            : savedGallery.compactMap { URL(string: $0) }
 
         let target = AppPreferences.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         for update in library.updates(for: game.id) {
@@ -920,10 +920,15 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
             guard let rawURL = record.gameURL, URL(string: rawURL) != nil else { return nil }
             let stored = try? database.game(id: record.id)
             let isComplete = stored?.descriptionText?.isEmpty == false && !(stored?.galleryURLs.isEmpty ?? true)
+            let hasCachedAvatar: Bool = {
+                guard let developerID = stored?.developerID,
+                      let developer = try? database.developer(id: developerID) else { return false }
+                return developer?.avatarURL != nil
+            }()
             let lastPrefetch = try? database.state(for: "detailPrefetch.lastSuccess.\(record.id)")?.dateValue
             let freshnessDate = lastPrefetch ?? stored?.updatedAt
             let isFresh = freshnessDate.map { Date().timeIntervalSince($0) < 3 * 24 * 60 * 60 } ?? false
-            guard !isComplete || !isFresh else { return nil }
+            guard !isComplete || !isFresh || !hasCachedAvatar else { return nil }
             return (record, freshnessDate ?? .distantPast)
         }
         .sorted { $0.updatedAt < $1.updatedAt }
@@ -935,8 +940,8 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
             await load(candidate.record, url: url)
             guard let stored = try? database.game(id: candidate.record.id) else { continue }
 
-            var imageURLs = [stored.coverURL].compactMap { $0 }.compactMap(URL.init(string:))
-            imageURLs += stored.galleryURLs.prefix(8).compactMap(URL.init(string:))
+            var imageURLs = [stored.coverURL].compactMap { $0 }.compactMap { URL(string: $0) }
+            imageURLs += stored.galleryURLs.prefix(8).compactMap { URL(string: $0) }
             await PersistentImageCache.shared.prefetch(imageURLs)
 
             if let description = stored.descriptionText, !description.isEmpty, TranslationService.isConfigured {
