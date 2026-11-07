@@ -787,11 +787,36 @@ struct GameDetailView: View {
     }
 
     private func loadCachedDescription() async {
-        let savedGallery = (try? AppDatabase.shared.galleryURLs(for: game.id)) ?? []
-        cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }
-        if cachedOriginalDescription == nil {
-            cachedOriginalDescription = try? AppDatabase.shared.game(id: game.id)?.descriptionText
+        let database = AppDatabase.shared
+        if let savedGame = try? database.game(id: game.id) {
+            let developer = savedGame.developerID.flatMap { try? database.developer(id: $0) }
+            let tags = savedGame.discoveryTagsData.flatMap {
+                try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
+            } ?? []
+            let cachedDetail = GameDetailPayload(
+                description: savedGame.descriptionText,
+                developer: developer?.name ?? game.developer,
+                coverURL: URL(string: savedGame.coverURL ?? game.coverURL?.absoluteString ?? ""),
+                galleryURLs: savedGame.galleryURLs.compactMap(URL.init(string:)),
+                authorURL: URL(string: developer?.profileURL ?? game.developerProfileURL?.absoluteString ?? ""),
+                authorAvatarURL: URL(string: developer?.avatarURL ?? ""),
+                patreonURL: URL(string: developer?.patreonURL ?? ""),
+                discordURL: URL(string: developer?.discordURL ?? ""),
+                discoveryTags: tags,
+                engine: savedGame.engine
+            )
+            if cachedDetail.description != nil || cachedDetail.coverURL != nil || !cachedDetail.galleryURLs.isEmpty {
+                detail = cachedDetail
+                cachedGalleryURLs = cachedDetail.galleryURLs
+                cachedOriginalDescription = cachedDetail.description
+                isLoading = false
+            }
         }
+
+        let savedGallery = (try? database.galleryURLs(for: game.id)) ?? []
+        cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }.isEmpty
+            ? cachedGalleryURLs
+            : savedGallery.compactMap(URL.init(string:))
 
         let target = AppPreferences.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         for update in library.updates(for: game.id) {
@@ -870,6 +895,144 @@ struct GameDetailView: View {
 }
 
 // MARK: - Game Page Reader
+
+
+/// Preloads missing/stale itch.io detail pages in a small sequential WebKit queue.
+/// Cached detail data is rendered immediately; this service refreshes it in the background.
+@MainActor
+final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
+    static let shared = GameDetailPrefetchService()
+
+    private let database = AppDatabase.shared
+    private var isRunning = false
+    private var webView: WKWebView?
+    private var currentRecord: LibraryRecord?
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    private override init() { super.init() }
+
+    func prefetch(records: [LibraryRecord], library: PersonalLibraryStore, limit: Int = 8) async {
+        guard !isRunning else { return }
+        isRunning = true
+        defer { isRunning = false }
+
+        let candidates: [(record: LibraryRecord, updatedAt: Date)] = records.compactMap { record in
+            guard let rawURL = record.gameURL, URL(string: rawURL) != nil else { return nil }
+            let stored = try? database.game(id: record.id)
+            let isComplete = stored?.descriptionText?.isEmpty == false && !(stored?.galleryURLs.isEmpty ?? true)
+            let isFresh = stored.map { Date().timeIntervalSince($0.updatedAt) < 3 * 24 * 60 * 60 } ?? false
+            guard !isComplete || !isFresh else { return nil }
+            return (record, stored?.updatedAt ?? .distantPast)
+        }
+        .sorted { $0.updatedAt < $1.updatedAt }
+        .prefix(max(1, limit))
+
+        for candidate in candidates {
+            if Task.isCancelled { break }
+            guard let url = URL(string: candidate.record.gameURL ?? "") else { continue }
+            await load(candidate.record, url: url)
+            guard let stored = try? database.game(id: candidate.record.id) else { continue }
+
+            var imageURLs = [stored.coverURL].compactMap { $0 }.compactMap(URL.init(string:))
+            imageURLs += stored.galleryURLs.prefix(8).compactMap(URL.init(string:))
+            await PersistentImageCache.shared.prefetch(imageURLs)
+
+            if let description = stored.descriptionText, !description.isEmpty, TranslationService.isConfigured {
+                _ = try? await TranslationService.translateCached(
+                    description,
+                    scope: "game-description:\(candidate.record.id)"
+                )
+            }
+            for update in library.updates(for: candidate.record.id).prefix(5) {
+                let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+                guard !source.isEmpty, TranslationService.isConfigured else { continue }
+                _ = try? await TranslationService.translateCached(
+                    source,
+                    scope: "devlog:\(candidate.record.id):\(update.id)"
+                )
+            }
+        }
+    }
+
+    private func load(_ record: LibraryRecord, url: URL) async {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            currentRecord = record
+            let view = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+            view.navigationDelegate = self
+            webView = view
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 35
+            request.cachePolicy = .returnCacheDataElseLoad
+            view.load(request)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        webView.evaluateJavaScript(DetailPageReader.Coordinator.gamePageScript) { result, error in
+            Task { @MainActor in
+                guard let record = self.currentRecord,
+                      error == nil,
+                      let json = result as? String,
+                      let data = json.data(using: .utf8),
+                      let payload = try? JSONDecoder().decode(GamePagePayload.self, from: data),
+                      payload.scriptError == nil else {
+                    self.finish()
+                    return
+                }
+
+                let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
+                let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
+                do {
+                    try self.database.upsertGameDetail(
+                        id: record.id,
+                        title: record.title,
+                        gameURL: record.gameURL,
+                        coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
+                        description: payload.description,
+                        galleryURLs: payload.galleryURLs ?? [],
+                        discoveryTags: payload.discoveryTags ?? [],
+                        engine: payload.engine,
+                        developerID: developerID,
+                        developerName: payload.developer ?? record.developer,
+                        developerProfileURL: authorURL?.absoluteString,
+                        patreonURL: payload.patreonURL?.absoluteString,
+                        discordURL: payload.discordURL?.absoluteString
+                    )
+                } catch {
+                    print("itchPocket detail prefetch persistence failed: \(error)")
+                }
+                if let authorURL {
+                    Task {
+                        _ = await PatreonAvatarService.shared.avatarURL(
+                            authorURL: authorURL,
+                            gameURL: URL(string: record.gameURL ?? "")
+                        )
+                    }
+                }
+                self.finish()
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        finish()
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        finish()
+    }
+
+    private func finish() {
+        webView?.stopLoading()
+        webView?.navigationDelegate = nil
+        webView = nil
+        currentRecord = nil
+        let pending = continuation
+        continuation = nil
+        pending?.resume()
+    }
+}
 
 private struct DetailPageReader: UIViewRepresentable {
     let url: URL?
@@ -1029,7 +1192,7 @@ private struct DetailPageReader: UIViewRepresentable {
             }
         }
 
-        private static let gamePageScript = """
+        fileprivate static let gamePageScript = """
         (() => {
             try {
                 const clean = el => {
