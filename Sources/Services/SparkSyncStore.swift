@@ -10,6 +10,8 @@ struct SparkGameSummary: Identifiable {
     var lastBackupAt: Date?
     var renpyVersion: String?
     var saveCount: Int
+    var duplicateSaveCount: Int
+    var saveSources: [String]
 }
 
 @MainActor
@@ -145,14 +147,24 @@ private struct SparkSaveMetadata {
 }
 
 private struct SparkAggregate {
+    var gameName: String
     var runtimeSeconds: Double = 0
     var lastSaveAt: Date?
     var lastBackupAt: Date?
     var renpyVersion: String?
     var versionDate: Date?
-    var saveCount: Int = 0
+    var saveIdentities = Set<String>()
+    var rawSaveCount = 0
+    var saveSources = Set<String>()
 
-    mutating func merge(_ metadata: SparkSaveMetadata, countAsActiveSave: Bool) {
+    init(gameName: String) {
+        self.gameName = gameName
+    }
+
+    var saveCount: Int { saveIdentities.count }
+    var duplicateSaveCount: Int { max(0, rawSaveCount - saveIdentities.count) }
+
+    mutating func merge(_ metadata: SparkSaveMetadata, saveIdentity: String?, source: String?) {
         if let runtime = metadata.runtimeSeconds, runtime.isFinite {
             runtimeSeconds = max(runtimeSeconds, runtime)
         }
@@ -169,7 +181,11 @@ private struct SparkAggregate {
         } else if renpyVersion == nil {
             renpyVersion = metadata.renpyVersion
         }
-        if countAsActiveSave { saveCount += 1 }
+        if let saveIdentity {
+            rawSaveCount += 1
+            saveIdentities.insert(saveIdentity.lowercased())
+        }
+        if let source { saveSources.insert(source) }
     }
 }
 
@@ -196,7 +212,7 @@ private enum SparkArchiveScanner {
         var aggregates: [String: SparkAggregate] = [:]
         var visitedSaveFiles = Set<String>()
 
-        for savesURL in saveRoots {
+        for (savesURL, sourceLabel) in saveRoots {
             guard let enumerator = fileManager.enumerator(
                 at: savesURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
@@ -208,9 +224,11 @@ private enum SparkArchiveScanner {
                 guard visitedSaveFiles.insert(fileKey).inserted,
                       let gameName = gameNameForSave(fileURL, root: savesURL),
                       let metadata = readSaveMetadata(at: fileURL) else { continue }
-                var aggregate = aggregates[gameName] ?? SparkAggregate()
-                aggregate.merge(metadata, countAsActiveSave: true)
-                aggregates[gameName] = aggregate
+                let key = normalizedGameName(gameName)
+                var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
+                let slotIdentity = fileURL.deletingPathExtension().lastPathComponent
+                aggregate.merge(metadata, saveIdentity: slotIdentity, source: sourceLabel)
+                aggregates[key] = aggregate
             }
         }
 
@@ -224,37 +242,46 @@ private enum SparkArchiveScanner {
                 guard let backupDate = backupDateFromFilename(backupURL.lastPathComponent),
                       let gameName = gameNameForBackup(backupURL, root: backupsURL) else { continue }
 
-                var aggregate = aggregates[gameName] ?? SparkAggregate()
+                let key = normalizedGameName(gameName)
+                var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
                 if aggregate.lastBackupAt == nil || backupDate > aggregate.lastBackupAt! {
                     aggregate.lastBackupAt = backupDate
                 }
-                aggregates[gameName] = aggregate
+                aggregates[key] = aggregate
                 mergeNestedSaves(from: backupURL, gameName: gameName, into: &aggregates)
             }
         }
 
-        return aggregates.map { name, aggregate in
+        return aggregates.values.map { aggregate in
             SparkGameSummary(
-                gameName: name,
+                gameName: aggregate.gameName,
                 runtimeSeconds: aggregate.runtimeSeconds,
                 lastSaveAt: aggregate.lastSaveAt,
                 lastBackupAt: aggregate.lastBackupAt,
                 renpyVersion: aggregate.renpyVersion,
-                saveCount: aggregate.saveCount
+                saveCount: aggregate.saveCount,
+                duplicateSaveCount: aggregate.duplicateSaveCount,
+                saveSources: aggregate.saveSources.sorted()
             )
         }.sorted { $0.gameName.localizedCaseInsensitiveCompare($1.gameName) == .orderedAscending }
     }
 
     // Prefer Spark's known on-device layout instead of selecting the first
     // arbitrary directory named "saves" (which may be an outer container).
-    private static func locateSaveRoots(under root: URL) -> [URL] {
+    private static func normalizedGameName(_ value: String) -> String {
+        value.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined()
+    }
+
+    private static func locateSaveRoots(under root: URL) -> [(URL, String)] {
         let preferredRelativePaths = [
             "saves/renpy/saves",
             "saves/staging/saves",
             "renpy/saves",
             "staging/saves"
         ]
-        var results: [URL] = []
+        var results: [(URL, String)] = []
 
         for relativePath in preferredRelativePaths {
             let candidate = relativePath.split(separator: "/").reduce(root) {
@@ -263,17 +290,17 @@ private enum SparkArchiveScanner {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
                isDirectory.boolValue {
-                results.append(candidate)
+                results.append((candidate, relativePath.contains("staging") ? "临时存档" : "正式存档"))
             }
         }
 
         if results.isEmpty {
             // Allow a selected folder that is itself the Ren'Py saves directory.
             if containsSaveFiles(root) {
-                results.append(root)
+                results.append((root, "所选目录"))
             } else if let nested = locateDirectory(named: "saves", under: root, maxDepth: 5),
                       containsSaveFiles(nested) {
-                results.append(nested)
+                results.append((nested, "发现的存档目录"))
             }
         }
         return results
@@ -415,9 +442,11 @@ private enum SparkArchiveScanner {
                 .appendingPathExtension("save")
             guard (try? archive.extract(entry, to: extractedURL)) != nil,
                   let metadata = readSaveMetadata(at: extractedURL) else { continue }
-            var aggregate = aggregates[gameName] ?? SparkAggregate()
-            aggregate.merge(metadata, countAsActiveSave: false)
-            aggregates[gameName] = aggregate
+            let key = normalizedGameName(gameName)
+            var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
+            // Backup contents are historical snapshots, not additional active save slots.
+            aggregate.merge(metadata, saveIdentity: nil, source: nil)
+            aggregates[key] = aggregate
         }
     }
 }
