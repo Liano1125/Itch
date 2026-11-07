@@ -8,7 +8,6 @@ struct SparkGameSummary: Identifiable {
     let gameName: String
     var runtimeSeconds: Double
     var lastSaveAt: Date?
-    var lastBackupAt: Date?
     var renpyVersion: String?
     var saveCount: Int
     var duplicateSaveCount: Int
@@ -27,21 +26,18 @@ final class SparkSyncStore: ObservableObject {
 
     private let lastSyncKey = "itchPocket.sparkLastSyncAt.v2"
     private let savesFolderName = "Allsaves"
-    private let backupsFolderName = "Backups"
 
     private init() {
         lastSyncAt = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
     }
 
-    /// Creates the two fixed folders inside the app's shared Documents directory.
-    /// With file sharing enabled, Shortcuts and Files can copy into these folders.
+    /// Creates the fixed Allsaves folder inside the app's shared Documents directory.
+    /// With file sharing enabled, Shortcuts and Files can copy into this folder.
     func prepareFolders() throws {
         let documents = try documentsDirectory()
         let manager = FileManager.default
-        for name in [savesFolderName, backupsFolderName] {
-            let folder = documents.appendingPathComponent(name, isDirectory: true)
-            try manager.createDirectory(at: folder, withIntermediateDirectories: true)
-        }
+        let folder = documents.appendingPathComponent(savesFolderName, isDirectory: true)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
     }
 
     func rescan(library: PersonalLibraryStore) async {
@@ -50,8 +46,7 @@ final class SparkSyncStore: ObservableObject {
             try prepareFolders()
             let documents = try documentsDirectory()
             let savesURL = documents.appendingPathComponent(savesFolderName, isDirectory: true)
-            let backupsURL = documents.appendingPathComponent(backupsFolderName, isDirectory: true)
-            await scanFolders(saveURL: savesURL, backupURL: backupsURL, library: library)
+            await scanFolders(saveURL: savesURL, library: library)
         } catch {
             errorMessage = "无法准备 itchPocket 存档目录：\(error.localizedDescription)"
         }
@@ -66,7 +61,7 @@ final class SparkSyncStore: ObservableObject {
         return url
     }
 
-    private func scanFolders(saveURL: URL?, backupURL: URL?, library: PersonalLibraryStore) async {
+    private func scanFolders(saveURL: URL, library: PersonalLibraryStore) async {
         guard !isScanning else { return }
         isScanning = true
         errorMessage = nil
@@ -76,7 +71,7 @@ final class SparkSyncStore: ObservableObject {
 
         do {
             let found = try await Task.detached(priority: .utility) {
-                try SparkArchiveScanner.scan(saveRootURL: saveURL, backupRootURL: backupURL)
+                try SparkArchiveScanner.scan(saveRootURL: saveURL)
             }.value
 
             summaries = found
@@ -92,10 +87,6 @@ final class SparkSyncStore: ObservableObject {
                 if let lastSaveAt = summary.lastSaveAt,
                    updated.sparkLastSaveAt == nil || lastSaveAt > updated.sparkLastSaveAt! {
                     updated.sparkLastSaveAt = lastSaveAt
-                }
-                if let lastBackupAt = summary.lastBackupAt,
-                   updated.sparkLastBackupAt == nil || lastBackupAt > updated.sparkLastBackupAt! {
-                    updated.sparkLastBackupAt = lastBackupAt
                 }
                 if let version = summary.renpyVersion {
                     updated.sparkRenpyVersion = version
@@ -132,7 +123,6 @@ private struct SparkAggregate {
     var gameName: String
     var runtimeSeconds: Double = 0
     var lastSaveAt: Date?
-    var lastBackupAt: Date?
     var renpyVersion: String?
     var versionDate: Date?
     var saveIdentities = Set<String>()
@@ -178,22 +168,22 @@ private enum SparkArchiveScanner {
         var errorDescription: String? {
             switch self {
             case .sparkFoldersNotFound:
-                return "没有识别到存档文件夹。请检查是否选择了 itchPocket-allsaves 和 itchPocket-backups。"
+                return "没有识别到正式存档。请检查 itchPocket/Allsaves 文件夹是否包含游戏存档。"
             }
         }
     }
 
-    static func scan(saveRootURL: URL?, backupRootURL: URL?) throws -> [SparkGameSummary] {
+    static func scan(saveRootURL: URL) throws -> [SparkGameSummary] {
         let fileManager = FileManager.default
-        guard saveRootURL != nil || backupRootURL != nil else {
+        guard fileManager.fileExists(atPath: saveRootURL.path) else {
             throw ScanError.sparkFoldersNotFound
         }
 
         var aggregates: [String: SparkAggregate] = [:]
         var visitedSaveFiles = Set<String>()
 
-        if let savesURL = saveRootURL,
-           let enumerator = fileManager.enumerator(
+        let savesURL = saveRootURL
+        if let enumerator = fileManager.enumerator(
                 at: savesURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
@@ -216,31 +206,13 @@ private enum SparkArchiveScanner {
             }
         }
 
-        if let backupsURL = backupRootURL,
-           let enumerator = fileManager.enumerator(
-                at: backupsURL,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-           ) {
-            for case let backupURL as URL in enumerator where backupURL.pathExtension.lowercased() == "zip" {
-                guard let backupDate = backupDateFromFilename(backupURL.lastPathComponent),
-                      let gameName = gameNameForBackup(backupURL, root: backupsURL) else { continue }
-                let key = normalizedGameName(gameName)
-                var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
-                if aggregate.lastBackupAt == nil || backupDate > aggregate.lastBackupAt! {
-                    aggregate.lastBackupAt = backupDate
-                }
-                aggregates[key] = aggregate
-                mergeNestedSaves(from: backupURL, gameName: gameName, into: &aggregates)
-            }
-        }
+
 
         return aggregates.values.map { aggregate in
             SparkGameSummary(
                 gameName: aggregate.gameName,
                 runtimeSeconds: aggregate.runtimeSeconds,
                 lastSaveAt: aggregate.lastSaveAt,
-                lastBackupAt: aggregate.lastBackupAt,
                 renpyVersion: aggregate.renpyVersion,
                 saveCount: aggregate.saveCount,
                 duplicateSaveCount: aggregate.duplicateSaveCount,
@@ -259,39 +231,6 @@ private enum SparkArchiveScanner {
         let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
         guard let first = relative.split(separator: "/").first else { return nil }
         return String(first)
-    }
-
-    private static func gameNameForBackup(_ url: URL, root: URL) -> String? {
-        let components = url.deletingLastPathComponent().path
-            .replacingOccurrences(of: root.path, with: "")
-            .split(separator: "/")
-            .map(String.init)
-        if let autoBackupIndex = components.lastIndex(where: {
-            $0.caseInsensitiveCompare("autoBackup") == .orderedSame
-        }), autoBackupIndex > 0 {
-            return components[autoBackupIndex - 1]
-        }
-        if let parent = components.last, !parent.isEmpty,
-           parent.caseInsensitiveCompare("backups") != .orderedSame {
-            return parent
-        }
-        return nil
-    }
-
-    private static func backupDateFromFilename(_ filename: String) -> Date? {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"backup_(\d{8})_(\d{6})"#,
-            options: [.caseInsensitive]
-        ) else { return nil }
-        let range = NSRange(filename.startIndex..., in: filename)
-        guard let match = regex.firstMatch(in: filename, range: range),
-              let dateRange = Range(match.range(at: 1), in: filename),
-              let timeRange = Range(match.range(at: 2), in: filename) else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyyMMddHHmmss"
-        return formatter.date(from: String(filename[dateRange]) + String(filename[timeRange]))
     }
 
     private static func readSaveMetadata(at url: URL) -> SparkSaveMetadata? {
@@ -333,31 +272,4 @@ private enum SparkArchiveScanner {
         return "\(parts[0]).\(parts[1]).\(parts[2])"
     }
 
-    private static func mergeNestedSaves(
-        from backupURL: URL,
-        gameName: String,
-        into aggregates: inout [String: SparkAggregate]
-    ) {
-        guard let archive = try? Archive(url: backupURL, accessMode: .read) else { return }
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-Spark-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(
-            at: temporaryDirectory,
-            withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-
-        for entry in archive where entry.path.lowercased().hasSuffix(".save") {
-            let extractedURL = temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("save")
-            guard (try? archive.extract(entry, to: extractedURL)) != nil,
-                  let metadata = readSaveMetadata(at: extractedURL) else { continue }
-            let key = normalizedGameName(gameName)
-            var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
-            // Backup contents are historical snapshots, not additional active save slots.
-            aggregate.merge(metadata, saveIdentity: nil, source: nil)
-            aggregates[key] = aggregate
-        }
-    }
 }
