@@ -375,8 +375,9 @@ struct GameDetailView: View {
 
     @ViewBuilder
     private var linksSection: some View {
-        let patreon = detail?.patreonURL
-        let discord = detail?.discordURL
+        let record = library.record(for: game.id)
+        let patreon = detail?.patreonURL ?? URL(string: record?.patreonURL ?? "")
+        let discord = detail?.discordURL ?? URL(string: record?.discordURL ?? "")
         if patreon != nil || discord != nil {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Link").font(.headline)
@@ -478,7 +479,7 @@ struct GameDetailView: View {
     @ViewBuilder
     private var engineSection: some View {
         let engine = library.record(for: game.id)?.engine ?? detail?.engine
-        return HStack(spacing: 12) {
+        HStack(spacing: 12) {
             Image(systemName: "cpu")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.accentColor)
@@ -498,6 +499,7 @@ struct GameDetailView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
     }
 
+    @ViewBuilder
     private var statusHistorySection: some View {
         if library.record(for: game.id) != nil {
             VStack(alignment: .leading, spacing: 13) {
@@ -668,6 +670,16 @@ struct GameDetailView: View {
             }
             if let engine = result.engine, record.engine != engine {
                 record.engine = engine
+                changed = true
+            }
+            if let patreonURL = result.patreonURL?.absoluteString,
+               record.patreonURL != patreonURL {
+                record.patreonURL = patreonURL
+                changed = true
+            }
+            if let discordURL = result.discordURL?.absoluteString,
+               record.discordURL != discordURL {
+                record.discordURL = discordURL
                 changed = true
             }
             if changed { library.update(record) }
@@ -1037,16 +1049,24 @@ private struct DetailPageReader: UIViewRepresentable {
                   .filter((tag, index, array) => array.findIndex(item => item.url === tag.url) === index)
                   .slice(0, 20);
 
-                const tagText = discoveryTags.map(tag => tag.name + " " + tag.url).join(" ");
+                const engineTagText = Array.from(document.querySelectorAll('a[href]'))
+                    .filter(anchor => {
+                        const href = anchor.getAttribute("href") || "";
+                        return /\\/games\\/(tag-|made-with-|engine-)/i.test(href);
+                    })
+                    .map(anchor => clean(anchor) + " " + (anchor.getAttribute("href") || ""))
+                    .join(" ");
+                const tagText = discoveryTags.map(tag => tag.name + " " + tag.url).join(" ")
+                    + " " + engineTagText;
                 const engineRules = [
                     { name: "Ren'Py", pattern: /ren.?py/i },
                     { name: "Unity", pattern: /\\bunity\\b/i },
                     { name: "Unreal Engine", pattern: /unreal([\\s-]*engine)?/i },
                     { name: "Godot", pattern: /\\bgodot\\b/i },
                     { name: "RPG Maker", pattern: /rpg[\\s-]*maker/i },
-                    { name: "TyranoBuilder", pattern: /tyranobuilder/i },
+                    { name: "TyranoBuilder", pattern: /tyrano[\\s-]*builder/i },
                     { name: "Wolf RPG Editor", pattern: /wolf[\\s-]*rpg/i },
-                    { name: "GameMaker", pattern: /gamemaker/i },
+                    { name: "GameMaker", pattern: /game[\\s-]*maker/i },
                     { name: "Adventure Game Studio", pattern: /adventure[\\s-]*game[\\s-]*studio/i },
                     { name: "Visual Novel Maker", pattern: /visual[\\s-]*novel[\\s-]*maker/i }
                 ];
