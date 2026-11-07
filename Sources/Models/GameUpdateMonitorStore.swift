@@ -212,13 +212,14 @@ final class GameUpdateMonitorStore: ObservableObject {
                         isHistorical: true
                     )
                 }
-                let libraryAdded = libraryStore.recordHistoricalUpdates(gameID: record.id, updates: candidates)
+                let libraryAdded = libraryStore.recordHistoricalUpdates(gameID: record.id, updates: candidates, save: false)
                 let calendarAdded = calendarStore.addHistoricalUpdates(
                     gameID: record.id,
                     gameTitle: record.title,
                     gameURL: record.gameURL,
                     updates: candidates
                 )
+                try? AppDatabase.shared.save()
                 let addedForGame = max(libraryAdded, calendarAdded)
                 imported += addedForGame
                 if posts.isEmpty {
