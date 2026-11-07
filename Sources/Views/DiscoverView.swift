@@ -42,17 +42,12 @@ struct DiscoverView: View {
     private static let curatedCacheKey = "itchPocket.curatedFeeds.v1"
 
     private static func loadCuratedCache() -> [String: [PublicCollectionGame]] {
-        guard let data = UserDefaults.standard.data(forKey: curatedCacheKey),
-              let cached = try? JSONDecoder().decode([String: [PublicCollectionGame]].self, from: data) else {
-            return [:]
-        }
-        return cached
+        AppDataStore.decode([String: [PublicCollectionGame]].self, forKey: curatedCacheKey) ?? [:]
     }
 
     private func persistCuratedCache() {
         let compact = curatedGames.mapValues { Array($0.prefix(24)) }
-        guard let data = try? JSONEncoder().encode(compact) else { return }
-        UserDefaults.standard.set(data, forKey: Self.curatedCacheKey)
+        AppDataStore.encode(compact, forKey: Self.curatedCacheKey)
     }
 
     private var trimmedSearchText: String {
