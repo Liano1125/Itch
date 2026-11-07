@@ -13,6 +13,7 @@ struct ContentView: View {
     @StateObject private var personalLibrary = PersonalLibraryStore.shared
     @StateObject private var gameCalendar = GameCalendarStore.shared
     @StateObject private var updateMonitor = GameUpdateMonitorStore.shared
+    @StateObject private var sparkSync = SparkSyncStore.shared
     @AppStorage("itchPocket.launchTab") private var launchTab = "discover"
     @State private var selectedTab: AppTab
     @AppStorage("itchPocket.appearance") private var appearanceMode = "light"
@@ -65,6 +66,7 @@ struct ContentView: View {
         .environmentObject(gameCalendar)
         .environmentObject(updateMonitor)
         .task {
+            await sparkSync.rescan(library: personalLibrary)
             DevlogAutoSync.scheduleNext()
             // Respect the six-hour throttle on cold launch as well as foregrounding.
             await DevlogAutoSync.refreshIfNeeded(
@@ -76,6 +78,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
+                await sparkSync.rescan(library: personalLibrary)
                 await DevlogAutoSync.refreshIfNeeded(
                     monitor: updateMonitor,
                     library: personalLibrary,
