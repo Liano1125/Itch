@@ -30,14 +30,29 @@ struct LibraryView: View {
     private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
 
     private var filteredRecords: [LibraryRecord] {
-        library.records.filter { record in
-            (selectedStatus == nil || record.status == selectedStatus)
-            && (searchText.isEmpty
-                || record.title.localizedCaseInsensitiveContains(searchText)
-                || (record.developer ?? "").localizedCaseInsensitiveContains(searchText))
-        }
+        library.records
+            .filter { record in
+                (selectedStatus == nil || record.status == selectedStatus)
+                && (searchText.isEmpty
+                    || record.title.localizedCaseInsensitiveContains(searchText)
+                    || (record.developer ?? "").localizedCaseInsensitiveContains(searchText))
+            }
+            .sorted { lhs, rhs in
+                let leftTime = lhs.sparkPlaytimeSeconds.flatMap { $0.isFinite ? $0 : nil }
+                let rightTime = rhs.sparkPlaytimeSeconds.flatMap { $0.isFinite ? $0 : nil }
+                switch (leftTime, rightTime) {
+                case let (left?, right?):
+                    if left != right { return left > right }
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+            }
     }
-
     private var filteredSourceGames: [PublicCollectionGame] {
         sourceGames.filter { game in
             searchText.isEmpty
