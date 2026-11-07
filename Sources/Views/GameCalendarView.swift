@@ -7,6 +7,8 @@ struct GameCalendarView: View {
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
     @State private var showingEditor = false
     @State private var editingEvent: GameCalendarEvent?
+    @State private var translatedEventTitles: [String: String] = [:]
+    @State private var translatedEventNotes: [String: String] = [:]
 
     private let calendar = Calendar.current
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 5), count: 7)
@@ -23,6 +25,48 @@ struct GameCalendarView: View {
 
     private var selectedEvents: [GameCalendarEvent] { calendarStore.events(on: selectedDate) }
     private var timelineEvents: [GameCalendarEvent] { calendarStore.events.sorted { $0.date > $1.date } }
+    private var translationTaskKey: String {
+        calendarStore.events.filter { $0.kind == .update }
+            .map { "\($0.id)|\($0.title)|\($0.notes)" }
+            .joined(separator: "||")
+    }
+
+    private func chineseDate(_ date: Date, format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = format
+        return formatter.string(from: date)
+    }
+
+    private func translateCalendarEvents() async {
+        guard TranslationService.isConfigured else { return }
+        for event in timelineEvents where event.kind == .update {
+            let rawTitle = event.title.replacingOccurrences(of: "更新：", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !rawTitle.isEmpty {
+                do {
+                    let result = try await TranslationService.translateCached(
+                        rawTitle,
+                        scope: "calendar-event-title:\(event.id)"
+                    )
+                    translatedEventTitles[event.id] = result.text
+                } catch { }
+            }
+
+            let rawNote = cleanTimelineNote(event.notes)
+            if !rawNote.isEmpty {
+                do {
+                    let result = try await TranslationService.translateCached(
+                        rawNote,
+                        scope: "calendar-event-note:\(event.id)"
+                    )
+                    translatedEventNotes[event.id] = result.text
+                } catch { }
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,6 +81,9 @@ struct GameCalendarView: View {
                 .padding(.bottom, 30)
             }
             .background(Color(uiColor: .systemGroupedBackground))
+            .task(id: translationTaskKey) {
+                await translateCalendarEvents()
+            }
             .navigationTitle("游戏日历")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -65,10 +112,7 @@ struct GameCalendarView: View {
         VStack(spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(month.formatted(.dateTime.year()))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(month.formatted(.dateTime.month(.wide)))
+                    Text(chineseDate(month, format: "yyyy年M月"))
                         .font(.title2.bold())
                 }
                 Spacer()
@@ -199,7 +243,7 @@ struct GameCalendarView: View {
                     Text("所选日期")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(selectedDate.formatted(date: .complete, time: .omitted))
+                    Text(chineseDate(selectedDate, format: "yyyy年M月d日 EEEE"))
                         .font(.headline)
                 }
                 Spacer()
@@ -254,7 +298,7 @@ struct GameCalendarView: View {
                 .frame(width: 4, height: 38)
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayTitle(for: event)).font(.subheadline.weight(.semibold))
-                Text("\(event.kind.rawValue) · \(event.date.formatted(date: .omitted, time: .shortened))")
+                Text("\(event.kind.rawValue) · \(chineseDate(event.date, format: "HH:mm"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -301,9 +345,9 @@ struct GameCalendarView: View {
     private func timelineRow(_ event: GameCalendarEvent) -> some View {
         HStack(alignment: .top, spacing: 11) {
             VStack(spacing: 2) {
-                Text(event.date.formatted(.dateTime.day()))
+                Text(chineseDate(event.date, format: "d日"))
                     .font(.title3.bold().monospacedDigit())
-                Text(event.date.formatted(.dateTime.month(.abbreviated)))
+                Text(chineseDate(event.date, format: "M月"))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -317,7 +361,7 @@ struct GameCalendarView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(eventColor(event.kind))
                     Spacer()
-                    Text(event.date.formatted(date: .omitted, time: .shortened))
+                    Text(chineseDate(event.date, format: "HH:mm"))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
@@ -327,8 +371,18 @@ struct GameCalendarView: View {
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if !event.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(cleanTimelineNote(event.notes))
+                if event.kind == .update,
+                   let updateTitle = translatedEventTitles[event.id] ?? Optional(event.title.replacingOccurrences(of: "更新：", with: "")),
+                   !updateTitle.isEmpty {
+                    Text(updateTitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                let note = translatedEventNotes[event.id] ?? cleanTimelineNote(event.notes)
+                if !note.isEmpty {
+                    Text(note)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
