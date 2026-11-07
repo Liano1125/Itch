@@ -112,8 +112,8 @@ struct GameDetailView: View {
             )
             let record = library.record(for: game.id)
             resolvedAuthorAvatarURL = resolved
-                ?? detail?.authorAvatarURL
                 ?? URL(string: record?.patreonAvatarURL ?? "")
+                ?? detail?.authorAvatarURL
                 ?? URL(string: record?.developerAvatarURL ?? "")
             if var updated = record {
                 var changed = false
