@@ -156,11 +156,11 @@ final class GameUpdateMonitorStore: ObservableObject {
                     current.lastCheckedAt = Date()
                 }
                 watches[target.gameID] = current
-                persistWatches()
             } catch {
                 failed += 1
             }
         }
+        persistWatches()
         statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
     }
 
@@ -303,23 +303,28 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func persistWatches() {
         let context = database.context
         do {
-            try context.delete(model: DBUpdateWatch.self)
+            let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
+            let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.gameID, $0) })
+            let desiredIDs = Set(watches.keys)
+            for item in existing where !desiredIDs.contains(item.gameID) {
+                context.delete(item)
+            }
             for watch in watches.values {
-                context.insert(DBUpdateWatch(
-                    gameID: watch.gameID,
-                    entityTag: watch.entityTag,
-                    lastModified: watch.lastModified,
-                    contentHash: watch.contentHash,
-                    lastCheckedAt: watch.lastCheckedAt,
-                    hasBaseline: watch.hasBaseline,
-                    isEnabled: watch.isEnabled
-                ))
+                let item = existingByID[watch.gameID] ?? DBUpdateWatch(gameID: watch.gameID)
+                if item.modelContext == nil { context.insert(item) }
+                if item.entityTag != watch.entityTag { item.entityTag = watch.entityTag }
+                if item.lastModified != watch.lastModified { item.lastModified = watch.lastModified }
+                if item.contentHash != watch.contentHash { item.contentHash = watch.contentHash }
+                if item.lastCheckedAt != watch.lastCheckedAt { item.lastCheckedAt = watch.lastCheckedAt }
+                if item.hasBaseline != watch.hasBaseline { item.hasBaseline = watch.hasBaseline }
+                if item.isEnabled != watch.isEnabled { item.isEnabled = watch.isEnabled }
             }
             try database.save()
         } catch {
             print("itchPocket update watches save failed: \(error)")
         }
     }
+}
 }
 
 
