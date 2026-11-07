@@ -20,9 +20,9 @@ private struct DiscoveryFeed: Identifiable {
 }
 
 private struct DeveloperRecommendation: Identifiable {
+    let id: String
     let name: String
     let records: [LibraryRecord]
-    var id: String { name.lowercased() }
 }
 
 struct DiscoverView: View {
@@ -364,12 +364,17 @@ struct DiscoverView: View {
     }
 
     private var libraryDevelopers: [DeveloperRecommendation] {
-        let grouped = Dictionary(grouping: library.records) {
-            ($0.developer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let grouped = Dictionary(grouping: library.records) { record -> String in
+            if let profileURL = record.developerProfileURL, !profileURL.isEmpty {
+                return profileURL.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            }
+            return "name:" + (record.developer ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
         return grouped
-            .filter { !$0.key.isEmpty }
-            .map { DeveloperRecommendation(name: $0.key, records: $0.value) }
+            .filter { !($0.value.first?.developer ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { key, records in
+                DeveloperRecommendation(id: key, name: records[0].developer ?? key, records: records)
+            }
             .sorted {
                 if $0.records.count != $1.records.count {
                     return $0.records.count > $1.records.count
