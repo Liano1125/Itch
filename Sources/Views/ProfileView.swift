@@ -365,7 +365,27 @@ struct ProfileView: View {
                             .frame(width: 30)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Spark 游玩记录").font(.subheadline.weight(.semibold))
-                            Text("读取快捷指令同步的 Ren'Py 存档与备份").font(.caption).foregroundStyle(.secondary)
+                            Text("读取快捷指令同步的 Ren'Py 正式存档").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 13)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Divider().padding(.leading, 54)
+                NavigationLink {
+                    CacheManagementView()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "internaldrive")
+                            .font(.headline)
+                            .foregroundStyle(accent)
+                            .frame(width: 30)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("缓存管理").font(.subheadline.weight(.semibold))
+                            Text("查看占用并清理可重新生成的数据").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
