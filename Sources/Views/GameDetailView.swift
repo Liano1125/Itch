@@ -716,6 +716,30 @@ struct GameDetailView: View {
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
+        let existingRecord = library.record(for: game.id)
+        let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
+        let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
+        if let developerID {
+            try? AppDatabase.shared.upsertDeveloper(
+                id: developerID,
+                name: result.developer ?? game.developer ?? existingRecord?.developer ?? "itch.io 开发者",
+                profileURL: authorURL?.absoluteString,
+                patreonURL: result.patreonURL?.absoluteString,
+                discordURL: result.discordURL?.absoluteString
+            )
+        }
+        try? AppDatabase.shared.upsertGame(
+            id: game.id,
+            title: game.title,
+            gameURL: game.url?.absoluteString,
+            coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
+            description: result.description,
+            engine: result.engine,
+            developerID: developerID
+        )
+        if let tags = result.discoveryTags {
+            try? AppDatabase.shared.setDiscoveryTags(tags, for: game.id)
+        }
         resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
         if !result.galleryURLs.isEmpty {
             cachedGalleryURLs = result.galleryURLs
