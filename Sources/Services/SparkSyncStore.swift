@@ -229,8 +229,22 @@ private enum SparkArchiveScanner {
 
     private static func gameNameForSave(_ url: URL, root: URL) -> String? {
         let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
-        guard let first = relative.split(separator: "/").first else { return nil }
-        return String(first)
+        let components = relative.split(separator: "/").map(String.init)
+        guard var folderName = components.first else { return nil }
+
+        // Ren'Py/Spark may prefix private save directories with "private".
+        // Handle both "private/Game Name/slot.save" and
+        // "privateGame Name/slot.save" layouts.
+        if folderName.caseInsensitiveCompare("private") == .orderedSame {
+            guard components.count > 1 else { return nil }
+            folderName = components[1]
+        } else if folderName.lowercased().hasPrefix("private"),
+                  folderName.count > "private".count {
+            folderName = String(folderName.dropFirst("private".count))
+        }
+
+        let cleaned = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     private static func readSaveMetadata(at url: URL) -> SparkSaveMetadata? {
