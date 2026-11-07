@@ -10,6 +10,7 @@ final class PersistentImageCache {
     private let memory = NSCache<NSURL, UIImage>()
     private let directory: URL
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private var downloadsSincePrune = 0
 
     private init() {
         directory = (try? AppDataStore.cachesDirectory(named: "itchPocket-images"))
@@ -42,6 +43,7 @@ final class PersistentImageCache {
         }.value
         if let data = diskData, let image = UIImage(data: data) {
             memory.setObject(image, forKey: key)
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
             return image
         }
 
@@ -54,6 +56,14 @@ final class PersistentImageCache {
                   let image = UIImage(data: data) else { return nil }
             try? data.write(to: file, options: .atomic)
             memory.setObject(image, forKey: key)
+            downloadsSincePrune += 1
+            if downloadsSincePrune >= 25 {
+                downloadsSincePrune = 0
+                let cacheDirectory = directory
+                Task.detached(priority: .utility) {
+                    prunePersistentImageCache(at: cacheDirectory)
+                }
+            }
             return image
         } catch {
             return nil
@@ -107,5 +117,40 @@ struct CachedRemoteImage<Placeholder: View>: View {
                 image = await PersistentImageCache.shared.image(for: fallbackURL)
             }
         }
+    }
+}
+
+private func prunePersistentImageCache(at directory: URL) {
+    let fileManager = FileManager.default
+    guard let urls = try? fileManager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+        options: [.skipsHiddenFiles]
+    ) else { return }
+
+    let now = Date()
+    let expiration: TimeInterval = 45 * 24 * 60 * 60
+    let maximumBytes: Int64 = 250 * 1024 * 1024
+    let targetBytes: Int64 = 200 * 1024 * 1024
+
+    var files: [(url: URL, date: Date, size: Int64)] = []
+    var totalBytes: Int64 = 0
+    for url in urls {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let date = values?.contentModificationDate ?? .distantPast
+        let size = Int64(values?.fileSize ?? 0)
+        if now.timeIntervalSince(date) > expiration {
+            try? fileManager.removeItem(at: url)
+            continue
+        }
+        totalBytes += size
+        files.append((url, date, size))
+    }
+
+    guard totalBytes > maximumBytes else { return }
+    for file in files.sorted(by: { $0.date < $1.date }) {
+        try? fileManager.removeItem(at: file.url)
+        totalBytes -= file.size
+        if totalBytes <= targetBytes { break }
     }
 }
