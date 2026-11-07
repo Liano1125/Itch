@@ -92,16 +92,30 @@ struct GameDetailView: View {
             guard detail != nil else { return }
             let resolved = await PatreonAvatarService.shared.avatarURL(
                 authorURL: detail?.authorURL,
-                gameURL: game.url,
-                fallbackURL: URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
+                gameURL: game.url
             )
+            let record = library.record(for: game.id)
             resolvedAuthorAvatarURL = resolved
-            if let resolved, var record = library.record(for: game.id) {
-                record.patreonAvatarURL = resolved.absoluteString
-                if let authorURL = detail?.authorURL {
-                    record.developerProfileURL = authorURL.absoluteString
+                ?? URL(string: record?.patreonAvatarURL ?? "")
+                ?? detail?.authorAvatarURL
+                ?? URL(string: record?.developerAvatarURL ?? "")
+            if var updated = record {
+                var changed = false
+                if let resolved, updated.patreonAvatarURL != resolved.absoluteString {
+                    updated.patreonAvatarURL = resolved.absoluteString
+                    changed = true
                 }
-                library.update(record)
+                if let authorURL = detail?.authorURL,
+                   updated.developerProfileURL != authorURL.absoluteString {
+                    updated.developerProfileURL = authorURL.absoluteString
+                    changed = true
+                }
+                if let avatarURL = detail?.authorAvatarURL,
+                   updated.developerAvatarURL != avatarURL.absoluteString {
+                    updated.developerAvatarURL = avatarURL.absoluteString
+                    changed = true
+                }
+                if changed { library.update(updated) }
             }
         }
         .navigationTitle("游戏详情")
@@ -316,7 +330,13 @@ struct GameDetailView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    CachedRemoteImage(url: resolvedAuthorAvatarURL ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? ""), contentMode: .fill) {
+                    CachedRemoteImage(
+                        url: resolvedAuthorAvatarURL
+                            ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
+                            ?? detail?.authorAvatarURL
+                            ?? URL(string: library.record(for: game.id)?.developerAvatarURL ?? ""),
+                        contentMode: .fill
+                    ) {
                         Image(systemName: "person.fill")
                             .resizable().scaledToFit().padding(11)
                             .foregroundStyle(.secondary)
@@ -589,10 +609,18 @@ struct GameDetailView: View {
             await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
         }
         if var record = library.record(for: game.id) {
-            if let authorURL = result.authorURL {
+            var changed = false
+            if let authorURL = result.authorURL,
+               record.developerProfileURL != authorURL.absoluteString {
                 record.developerProfileURL = authorURL.absoluteString
+                changed = true
             }
-            library.update(record)
+            if let avatarURL = result.authorAvatarURL,
+               record.developerAvatarURL != avatarURL.absoluteString {
+                record.developerAvatarURL = avatarURL.absoluteString
+                changed = true
+            }
+            if changed { library.update(record) }
         }
         if let currentDescription = result.description {
             if cachedOriginalDescription != currentDescription {
