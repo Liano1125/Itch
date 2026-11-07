@@ -477,12 +477,14 @@ final class PersonalLibraryStore: ObservableObject {
             if game.modelContext == nil { context.insert(game) }
             var gameChanged = false
             if game.title != record.title { game.title = record.title; gameChanged = true }
-            if game.gameURL != record.gameURL { game.gameURL = record.gameURL; gameChanged = true }
-            if game.coverURL != record.coverURL { game.coverURL = record.coverURL; gameChanged = true }
-            if game.engine != record.engine { game.engine = record.engine; gameChanged = true }
-            if game.developerID != developerID { game.developerID = developerID; gameChanged = true }
-            let tagsData = record.discoveryTags.flatMap { try? JSONEncoder().encode($0) }
-            if game.discoveryTagsData != tagsData { game.discoveryTagsData = tagsData; gameChanged = true }
+            if let gameURL = record.gameURL, game.gameURL != gameURL { game.gameURL = gameURL; gameChanged = true }
+            if let coverURL = record.coverURL, game.coverURL != coverURL { game.coverURL = coverURL; gameChanged = true }
+            if let engine = record.engine, game.engine != engine { game.engine = engine; gameChanged = true }
+            if let developerID, game.developerID != developerID { game.developerID = developerID; gameChanged = true }
+            if let tags = record.discoveryTags {
+                let tagsData = try? JSONEncoder().encode(tags)
+                if game.discoveryTagsData != tagsData { game.discoveryTagsData = tagsData; gameChanged = true }
+            }
             if gameChanged { game.updatedAt = .now }
 
             let entryDescriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
