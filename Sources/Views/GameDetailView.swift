@@ -720,9 +720,10 @@ struct GameDetailView: View {
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
         let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
         if let developerID {
+            let cachedDeveloperName = (try? AppDatabase.shared.developer(id: developerID))?.name
             try? AppDatabase.shared.upsertDeveloper(
                 id: developerID,
-                name: result.developer ?? game.developer ?? existingRecord?.developer ?? "itch.io 开发者",
+                name: result.developer ?? game.developer ?? existingRecord?.developer ?? cachedDeveloperName ?? "itch.io 开发者",
                 profileURL: authorURL?.absoluteString,
                 patreonURL: result.patreonURL?.absoluteString,
                 discordURL: result.discordURL?.absoluteString
