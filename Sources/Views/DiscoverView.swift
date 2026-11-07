@@ -30,14 +30,25 @@ struct DiscoverView: View {
     @State private var searchText = ""
     @State private var submittedQuery = ""
     @State private var showSearchResults = false
-    @State private var recommendedGames: [PublicCollectionGame] = []
+    @State private var recommendedGames: [PublicCollectionGame]
+    @State private var shouldLoadRecommendations: Bool
     @State private var isLoadingRecommendations = false
     @State private var recommendationError: String?
     @State private var recommendationReloadToken = UUID()
     @State private var curatedReloadToken = UUID()
-    @State private var curatedGames: [String: [PublicCollectionGame]] = Self.loadCuratedCache()
+    @State private var curatedGames: [String: [PublicCollectionGame]]
+    @State private var shouldLoadCurated: Bool
     @State private var isLoadingCurated = false
     @State private var curatedError: String?
+
+    init() {
+        let curated = Self.loadCuratedCache()
+        let recommendations = DiscoveryCacheStore.load([PublicCollectionGame].self, key: "personalized-recommendations:v1") ?? []
+        _curatedGames = State(initialValue: curated)
+        _shouldLoadCurated = State(initialValue: curated.isEmpty)
+        _recommendedGames = State(initialValue: recommendations)
+        _shouldLoadRecommendations = State(initialValue: recommendations.isEmpty)
+    }
 
     private static let curatedCacheKey = "itchPocket.curatedFeeds.v1"
 
@@ -50,7 +61,7 @@ struct DiscoverView: View {
         DiscoveryCacheStore.save(compact, key: Self.curatedCacheKey, timeToLive: 12 * 60 * 60)
     }
 
-    private var trimmedSearchText: String {
+    private var visibleRecommendedGames: [PublicCollectionGame] {\n        recommendedGames.filter { !library.contains($0.id) }\n    }\n\n    private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -73,38 +84,47 @@ struct DiscoverView: View {
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    DiscoveryFeedReader(
-                        url: recommendationURL,
-                        reloadToken: recommendationReloadToken,
-                        onLoad: { games in
-                            recommendedGames = games.filter { !library.contains($0.id) }
-                            isLoadingRecommendations = false
-                            recommendationError = nil
-                        },
-                        onError: { message in
-                            isLoadingRecommendations = false
-                            recommendationError = message
-                        },
-                        onStart: { isLoadingRecommendations = true }
-                    )
-                    .frame(width: 1, height: 1)
-                    CuratedDiscoveryFeedReader(
-                        feeds: DiscoveryFeed.curated,
-                        reloadToken: curatedReloadToken,
-                        onLoad: { feedID, games in
-                            // Persist the raw feed; membership filtering is a presentation concern.
-                            // This lets removed library games reappear without another network fetch.
-                            if !games.isEmpty || curatedGames[feedID] == nil {
-                                curatedGames[feedID] = games
-                                persistCuratedCache()
+                    if shouldLoadRecommendations {
+                        DiscoveryFeedReader(
+                            url: recommendationURL,
+                            reloadToken: recommendationReloadToken,
+                            onLoad: { games in
+                                recommendedGames = games
+                                DiscoveryCacheStore.save(games, key: "personalized-recommendations:v1", timeToLive: 6 * 60 * 60)
+                                shouldLoadRecommendations = false
+                                isLoadingRecommendations = false
+                                recommendationError = nil
+                            },
+                            onError: { message in
+                                shouldLoadRecommendations = false
+                                isLoadingRecommendations = false
+                                recommendationError = message
+                            },
+                            onStart: { isLoadingRecommendations = true }
+                        )
+                        .frame(width: 1, height: 1)
+                    }
+                    if shouldLoadCurated {
+                        CuratedDiscoveryFeedReader(
+                            feeds: DiscoveryFeed.curated,
+                            reloadToken: curatedReloadToken,
+                            onLoad: { feedID, games in
+                                // Keep the raw response; filtering belongs to the UI.
+                                if !games.isEmpty || curatedGames[feedID] == nil {
+                                    curatedGames[feedID] = games
+                                    persistCuratedCache()
+                                }
+                                if !games.isEmpty { curatedError = nil }
+                            },
+                            onError: { curatedError = $0 },
+                            onStart: { isLoadingCurated = true; curatedError = nil },
+                            onFinish: {
+                                isLoadingCurated = false
+                                shouldLoadCurated = false
                             }
-                            if !games.isEmpty { curatedError = nil }
-                        },
-                        onError: { curatedError = $0 },
-                        onStart: { isLoadingCurated = true; curatedError = nil },
-                        onFinish: { isLoadingCurated = false }
-                    )
-                    .frame(width: 1, height: 1)
+                        )
+                        .frame(width: 1, height: 1)
+                    }
                 }
                 .opacity(0)
                 .allowsHitTesting(false)
@@ -193,7 +213,7 @@ struct DiscoverView: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button {
-                        curatedReloadToken = UUID()
+                        shouldLoadCurated = true\n                        curatedReloadToken = UUID()
                     } label: {
                         Label("刷新", systemImage: "arrow.clockwise")
                             .font(.caption.weight(.semibold))
@@ -432,8 +452,8 @@ struct DiscoverView: View {
                         .controlSize(.small)
                 } else {
                     Button {
-                        recommendedGames = []
                         isLoadingRecommendations = true
+                        shouldLoadRecommendations = true
                         // Reloading is triggered by changing the reader URL token.
                         recommendationReloadToken = UUID()
                     } label: {
@@ -444,10 +464,10 @@ struct DiscoverView: View {
                 }
             }
 
-            if !recommendedGames.isEmpty {
+            if !visibleRecommendedGames.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 13) {
-                        ForEach(recommendedGames.prefix(12)) { game in
+                        ForEach(visibleRecommendedGames.prefix(12)) { game in
                             NavigationLink {
                                 GameDetailView(game: game)
                             } label: {
@@ -508,6 +528,7 @@ struct DiscoverView: View {
                     Button("重新加载") {
                         recommendationReloadToken = UUID()
                         isLoadingRecommendations = true
+                        shouldLoadRecommendations = true
                     }
                     .font(.caption.weight(.semibold))
                 }
