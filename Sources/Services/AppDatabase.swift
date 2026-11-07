@@ -184,7 +184,7 @@ final class AppDatabase {
         if game.modelContext == nil { context.insert(game) }
         var changed = false
         if game.title != title { game.title = title; changed = true }
-        if game.gameURL != gameURL { game.gameURL = gameURL; changed = true }
+        if let gameURL, game.gameURL != gameURL { game.gameURL = gameURL; changed = true }
         if let coverURL, game.coverURL != coverURL { game.coverURL = coverURL; changed = true }
         if let description, game.descriptionText != description { game.descriptionText = description; changed = true }
         if !galleryURLs.isEmpty && game.galleryURLs != galleryURLs { game.galleryURLs = galleryURLs; changed = true }
@@ -193,7 +193,7 @@ final class AppDatabase {
             if game.discoveryTagsData != data { game.discoveryTagsData = data; changed = true }
         }
         if let engine, game.engine != engine { game.engine = engine; changed = true }
-        if game.developerID != developerID { game.developerID = developerID; changed = true }
+        if let developerID, game.developerID != developerID { game.developerID = developerID; changed = true }
         if changed { game.updatedAt = .now }
         try save()
     }
