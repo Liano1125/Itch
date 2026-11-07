@@ -8,6 +8,14 @@ struct ProfileView: View {
 
     private let accent = Color(red: 0.94, green: 0.31, blue: 0.34)
 
+    private static let accountDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy年M月d日"
+        return formatter
+    }()
+
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
@@ -198,6 +206,16 @@ struct ProfileView: View {
                     }
 
                     Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    Label("账户创建时间", systemImage: "calendar")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(user.accountCreatedAt.map { Self.accountDateFormatter.string(from: $0) } ?? "暂未读取")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(user.accountCreatedAt == nil ? .tertiary : .primary)
                 }
 
                 if let url = user.url {
