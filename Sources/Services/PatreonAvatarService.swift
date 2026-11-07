@@ -5,6 +5,7 @@ final class PatreonAvatarService {
     static let shared = PatreonAvatarService()
 
     private let failureCacheDuration: TimeInterval = 6 * 60 * 60
+    private let avatarCacheDuration: TimeInterval = 7 * 24 * 60 * 60
     private let database = AppDatabase.shared
     private var inFlight: [String: Task<URL?, Never>] = [:]
 
@@ -18,6 +19,18 @@ final class PatreonAvatarService {
         guard let identity = authorURL ?? gameURL else { return nil }
         let key = canonicalKey(for: identity)
         if let task = inFlight[key] { return await task.value }
+
+        if let authorURL, let cached = cachedAvatar(for: authorURL) {
+            if isAvatarFresh(for: authorURL) { return cached }
+            let refreshTask = Task { await self.resolveAvatarURL(authorURL: authorURL, gameURL: gameURL, forceRefresh: true) }
+            inFlight[key] = refreshTask
+            Task {
+                _ = await refreshTask.value
+                self.inFlight.removeValue(forKey: key)
+            }
+            return cached
+        }
+
         let task = Task { await self.resolveAvatarURL(authorURL: authorURL, gameURL: gameURL) }
         inFlight[key] = task
         let result = await task.value
@@ -25,8 +38,19 @@ final class PatreonAvatarService {
         return result
     }
 
-    private func resolveAvatarURL(authorURL: URL?, gameURL: URL?) async -> URL? {
-        if let authorURL, let cached = cachedAvatar(for: authorURL) { return cached }
+    func refreshAvatar(authorURL: URL?, gameURL: URL? = nil) async -> URL? {
+        guard let identity = authorURL ?? gameURL else { return nil }
+        let key = canonicalKey(for: identity)
+        if let task = inFlight[key] { return await task.value }
+        let task = Task { await self.resolveAvatarURL(authorURL: authorURL, gameURL: gameURL, forceRefresh: true) }
+        inFlight[key] = task
+        let result = await task.value
+        inFlight.removeValue(forKey: key)
+        return result
+    }
+
+    private func resolveAvatarURL(authorURL: URL?, gameURL: URL?, forceRefresh: Bool = false) async -> URL? {
+        if !forceRefresh, let authorURL, let cached = cachedAvatar(for: authorURL) { return cached }
         if let authorURL, isFailureCached(for: authorURL) { return nil }
 
         var pages: [(URL, String)] = []
@@ -53,8 +77,8 @@ final class PatreonAvatarService {
         var avatarSource: String?
         if let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(patreonURL) {
-            avatar = extractOpenGraphImage(from: html, baseURL: patreonURL)
-                ?? extractProfileAvatar(from: html, baseURL: patreonURL)
+            let expectedName = resolvedAuthorURL.flatMap { try? database.developer(id: canonicalKey(for: $0))?.name }
+            avatar = extractPatreonProfileAvatar(from: html, baseURL: patreonURL, expectedName: expectedName)
             if avatar != nil { avatarSource = "patreon" }
         }
 
@@ -102,6 +126,42 @@ final class PatreonAvatarService {
         let key = canonicalKey(for: url)
         guard let value = try? database.developer(id: key)?.avatarURL else { return nil }
         return URL(string: value)
+    }
+
+    private func isAvatarFresh(for url: URL) -> Bool {
+        let key = canonicalKey(for: url)
+        guard let resolvedAt = try? database.developer(id: key)?.avatarResolvedAt,
+              let resolvedAt else { return false }
+        return Date().timeIntervalSince(resolvedAt) < avatarCacheDuration
+    }
+
+    private func extractPatreonProfileAvatar(from html: String, baseURL: URL, expectedName: String?) -> URL? {
+        let normalizedName = expectedName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+
+        var candidates: [(URL, Bool)] = []
+        for tag in matches(#"<img\\b[^>]*>"#, in: html) {
+            let alt = (attribute("alt", from: tag) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            let className = (attribute("class", from: tag) ?? "").lowercased()
+            let id = (attribute("id", from: tag) ?? "").lowercased()
+            let raw = attribute("data-src", from: tag)
+                ?? attribute("data-lazy-src", from: tag)
+                ?? attribute("src", from: tag)
+            guard let raw, let url = imageURL(raw, relativeTo: baseURL),
+                  let host = url.host?.lowercased(),
+                  host.contains("patreonusercontent.com") else { continue }
+
+            let nameMatches = normalizedName.map { !$0.isEmpty && alt == $0 } ?? false
+            let avatarContainer = className.contains("avatar") || className.contains("profile")
+                || id.contains("avatar") || id.contains("profile")
+            if nameMatches { return url }
+            if avatarContainer { candidates.append((url, false)) }
+        }
+
+        return candidates.first?.0
     }
 
     private func isFailureCached(for url: URL) -> Bool {
