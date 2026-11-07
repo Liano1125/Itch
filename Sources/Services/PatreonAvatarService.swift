@@ -191,7 +191,7 @@ final class PatreonAvatarService {
             #""image_url"\s*:\s*"([^"]+)""#
         ]
         for (index, pattern) in jsonPatterns.enumerated() {
-            for raw in matches(pattern, in: html).compactMap({ firstCapture(#""([^"]+)""#, in: $0, options: []) }) {
+            for raw in captures(pattern, in: html) {
                 add(raw, score: index == 0 ? 110 : 65)
             }
         }
@@ -344,6 +344,16 @@ final class PatreonAvatarService {
         guard let url = URL(string: decodeEntities(value), relativeTo: baseURL)?.absoluteURL,
               ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
         return url
+    }
+
+    private func captures(_ pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let capture = Range(match.range(at: 1), in: text) else { return nil }
+            return decodeEntities(String(text[capture]))
+        }
     }
 
     private func firstCapture(_ pattern: String, in text: String, options: NSRegularExpression.Options) -> String? {
