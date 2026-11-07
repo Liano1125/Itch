@@ -298,6 +298,13 @@ struct GameCalendarView: View {
                 .frame(width: 4, height: 38)
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayTitle(for: event)).font(.subheadline.weight(.semibold))
+                if event.kind == .update,
+                   let updateTitle = translatedEventTitles[event.id] {
+                    Text(updateTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
                 Text("\(event.kind.rawValue) · \(chineseDate(event.date, format: "HH:mm"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
