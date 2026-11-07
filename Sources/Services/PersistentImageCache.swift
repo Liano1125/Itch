@@ -56,7 +56,7 @@ final class PersistentImageCache {
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                   let image = UIImage(data: data) else { return nil }
             try? data.write(to: file, options: .atomic)
-            memory.setObject(image, forKey: key)
+            memory.setObject(image, forKey: key, cost: data.count)
             downloadsSincePrune += 1
             if downloadsSincePrune >= 25 {
                 downloadsSincePrune = 0
