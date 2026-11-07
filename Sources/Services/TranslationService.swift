@@ -5,6 +5,19 @@ struct CachedTranslationResult {
     let wasCached: Bool
 }
 
+private actor TranslationRequestCoalescer {
+    static let shared = TranslationRequestCoalescer()
+    private var tasks: [String: Task<String, Error>] = [:]
+
+    func value(for key: String, operation: @escaping @Sendable () async throws -> String) async throws -> String {
+        if let task = tasks[key] { return try await task.value }
+        let task = Task { try await operation() }
+        tasks[key] = task
+        defer { tasks.removeValue(forKey: key) }
+        return try await task.value
+    }
+}
+
 enum TranslationService {
     static let providerKey = "itchPocket.translation.provider"
     static let baseURLKey = "itchPocket.translation.baseURL"
@@ -34,7 +47,9 @@ enum TranslationService {
         if !forceRefresh, let cached = await TranslationCache.shared.translation(for: key) {
             return CachedTranslationResult(text: cached.translation, wasCached: true)
         }
-        let translated = try await translate(text)
+        let translated = try await TranslationRequestCoalescer.shared.value(for: key) {
+            try await translate(text)
+        }
         await TranslationCache.shared.store(
             translated,
             source: text,
