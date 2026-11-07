@@ -14,6 +14,7 @@ private struct GamePagePayload: Decodable {
     let patreonURL: URL?
     let discordURL: URL?
     let discoveryTags: [LibraryDiscoveryTag]?
+    let engine: String?
     let scriptError: String?
 }
 
@@ -27,6 +28,7 @@ private struct GameDetailPayload {
     let patreonURL: URL?
     let discordURL: URL?
     let discoveryTags: [LibraryDiscoveryTag]
+    let engine: String?
 }
 
 // MARK: - Game Detail View
@@ -84,6 +86,7 @@ struct GameDetailView: View {
                 Divider()
 
                 descriptionSection
+                engineSection
                 statusHistorySection
                 gameUpdateHistorySection
 
@@ -473,6 +476,28 @@ struct GameDetailView: View {
     // MARK: Status History
 
     @ViewBuilder
+    private var engineSection: some View {
+        let engine = library.record(for: game.id)?.engine ?? detail?.engine
+        return HStack(spacing: 12) {
+            Image(systemName: "cpu")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 36, height: 36)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("游戏引擎")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(engine ?? (detail == nil ? "正在识别…" : "暂未识别"))
+                    .font(.subheadline.weight(.semibold))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+    }
+
     private var statusHistorySection: some View {
         if library.record(for: game.id) != nil {
             VStack(alignment: .leading, spacing: 13) {
@@ -639,6 +664,10 @@ struct GameDetailView: View {
             if !result.discoveryTags.isEmpty,
                record.discoveryTags != result.discoveryTags {
                 record.discoveryTags = result.discoveryTags
+                changed = true
+            }
+            if let engine = result.engine, record.engine != engine {
+                record.engine = engine
                 changed = true
             }
             if changed { library.update(record) }
@@ -843,7 +872,8 @@ private struct DetailPageReader: UIViewRepresentable {
                             authorAvatarURL: payload.authorAvatarURL,
                             patreonURL: payload.patreonURL,
                             discordURL: payload.discordURL,
-                            discoveryTags: payload.discoveryTags ?? []
+                            discoveryTags: payload.discoveryTags ?? [],
+                            engine: payload.engine
                         )
                     )
                 }
@@ -1007,6 +1037,21 @@ private struct DetailPageReader: UIViewRepresentable {
                   .filter((tag, index, array) => array.findIndex(item => item.url === tag.url) === index)
                   .slice(0, 20);
 
+                const tagText = discoveryTags.map(tag => tag.name + " " + tag.url).join(" ");
+                const engineRules = [
+                    { name: "Ren'Py", pattern: /ren.?py/i },
+                    { name: "Unity", pattern: /\\bunity\\b/i },
+                    { name: "Unreal Engine", pattern: /unreal([\\s-]*engine)?/i },
+                    { name: "Godot", pattern: /\\bgodot\\b/i },
+                    { name: "RPG Maker", pattern: /rpg[\\s-]*maker/i },
+                    { name: "TyranoBuilder", pattern: /tyranobuilder/i },
+                    { name: "Wolf RPG Editor", pattern: /wolf[\\s-]*rpg/i },
+                    { name: "GameMaker", pattern: /gamemaker/i },
+                    { name: "Adventure Game Studio", pattern: /adventure[\\s-]*game[\\s-]*studio/i },
+                    { name: "Visual Novel Maker", pattern: /visual[\\s-]*novel[\\s-]*maker/i }
+                ];
+                const engine = engineRules.find(rule => rule.pattern.test(tagText))?.name || null;
+
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
                 const authorAvatar = document.querySelector(".game_author img, .user_avatar img, .user_link img, .header_links img");
@@ -1028,6 +1073,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     patreonURL,
                     discordURL,
                     discoveryTags,
+                    engine,
                     scriptError: null
                 });
             } catch (error) {
@@ -1041,6 +1087,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     patreonURL: null,
                     discordURL: null,
                     discoveryTags: [],
+                    engine: null,
                     scriptError: String(error)
                 });
             }
