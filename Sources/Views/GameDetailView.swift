@@ -1052,25 +1052,28 @@ private struct DetailPageReader: UIViewRepresentable {
                 const engineTagText = Array.from(document.querySelectorAll('a[href]'))
                     .filter(anchor => {
                         const href = anchor.getAttribute("href") || "";
-                        return /\\/games\\/(tag-|made-with-|engine-)/i.test(href);
+                        return href.includes("/games/tag-")
+                            || href.includes("/games/made-with-")
+                            || href.includes("/games/engine-");
                     })
                     .map(anchor => clean(anchor) + " " + (anchor.getAttribute("href") || ""))
                     .join(" ");
                 const tagText = discoveryTags.map(tag => tag.name + " " + tag.url).join(" ")
                     + " " + engineTagText;
+                const normalizedEngineText = tagText.toLowerCase().replace(/[^a-z0-9]+/g, "");
                 const engineRules = [
-                    { name: "Ren'Py", pattern: /ren.?py/i },
-                    { name: "Unity", pattern: /\\bunity\\b/i },
-                    { name: "Unreal Engine", pattern: /unreal([\\s-]*engine)?/i },
-                    { name: "Godot", pattern: /\\bgodot\\b/i },
-                    { name: "RPG Maker", pattern: /rpg[\\s-]*maker/i },
-                    { name: "TyranoBuilder", pattern: /tyrano[\\s-]*builder/i },
-                    { name: "Wolf RPG Editor", pattern: /wolf[\\s-]*rpg/i },
-                    { name: "GameMaker", pattern: /game[\\s-]*maker/i },
-                    { name: "Adventure Game Studio", pattern: /adventure[\\s-]*game[\\s-]*studio/i },
-                    { name: "Visual Novel Maker", pattern: /visual[\\s-]*novel[\\s-]*maker/i }
+                    { name: "Ren'Py", key: "renpy" },
+                    { name: "Unity", key: "unity" },
+                    { name: "Unreal Engine", key: "unrealengine" },
+                    { name: "Godot", key: "godot" },
+                    { name: "RPG Maker", key: "rpgmaker" },
+                    { name: "TyranoBuilder", key: "tyranobuilder" },
+                    { name: "Wolf RPG Editor", key: "wolfrpg" },
+                    { name: "GameMaker", key: "gamemaker" },
+                    { name: "Adventure Game Studio", key: "adventuregamestudio" },
+                    { name: "Visual Novel Maker", key: "visualnovelmaker" }
                 ];
-                const engine = engineRules.find(rule => rule.pattern.test(tagText))?.name || null;
+                const engine = engineRules.find(rule => normalizedEngineText.includes(rule.key))?.name || null;
 
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
