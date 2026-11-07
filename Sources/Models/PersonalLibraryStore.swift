@@ -29,6 +29,7 @@ struct LibraryRecord: Codable, Identifiable {
     var developer: String?
     var developerProfileURL: String? = nil
     var patreonAvatarURL: String? = nil
+    var developerAvatarURL: String? = nil
     var status: LibraryStatus
     var isFavorite: Bool
     var notes: String
