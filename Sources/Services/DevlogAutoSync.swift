@@ -43,6 +43,40 @@ enum DevlogAutoSync {
         scheduleNext()
     }
 
+    /// Warm the calendar's Chinese translations before the user opens the calendar.
+    /// Existing TranslationCache entries are reused, so this does not repeatedly spend translation quota.
+    static func prefetchCalendarTranslations(events: [GameCalendarEvent], limit: Int = 80) async {
+        guard TranslationService.isConfigured else { return }
+        let updates = events
+            .filter { $0.kind == .update }
+            .sorted { $0.date > $1.date }
+            .prefix(max(1, limit))
+
+        for event in updates {
+            if Task.isCancelled { return }
+            let title = event.title
+                .replacingOccurrences(of: "更新：", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty {
+                _ = try? await TranslationService.translateCached(
+                    title,
+                    scope: "calendar-event-title:\(event.id)"
+                )
+            }
+
+            let note = event.notes.components(separatedBy: "\n")
+                .filter { !$0.hasPrefix("https://") && !$0.hasPrefix("http://") && !$0.hasPrefix("来源：") }
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !note.isEmpty {
+                _ = try? await TranslationService.translateCached(
+                    note,
+                    scope: "calendar-event-note:\(event.id)"
+                )
+            }
+        }
+    }
+
     static func handle(_ task: BGAppRefreshTask) {
         scheduleNext()
         let operation = Task { @MainActor in
