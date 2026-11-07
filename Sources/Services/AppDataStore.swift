@@ -57,6 +57,15 @@ enum AppDataStore {
         return directory.appendingPathComponent(fileName, isDirectory: false)
     }
 
+    static func cachesDirectory(named name: String) throws -> URL {
+        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let directory = base.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
     static func cachesURL(directory name: String, fileName: String) throws -> URL {
         guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             throw CocoaError(.fileNoSuchFile)
