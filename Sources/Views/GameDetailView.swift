@@ -798,7 +798,7 @@ struct GameDetailView: View {
         let savedGallery = AppDataStore.decode([String].self, forKey: galleryCacheKey) ?? []
         cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }
 
-        let target = UserDefaults.standard.string(forKey: TranslationService.targetKey) ?? "zh-CN"
+        let target = AppDataStore.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         for update in library.updates(for: game.id) {
             let scope = "devlog:\(game.id):\(update.id)"
             if let cached = await TranslationCache.shared.latest(scope: scope, target: target) {
