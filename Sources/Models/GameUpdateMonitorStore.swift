@@ -325,7 +325,6 @@ final class GameUpdateMonitorStore: ObservableObject {
         }
     }
 }
-}
 
 
 private struct DevlogRSSPost {
