@@ -916,23 +916,24 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         isRunning = true
         defer { isRunning = false }
 
-        let candidates: [(record: LibraryRecord, updatedAt: Date)] = records.compactMap { record in
+        let sortedCandidates = records.compactMap { record -> (record: LibraryRecord, updatedAt: Date)? in
             guard let rawURL = record.gameURL, URL(string: rawURL) != nil else { return nil }
             let stored = try? database.game(id: record.id)
             let isComplete = stored?.descriptionText?.isEmpty == false && !(stored?.galleryURLs.isEmpty ?? true)
             let hasCachedAvatar: Bool = {
-                guard let developerID = stored?.developerID,
-                      let developer = try? database.developer(id: developerID) else { return false }
+                guard let developerID = stored?.developerID else {
+                    return record.developerProfileURL == nil
+                }
+                guard let developer = try? database.developer(id: developerID) else { return false }
                 return developer.avatarURL != nil
             }()
-            let lastPrefetch = try? database.state(for: "detailPrefetch.lastSuccess.\(record.id)")?.dateValue
+            let lastPrefetch = try? database.state(for: "detailPrefetch.lastSuccess.\\(record.id)")?.dateValue
             let freshnessDate = lastPrefetch ?? stored?.updatedAt
             let isFresh = freshnessDate.map { Date().timeIntervalSince($0) < 3 * 24 * 60 * 60 } ?? false
             guard !isComplete || !isFresh || !hasCachedAvatar else { return nil }
             return (record, freshnessDate ?? .distantPast)
-        }
-        .sorted { $0.updatedAt < $1.updatedAt }
-        .prefix(max(1, limit))
+        }.sorted { $0.updatedAt < $1.updatedAt }
+        let candidates = Array(sortedCandidates.prefix(max(1, limit)))
 
         for candidate in candidates {
             if Task.isCancelled { break }
@@ -976,10 +977,14 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        webView.evaluateJavaScript(DetailPageReader.Coordinator.gamePageScript) { result, error in
+        let script: String = DetailPageReader.Coordinator.gamePageScript
+        webView.evaluateJavaScript(script, completionHandler: { (result: Any?, error: Error?) in
             Task { @MainActor in
-                guard let record = self.currentRecord,
-                      error == nil,
+                guard let record = self.currentRecord else {
+                    self.finish()
+                    return
+                }
+                guard error == nil,
                       let json = result as? String,
                       let data = json.data(using: .utf8),
                       let payload = try? JSONDecoder().decode(GamePagePayload.self, from: data),
@@ -1007,9 +1012,9 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                         discordURL: payload.discordURL?.absoluteString
                     )
                 } catch {
-                    print("itchPocket detail prefetch persistence failed: \(error)")
+                    print("itchPocket detail prefetch persistence failed: \\(error)")
                 }
-                try? self.database.setState(Date(), for: "detailPrefetch.lastSuccess.\(record.id)")
+                try? self.database.setState(Date(), for: "detailPrefetch.lastSuccess.\\(record.id)")
                 if let authorURL {
                     Task {
                         _ = await PatreonAvatarService.shared.avatarURL(
@@ -1020,7 +1025,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 }
                 self.finish()
             }
-        }
+        })
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
