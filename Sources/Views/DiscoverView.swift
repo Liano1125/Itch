@@ -17,6 +17,7 @@ struct DiscoverView: View {
                 VStack(alignment: .leading, spacing: 26) {
                     header
                     searchBar
+                    personalizedSection
                     featuredSection
                     libraryDiscoverySection
                     browseSection
@@ -171,42 +172,176 @@ struct DiscoverView: View {
         }
     }
 
-    private var libraryDevelopers: [LibraryRecord] {
-        var seen = Set<String>()
-        return library.records.filter { record in
-            guard let developer = record.developer?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !developer.isEmpty else { return false }
-            return seen.insert(developer.lowercased()).inserted
-        }.prefix(6).map { $0 }
+    private var recommendedSeedGames: [LibraryRecord] {
+        library.records
+            .sorted {
+                let leftPriority = ($0.isFavorite ? 3 : 0) + ($0.status == .playing ? 2 : 0) + ($0.status == .wishlist ? 1 : 0)
+                let rightPriority = ($1.isFavorite ? 3 : 0) + ($1.status == .playing ? 2 : 0) + ($1.status == .wishlist ? 1 : 0)
+                if leftPriority != rightPriority { return leftPriority > rightPriority }
+                return $0.updatedAt > $1.updatedAt
+            }
+            .prefix(4)
+            .map { $0 }
     }
 
-    @ViewBuilder
-    private var libraryDiscoverySection: some View {
-        if !libraryDevelopers.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("从你的游戏库继续发现")
-                    .font(.title3.bold())
+    private var libraryDevelopers: [(name: String, records: [LibraryRecord])] {
+        let grouped = Dictionary(grouping: library.records) {
+            ($0.developer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return grouped
+            .filter { !$0.key.isEmpty }
+            .map { (name: $0.key, records: $0.value) }
+            .sorted {
+                if $0.records.count != $1.records.count {
+                    return $0.records.count > $1.records.count
+                }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            .prefix(6)
+            .map { $0 }
+    }
 
-                ForEach(libraryDevelopers) { record in
-                    NavigationLink {
-                        ItchSearchResultsView(query: record.developer ?? "")
-                    } label: {
-                        HStack(spacing: 12) {
-                            DeveloperPatreonAvatar(record: record)
-                                .frame(width: 46, height: 46)
-                                .clipShape(Circle())
-                            Text(record.developer ?? "")
+    private var personalizedSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(library.records.isEmpty ? "开启你的探索之旅" : "为你的游戏口味寻找新灵感")
+                        .font(.title3.bold())
+                    Text(library.records.isEmpty
+                         ? "把喜欢的作品加入游戏库，发现页就能逐渐了解你的偏好。"
+                         : "从你收藏和正在玩的作品出发，继续发现值得关注的创作者。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "sparkles")
+                    .font(.title3)
+                    .foregroundStyle(Color(red: 0.98, green: 0.48, blue: 0.38))
+            }
+
+            if library.records.isEmpty {
+                NavigationLink {
+                    ItchSearchResultsView(query: "", customURL: "https://itch.io/games/featured")
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "bookmark.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 42, height: 42)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 13))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("先从精选作品开始")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
+                            Text("浏览作品，遇到喜欢的游戏时加入游戏库")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            } else {
+                if !recommendedSeedGames.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack {
+                            Text("从这些作品继续探索")
+                                .font(.headline)
                             Spacer()
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption.weight(.semibold))
+                            Text("基于你的游戏库")
+                                .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
-                        .padding(12)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 11) {
+                                ForEach(recommendedSeedGames) { record in
+                                    NavigationLink {
+                                        ItchSearchResultsView(query: record.title)
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            ZStack(alignment: .bottomLeading) {
+                                                CachedRemoteImage(
+                                                    url: URL(string: record.coverURL ?? ""),
+                                                    contentMode: .fill
+                                                ) {
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .fill(Color(uiColor: .tertiarySystemFill))
+                                                        .overlay {
+                                                            Image(systemName: "gamecontroller.fill")
+                                                                .foregroundStyle(.tertiary)
+                                                        }
+                                                }
+                                                .frame(width: 158, height: 94)
+                                                .clipped()
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                Text(record.isFavorite ? "已收藏" : record.status.rawValue)
+                                                    .font(.caption2.weight(.semibold))
+                                                    .foregroundStyle(.white)
+                                                    .padding(.horizontal, 7)
+                                                    .padding(.vertical, 4)
+                                                    .background(.black.opacity(0.58), in: Capsule())
+                                                    .padding(7)
+                                            }
+                                            Text(record.title)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(.primary)
+                                                .lineLimit(1)
+                                                .frame(width: 158, alignment: .leading)
+                                            Text("搜索相关作品")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 158, alignment: .leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
+                }
+
+                if !libraryDevelopers.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack {
+                            Text("你关注过的开发者")
+                                .font(.headline)
+                            Spacer()
+                            Text("按游戏库出现次数")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        ForEach(libraryDevelopers, id: \.name) { developer in
+                            NavigationLink {
+                                ItchSearchResultsView(query: developer.name)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    DeveloperPatreonAvatar(record: developer.records[0])
+                                        .frame(width: 44, height: 44)
+                                        .clipShape(Circle())
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(developer.name)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                        Text("游戏库中有 \(developer.records.count) 款作品 · 查看更多作品")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .padding(11)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
             }
         }
