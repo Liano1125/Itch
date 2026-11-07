@@ -93,6 +93,8 @@ final class GameUpdateMonitorStore: ObservableObject {
         }
         var updated = 0
         var failed = 0
+        var pendingUpdates: [DetectedGameUpdate] = []
+        var notificationWatches: [GameUpdateWatch] = []
         for target in targets {
             checkingIDs.insert(target.gameID)
             defer { checkingIDs.remove(target.gameID) }
@@ -148,15 +150,15 @@ final class GameUpdateMonitorStore: ObservableObject {
                             summary = "itch.io 游戏页面内容指纹发生变化；请打开页面确认具体更新内容。"
                         }
                         let detectedAt = Date()
-                        libraryStore.recordGameUpdate(gameID: current.gameID, summary: summary, detectedAt: detectedAt)
-                        calendarStore.addDetectedUpdate(
+                        pendingUpdates.append(DetectedGameUpdate(
                             gameID: current.gameID,
                             gameTitle: current.gameTitle,
                             gameURL: current.gameURL,
+                            summary: summary,
                             fingerprint: fingerprint,
                             detectedAt: detectedAt
-                        )
-                        await sendUpdateNotification(for: current)
+                        ))
+                        notificationWatches.append(current)
                         updated += 1
                     }
                     current.contentHash = bodyHash
@@ -169,7 +171,13 @@ final class GameUpdateMonitorStore: ObservableObject {
                 failed += 1
             }
         }
-        persistWatches()
+        libraryStore.recordDetectedUpdates(pendingUpdates, save: false)
+        calendarStore.addDetectedUpdates(pendingUpdates, save: false)
+        persistWatches(save: false)
+        try? database.save()
+        for watch in notificationWatches {
+            await sendUpdateNotification(for: watch)
+        }
         statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
     }
 
@@ -306,7 +314,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         }
     }
 
-    private func persistWatches() {
+    private func persistWatches(save shouldSave: Bool = true) {
         let context = database.context
         do {
             let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
@@ -325,7 +333,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                 if item.hasBaseline != watch.hasBaseline { item.hasBaseline = watch.hasBaseline }
                 if item.isEnabled != watch.isEnabled { item.isEnabled = watch.isEnabled }
             }
-            try database.save()
+            if shouldSave { try database.save() }
         } catch {
             print("itchPocket update watches save failed: \(error)")
         }
