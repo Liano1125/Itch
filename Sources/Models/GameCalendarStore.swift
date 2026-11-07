@@ -148,7 +148,7 @@ final class GameCalendarStore: ObservableObject {
             events = storedEvents.compactMap { stored in
                 let update = stored.sourceUpdateID.flatMap { updates[$0] }
                 let game = games[stored.gameID]
-                let title = update.map { "更新：\($0.title ?? "游戏更新")" } ?? stored.title ?? "日历事件"
+                let title = update?.title.map { "更新：\($0)" } ?? stored.title ?? "日历事件"
                 let date = update?.publishedAt ?? update?.detectedAt ?? stored.date ?? .now
                 let notes: String
                 if let update {
