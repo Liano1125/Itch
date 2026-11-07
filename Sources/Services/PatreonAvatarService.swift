@@ -5,13 +5,13 @@ final class PatreonAvatarService {
     static let shared = PatreonAvatarService()
 
     private let defaults = UserDefaults.standard
-    private let cachePrefix = "itchPocket.creatorAvatarURL.v3."
+    private let cachePrefix = "itchPocket.creatorAvatarURL.v4."
     private let failurePrefix = "itchPocket.creatorAvatarFailure.v2."
     private let failureCacheDuration: TimeInterval = 6 * 60 * 60
 
     private init() {}
 
-    /// Avatar priority: itch.io → Patreon → F95Zone → Discord.
+    /// Avatar priority: Patreon → itch.io → F95Zone → Discord.
     func avatarURL(authorURL: URL?, gameURL: URL? = nil) async -> URL? {
         let cacheKeys = Array(Set([authorURL, gameURL].compactMap { $0?.absoluteString }))
         for key in cacheKeys {
@@ -47,15 +47,17 @@ final class PatreonAvatarService {
             }
         }
 
-        // 1. itch.io creator avatar
-        var avatar = pages.lazy.compactMap { self.extractItchAvatar(from: $0.1, baseURL: $0.0) }.first
-
-        // 2. Patreon creator avatar
-        if avatar == nil,
-           let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
+        // 1. Patreon creator avatar
+        var avatar: URL?
+        if let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(patreonURL) {
             avatar = extractOpenGraphImage(from: html, baseURL: patreonURL)
                 ?? extractProfileAvatar(from: html, baseURL: patreonURL)
+        }
+
+        // 2. itch.io creator avatar
+        if avatar == nil {
+            avatar = pages.lazy.compactMap { self.extractItchAvatar(from: $0.1, baseURL: $0.0) }.first
         }
 
         // 3. F95Zone avatar
