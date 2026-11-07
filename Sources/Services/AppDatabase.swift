@@ -81,11 +81,11 @@ final class AppDatabase {
 
     func setDeveloperAvatar(id: String, url: String?, source: String?) throws {
         guard let item = try developer(id: id) else { return }
-        guard item.avatarURL != url || item.avatarSource != source else { return }
+        let changed = item.avatarURL != url || item.avatarSource != source
         item.avatarURL = url
         item.avatarSource = source
         item.avatarResolvedAt = .now
-        item.updatedAt = .now
+        if changed { item.updatedAt = .now }
         try save()
     }
 
