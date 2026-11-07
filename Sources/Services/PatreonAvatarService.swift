@@ -8,6 +8,7 @@ final class PatreonAvatarService {
     private let avatarCacheDuration: TimeInterval = 7 * 24 * 60 * 60
     private let database = AppDatabase.shared
     private var inFlight: [String: Task<URL?, Never>] = [:]
+    private var didInvalidateLegacyCache = false
 
     private init() {}
 
@@ -16,6 +17,7 @@ final class PatreonAvatarService {
     /// Resolves a creator avatar once and stores it on the canonical Developer row.
     /// All games by the same creator then read the same avatar metadata.
     func avatarURL(authorURL: URL?, gameURL: URL? = nil) async -> URL? {
+        await invalidateLegacyAvatarCacheIfNeeded()
         guard let identity = authorURL ?? gameURL else { return nil }
         let key = canonicalKey(for: identity)
         if let task = inFlight[key] { return await task.value }
@@ -139,30 +141,86 @@ final class PatreonAvatarService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
 
-        var candidates: [URL] = []
+        var ranked: [(url: URL, score: Int)] = []
+        func add(_ raw: String?, score: Int) {
+            guard let raw, let url = imageURL(raw, relativeTo: baseURL),
+                  let host = url.host?.lowercased(),
+                  host.contains("patreonusercontent.com") else { return }
+            if let index = ranked.firstIndex(where: { $0.url.absoluteString == url.absoluteString }) {
+                if score > ranked[index].score { ranked[index].score = score }
+            } else {
+                ranked.append((url, score))
+            }
+        }
+
+        // Patreon markup changes frequently. Prefer semantic avatar/profile evidence,
+        // then use the creator's serialized profile fields as a fallback.
         for tag in matches(#"<img\b[^>]*>"#, in: html) {
             let alt = (attribute("alt", from: tag) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             let className = (attribute("class", from: tag) ?? "").lowercased()
             let id = (attribute("id", from: tag) ?? "").lowercased()
+            let testID = (attribute("data-testid", from: tag) ?? "").lowercased()
+            let context: String = {
+                guard let range = html.range(of: tag) else { return "" }
+                let lower = html.index(range.lowerBound, offsetBy: -min(240, html.distance(from: html.startIndex, to: range.lowerBound)))
+                let upper = html.index(range.upperBound, offsetBy: min(240, html.distance(from: range.upperBound, to: html.endIndex)))
+                return String(html[lower..<upper]).lowercased()
+            }()
+
             let raw = attribute("data-src", from: tag)
                 ?? attribute("data-lazy-src", from: tag)
+                ?? attribute("data-original", from: tag)
                 ?? attribute("src", from: tag)
-                ?? attribute("srcset", from: tag)?.split(separator: ",").first
+                ?? attribute("srcset", from: tag)?.split(separator: ",").last
                     .map { String($0).split(separator: " ").first.map(String.init) ?? String($0) }
-            guard let raw, let url = imageURL(raw, relativeTo: baseURL),
-                  let host = url.host?.lowercased(),
-                  host.contains("patreonusercontent.com") else { continue }
-
-            let nameMatches = normalizedName.map { !$0.isEmpty && alt == $0 } ?? false
-            let avatarContainer = className.contains("avatar") || className.contains("profile")
-                || id.contains("avatar") || id.contains("profile")
-            if nameMatches { return url }
-            if avatarContainer { candidates.append(url) }
+            var score = 0
+            if normalizedName.map({ !$0.isEmpty && alt == $0 }) == true { score += 120 }
+            if className.contains("avatar") || id.contains("avatar") || testID.contains("avatar") { score += 90 }
+            if className.contains("profile") || id.contains("profile") || testID.contains("profile") { score += 55 }
+            if context.contains("avatar") || context.contains("profilepicture") || context.contains("profile_picture") { score += 35 }
+            if !alt.isEmpty { score += 5 }
+            add(raw, score: score)
         }
 
-        return candidates.first
+        // Hydrated Patreon page state often exposes avatar/image_url independently
+        // of the rendered img element, including animated GIF source URLs.
+        let jsonPatterns = [
+            #""(?:avatar|avatar_url|profile_image_url|profilePicture|profile_picture)"\s*:\s*"([^"]+)""#,
+            #""image_url"\s*:\s*"([^"]+)""#
+        ]
+        for (index, pattern) in jsonPatterns.enumerated() {
+            for raw in matches(pattern, in: html).compactMap({ firstCapture(#""([^"]+)""#, in: $0, options: []) }) {
+                add(raw, score: index == 0 ? 110 : 65)
+            }
+        }
+
+        // Open Graph is a lower-confidence fallback only when Patreon serves its
+        // own CDN image; never accept unrelated post or third-party artwork.
+        for pattern in [
+            #"<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']"#,
+            #"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']"#,
+            #"<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']"#
+        ] {
+            add(firstCapture(pattern, in: html, options: [.caseInsensitive]), score: 20)
+        }
+
+        return ranked.max(by: { $0.score < $1.score })?.url
+    }
+
+    private func invalidateLegacyAvatarCacheIfNeeded() async {
+        guard !didInvalidateLegacyCache else { return }
+        didInvalidateLegacyCache = true
+        let key = "itchPocket.avatarResolver.version"
+        let current = try? database.state(for: key)?.stringValue
+        guard current != "2" else { return }
+        do {
+            try database.invalidateDeveloperAvatarCaches()
+            try database.setState("2", for: key)
+        } catch {
+            print("itchPocket legacy avatar cache invalidation failed: \(error)")
+        }
     }
 
     private func isFailureCached(for url: URL) -> Bool {
@@ -301,5 +359,8 @@ final class PatreonAvatarService {
         value.replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&#x2F;", with: "/")
             .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "\\/", with: "/")
+            .replacingOccurrences(of: "\\u0026", with: "&")
+            .replacingOccurrences(of: "\\u003d", with: "=")
     }
 }
