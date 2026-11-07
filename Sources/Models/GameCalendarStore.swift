@@ -86,28 +86,50 @@ final class GameCalendarStore: ObservableObject {
 
     @discardableResult
     func addHistoricalUpdate(gameID: String, gameTitle: String, gameURL: String?, title: String, summary: String, publishedAt: Date, sourceID: String, postURL: String?) -> Bool {
-        let fingerprint = "devlog:\(sourceID)"
-        guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { return false }
-
-        let context = database.context
-        let update = try? context.fetch(FetchDescriptor<DBGameUpdate>(
-            predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
-        )).first
-        let event = GameCalendarEvent(
-            gameID: gameID,
-            gameTitle: gameTitle,
-            gameURL: gameURL,
-            title: "更新：\(title)",
-            date: publishedAt,
-            kind: .update,
-            reminderEnabled: false,
-            notes: summary + (postURL.map { "\n\($0)" } ?? "") + "\n来源：itch.io Devlog（历史发布日期）",
-            sourceFingerprint: fingerprint
+        let update = GameLibraryUpdate(
+            title: title,
+            summary: summary,
+            publishedAt: publishedAt,
+            url: postURL,
+            sourceID: sourceID,
+            isHistorical: true
         )
-        events.append(event)
-        events.sort { $0.date < $1.date }
-        persist(event, sourceUpdateID: update?.id)
-        return true
+        return addHistoricalUpdates(gameID: gameID, gameTitle: gameTitle, gameURL: gameURL, updates: [update]) > 0
+    }
+
+    @discardableResult
+    func addHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate]) -> Int {
+        let context = database.context
+        var inserted = 0
+        for update in updates {
+            guard let sourceID = update.sourceID else { continue }
+            let fingerprint = "devlog:\(sourceID)"
+            guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { continue }
+            let descriptor = FetchDescriptor<DBGameUpdate>(
+                predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
+            )
+            guard let storedUpdate = try? context.fetch(descriptor).first, let storedUpdate else { continue }
+            let event = GameCalendarEvent(
+                gameID: gameID,
+                gameTitle: gameTitle,
+                gameURL: gameURL,
+                title: "更新：\(update.title ?? "游戏更新")",
+                date: update.publishedAt ?? update.detectedAt,
+                kind: .update,
+                reminderEnabled: false,
+                notes: update.summary + (update.url.map { "\n\($0)" } ?? "") + "\n来源：itch.io Devlog（历史发布日期）",
+                sourceFingerprint: fingerprint
+            )
+            events.append(event)
+            persist(event, sourceUpdateID: storedUpdate.id, save: false)
+            inserted += 1
+        }
+        if inserted > 0 {
+            events.sort { $0.date < $1.date }
+            do { try database.save() }
+            catch { print("itchPocket historical calendar batch save failed: \(error)") }
+        }
+        return inserted
     }
 
     func update(_ event: GameCalendarEvent) {
@@ -176,7 +198,7 @@ final class GameCalendarStore: ObservableObject {
         }
     }
 
-    private func persist(_ event: GameCalendarEvent, sourceUpdateID: String? = nil) {
+    private func persist(_ event: GameCalendarEvent, sourceUpdateID: String? = nil, save shouldSave: Bool = true) {
         let context = database.context
         do {
             let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == event.id })
@@ -203,7 +225,7 @@ final class GameCalendarStore: ObservableObject {
                 item.date = event.date
                 item.notes = event.notes
             }
-            try database.save()
+            if shouldSave { try database.save() }
         } catch {
             print("itchPocket calendar database write failed: \(error)")
         }
