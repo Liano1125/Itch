@@ -3,6 +3,15 @@ import Combine
 import UserNotifications
 import CryptoKit
 
+struct DetectedGameUpdate {
+    let gameID: String
+    let gameTitle: String
+    let gameURL: String
+    let summary: String
+    let fingerprint: String
+    let detectedAt: Date
+}
+
 struct DevlogSyncGameResult: Codable, Identifiable {
     var id: String { gameID }
     let gameID: String
