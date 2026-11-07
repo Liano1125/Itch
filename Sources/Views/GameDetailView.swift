@@ -758,6 +758,7 @@ struct GameDetailView: View {
             if changed { library.update(record) }
         }
         if let currentDescription = result.description {
+            try? AppDatabase.shared.setGameDescription(currentDescription, for: game.id)
             if cachedOriginalDescription != currentDescription {
                 translatedDescription = nil
             }
@@ -774,6 +775,9 @@ struct GameDetailView: View {
     private func loadCachedDescription() async {
         let savedGallery = (try? AppDatabase.shared.galleryURLs(for: game.id)) ?? []
         cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }
+        if cachedOriginalDescription == nil {
+            cachedOriginalDescription = try? AppDatabase.shared.game(id: game.id)?.descriptionText
+        }
 
         let target = AppDataStore.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         for update in library.updates(for: game.id) {
