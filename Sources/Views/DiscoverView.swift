@@ -216,12 +216,12 @@ struct DiscoverView: View {
                 counts[key] = (tag.name, (current?.count ?? 0) + 1)
             }
         }
-        return counts.map { key, value in
+        return counts.map { entry in
             DiscoveryTagRecommendation(
-                id: key,
-                name: value.name,
-                url: key,
-                gameCount: value.count
+                id: entry.key,
+                name: entry.value.name,
+                url: entry.key,
+                gameCount: entry.value.count
             )
         }
         .sorted {
