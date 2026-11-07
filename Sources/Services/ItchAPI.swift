@@ -78,10 +78,10 @@ final class ItchAPI {
         let normalized = text
             .replacingOccurrences(of: "&nbsp;", with: " ")
             .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: #"\\s+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
 
         guard let regex = try? NSRegularExpression(
-            pattern: #"A member registered [A-Za-z]{3} \\d{1,2}, \\d{4} \\((\\d{1,2} [A-Za-z]+ \\d{4} @ \\d{2}:\\d{2} UTC)\\)"#,
+            pattern: #"A member registered [A-Za-z]{3} \d{1,2}, \d{4} \((\d{1,2} [A-Za-z]+ \d{4} @ \d{2}:\d{2} UTC)\)"#,
             options: [.caseInsensitive]
         ) else { return nil }
 
