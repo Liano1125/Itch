@@ -52,7 +52,7 @@ final class ItchAPI {
 
     private func fetchAccountCreatedAt(username: String) async -> Date? {
         guard let encodedUsername = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "https://itch.io/profile/\\(encodedUsername)") else {
+              let url = URL(string: "https://itch.io/profile/\(encodedUsername)") else {
             return nil
         }
 
