@@ -111,10 +111,7 @@ struct GameDetailView: View {
                 gameURL: game.url
             )
             let record = library.record(for: game.id)
-            resolvedAuthorAvatarURL = resolved
-                ?? URL(string: record?.patreonAvatarURL ?? "")
-                ?? detail?.authorAvatarURL
-                ?? URL(string: record?.developerAvatarURL ?? "")
+            resolvedAuthorAvatarURL = resolved ?? detail?.authorAvatarURL
             if var updated = record {
                 var changed = false
                 if let authorURL = detail?.authorURL,
@@ -324,10 +321,7 @@ struct GameDetailView: View {
             } label: {
                 HStack(spacing: 10) {
                     CachedRemoteImage(
-                        url: resolvedAuthorAvatarURL
-                            ?? detail?.authorAvatarURL
-                            ?? URL(string: library.record(for: game.id)?.developerAvatarURL ?? "")
-                            ?? URL(string: library.record(for: game.id)?.patreonAvatarURL ?? ""),
+                        url: resolvedAuthorAvatarURL ?? detail?.authorAvatarURL,
                         contentMode: .fill
                     ) {
                         Image(systemName: "person.fill")
@@ -738,7 +732,6 @@ struct GameDetailView: View {
             patreonURL: result.patreonURL?.absoluteString,
             discordURL: result.discordURL?.absoluteString
         )
-        resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
         if !result.galleryURLs.isEmpty {
             cachedGalleryURLs = result.galleryURLs
         }
