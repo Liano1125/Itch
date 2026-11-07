@@ -87,6 +87,7 @@ struct GameDetailView: View {
 
                 descriptionSection
                 engineSection
+                sparkPlaySection
                 statusHistorySection
                 gameUpdateHistorySection
 
@@ -497,6 +498,84 @@ struct GameDetailView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    @ViewBuilder
+    private var sparkPlaySection: some View {
+        if let record = library.record(for: game.id),
+           record.sparkPlaytimeSeconds != nil
+            || record.sparkLastSaveAt != nil
+            || record.sparkLastBackupAt != nil
+            || record.sparkRenpyVersion != nil {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Spark 游玩记录", systemImage: "gamecontroller")
+                        .font(.title3.bold())
+                    Spacer()
+                    Text("只读同步")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.green)
+                }
+                HStack(spacing: 9) {
+                    sparkMetric(
+                        title: "累计运行时长",
+                        value: Self.sparkDuration(record.sparkPlaytimeSeconds),
+                        symbol: "clock"
+                    )
+                    sparkMetric(
+                        title: "Ren'Py 版本",
+                        value: record.sparkRenpyVersion ?? "未读取",
+                        symbol: "cpu"
+                    )
+                }
+                sparkInfoRow("最近存档", date: record.sparkLastSaveAt)
+                sparkInfoRow("最近备份", date: record.sparkLastBackupAt)
+                sparkInfoRow("有效存档数", value: record.sparkSaveCount.map { "\($0) 个" } ?? "未读取")
+                sparkInfoRow("上次启动", value: record.sparkLastLaunchAt.map { Self.sparkDate($0) } ?? "Spark 未提供独立启动记录")
+            }
+            .padding(15)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    private func sparkMetric(title: String, value: String, symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(title, systemImage: symbol)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11))
+    }
+
+    private func sparkInfoRow(_ title: String, date: Date) -> some View {
+        sparkInfoRow(title, value: Self.sparkDate(date))
+    }
+
+    private func sparkInfoRow(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value).multilineTextAlignment(.trailing)
+        }
+        .font(.caption)
+    }
+
+    private static func sparkDate(_ date: Date) -> String {
+        date.formatted(.dateTime.locale(Locale(identifier: "zh_CN")).year().month().day().hour().minute())
+    }
+
+    private static func sparkDuration(_ seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite, seconds > 0 else { return "暂无记录" }
+        let minutes = Int(seconds / 60)
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        return hours > 0 ? "\(hours)小时\(remainder)分钟" : "\(remainder)分钟"
     }
 
     @ViewBuilder
