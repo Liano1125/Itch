@@ -277,17 +277,21 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private func load() {
         do {
-            watches = Dictionary(uniqueKeysWithValues: try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).map {
-                ($0.gameID, GameUpdateWatch(
-                    gameID: $0.gameID,
-                    gameTitle: $0.gameTitle,
-                    gameURL: $0.gameURL,
-                    entityTag: $0.entityTag,
-                    lastModified: $0.lastModified,
-                    contentHash: $0.contentHash,
-                    lastCheckedAt: $0.lastCheckedAt,
-                    hasBaseline: $0.hasBaseline,
-                    isEnabled: $0.isEnabled
+            let context = database.context
+            let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
+            let rows = try context.fetch(FetchDescriptor<DBUpdateWatch>())
+            watches = Dictionary(uniqueKeysWithValues: rows.compactMap { row in
+                guard let game = games[row.gameID] else { return nil }
+                return (row.gameID, GameUpdateWatch(
+                    gameID: row.gameID,
+                    gameTitle: game.title,
+                    gameURL: game.gameURL ?? "",
+                    entityTag: row.entityTag,
+                    lastModified: row.lastModified,
+                    contentHash: row.contentHash,
+                    lastCheckedAt: row.lastCheckedAt,
+                    hasBaseline: row.hasBaseline,
+                    isEnabled: row.isEnabled
                 ))
             })
         } catch {
@@ -303,8 +307,6 @@ final class GameUpdateMonitorStore: ObservableObject {
             for watch in watches.values {
                 context.insert(DBUpdateWatch(
                     gameID: watch.gameID,
-                    gameTitle: watch.gameTitle,
-                    gameURL: watch.gameURL,
                     entityTag: watch.entityTag,
                     lastModified: watch.lastModified,
                     contentHash: watch.contentHash,
