@@ -52,14 +52,25 @@ final class PatreonAvatarService {
         let patreonURL = pages.lazy.compactMap {
             self.extractPatreonURL(from: $0.1, baseURL: $0.0)
         }.first
-        guard let patreonURL,
-              let patreonHTML = try? await fetchHTML(patreonURL),
-              let avatar = extractOpenGraphImage(from: patreonHTML, baseURL: patreonURL) else {
+        let avatar: URL?
+        if let patreonURL,
+           let patreonHTML = try? await fetchHTML(patreonURL) {
+            avatar = extractOpenGraphImage(from: patreonHTML, baseURL: patreonURL)
+        } else {
+            avatar = nil
+        }
+
+        let allKeys = Array(Set(cacheKeys + [resolvedAuthorURL?.absoluteString].compactMap { $0 }))
+        guard let avatar else {
+            for value in allKeys {
+                defaults.set(Date(), forKey: failurePrefix + value)
+            }
             return nil
         }
 
-        for value in cacheKeys + [resolvedAuthorURL?.absoluteString].compactMap({ $0 }) {
+        for value in allKeys {
             defaults.set(avatar.absoluteString, forKey: cachePrefix + value)
+            defaults.removeObject(forKey: failurePrefix + value)
         }
         return avatar
     }
