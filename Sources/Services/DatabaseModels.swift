@@ -38,17 +38,19 @@ final class DBGame {
     var coverURL: String?
     var descriptionText: String?
     var galleryURLs: [String]
+    var discoveryTagsData: Data?
     var engine: String?
     var developerID: String?
     var updatedAt: Date
 
-    init(id: String, title: String, gameURL: String? = nil, coverURL: String? = nil, descriptionText: String? = nil, galleryURLs: [String] = [], engine: String? = nil, developerID: String? = nil, updatedAt: Date = .now) {
+    init(id: String, title: String, gameURL: String? = nil, coverURL: String? = nil, descriptionText: String? = nil, galleryURLs: [String] = [], discoveryTagsData: Data? = nil, engine: String? = nil, developerID: String? = nil, updatedAt: Date = .now) {
         self.id = id
         self.title = title
         self.gameURL = gameURL
         self.coverURL = coverURL
         self.descriptionText = descriptionText
         self.galleryURLs = galleryURLs
+        self.discoveryTagsData = discoveryTagsData
         self.engine = engine
         self.developerID = developerID
         self.updatedAt = updatedAt
@@ -103,9 +105,6 @@ final class DBGameUpdate {
 final class DBCalendarEvent {
     @Attribute(.unique) var id: String
     var gameID: String
-    // Snapshot is intentionally retained so a calendar item remains readable
-    // even if its game is later removed from the personal library.
-    var gameTitleSnapshot: String?
     var title: String?
     var date: Date?
     var kind: String
@@ -115,10 +114,9 @@ final class DBCalendarEvent {
     var sourceFingerprint: String?
     var sourceUpdateID: String?
 
-    init(id: String, gameID: String, gameTitleSnapshot: String? = nil, title: String? = nil, date: Date? = nil, kind: String, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String? = nil, sourceFingerprint: String? = nil, sourceUpdateID: String? = nil) {
+    init(id: String, gameID: String, title: String? = nil, date: Date? = nil, kind: String, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String? = nil, sourceFingerprint: String? = nil, sourceUpdateID: String? = nil) {
         self.id = id
         self.gameID = gameID
-        self.gameTitleSnapshot = gameTitleSnapshot
         self.title = title
         self.date = date
         self.kind = kind
@@ -188,8 +186,6 @@ final class DBDiscoverySnapshot {
 @Model
 final class DBUpdateWatch {
     @Attribute(.unique) var gameID: String
-    var gameTitle: String
-    var gameURL: String
     var entityTag: String?
     var lastModified: String?
     var contentHash: String?
@@ -197,10 +193,8 @@ final class DBUpdateWatch {
     var hasBaseline: Bool
     var isEnabled: Bool
 
-    init(gameID: String, gameTitle: String, gameURL: String, entityTag: String? = nil, lastModified: String? = nil, contentHash: String? = nil, lastCheckedAt: Date? = nil, hasBaseline: Bool = false, isEnabled: Bool = true) {
+    init(gameID: String, entityTag: String? = nil, lastModified: String? = nil, contentHash: String? = nil, lastCheckedAt: Date? = nil, hasBaseline: Bool = false, isEnabled: Bool = true) {
         self.gameID = gameID
-        self.gameTitle = gameTitle
-        self.gameURL = gameURL
         self.entityTag = entityTag
         self.lastModified = lastModified
         self.contentHash = contentHash
