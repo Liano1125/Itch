@@ -134,7 +134,7 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("发现值得玩的\\n视觉小说游戏")
+            Text("发现值得玩的视觉小说游戏")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
@@ -589,8 +589,6 @@ struct DiscoverView: View {
                                     .frame(width: 44, height: 44).clipShape(Circle())
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(developer.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                                    Text("游戏库中有 \\(developer.records.count) 款作品 · 查看更多作品")
-                                        .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "arrow.up.right")
