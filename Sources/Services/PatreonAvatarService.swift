@@ -48,11 +48,11 @@ final class PatreonAvatarService {
         }
 
         // 1. itch.io creator avatar
-        var avatar = pages.lazy.compactMap { extractItchAvatar(from: $0.1, baseURL: $0.0) }.first
+        var avatar = pages.lazy.compactMap { self.extractItchAvatar(from: $0.1, baseURL: $0.0) }.first
 
         // 2. Patreon creator avatar
         if avatar == nil,
-           let patreonURL = pages.lazy.compactMap({ extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
+           let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(patreonURL) {
             avatar = extractOpenGraphImage(from: html, baseURL: patreonURL)
                 ?? extractProfileAvatar(from: html, baseURL: patreonURL)
@@ -60,7 +60,7 @@ final class PatreonAvatarService {
 
         // 3. F95Zone avatar
         if avatar == nil,
-           let f95URL = pages.lazy.compactMap({ extractExternalURL(domains: ["f95zone.to"], from: $0.1, baseURL: $0.0) }).first,
+           let f95URL = pages.lazy.compactMap({ self.extractExternalURL(domains: ["f95zone.to"], from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(f95URL) {
             avatar = extractProfileAvatar(from: html, baseURL: f95URL)
                 ?? extractOpenGraphImage(from: html, baseURL: f95URL)
