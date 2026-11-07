@@ -37,24 +37,27 @@ final class SparkSyncStore: ObservableObject {
             if hasAccess { url.stopAccessingSecurityScopedResource() }
         }
 
-        do {
-            let bookmark = try url.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
+        folderName = url.lastPathComponent
+        UserDefaults.standard.set(folderName, forKey: "itchPocket.sparkFolderName.v1")
+
+        // A bookmark is useful for later scans, but failure to create one must not
+        // prevent the first scan of the folder the user just selected.
+        if let bookmark = try? url.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) {
             UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
-            folderName = url.lastPathComponent
-            UserDefaults.standard.set(folderName, forKey: "itchPocket.sparkFolderName.v1")
-            await scanFolder(url, library: library)
-        } catch {
-            errorMessage = "无法保存文件夹授权：\(error.localizedDescription)"
+        } else {
+            UserDefaults.standard.removeObject(forKey: bookmarkKey)
         }
+
+        await scanFolder(url, library: library)
     }
 
     func rescan(library: PersonalLibraryStore) async {
         guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else {
-            errorMessage = "请先选择 iCloud Drive 中的 Spark 文件夹。"
+            errorMessage = "尚未保存文件夹访问授权。请重新选择 Spark 本地数据文件夹。"
             return
         }
 
@@ -71,12 +74,11 @@ final class SparkSyncStore: ObservableObject {
                 if hasAccess { url.stopAccessingSecurityScopedResource() }
             }
 
-            if isStale {
-                let refreshed = try url.bookmarkData(
-                    options: [],
-                    includingResourceValuesForKeys: nil,
-                    relativeTo: nil
-                )
+            if isStale, let refreshed = try? url.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
                 UserDefaults.standard.set(refreshed, forKey: bookmarkKey)
             }
             await scanFolder(url, library: library)
@@ -116,7 +118,6 @@ final class SparkSyncStore: ObservableObject {
                 updated.sparkLastBackupAt = summary.lastBackupAt
                 updated.sparkRenpyVersion = summary.renpyVersion
                 updated.sparkSaveCount = summary.saveCount
-                // Spark 的备份时间和存档时间都不能冒充真实启动时间。
                 updated.sparkLastLaunchAt = nil
                 library.update(updated)
             }
@@ -152,7 +153,7 @@ private struct SparkAggregate {
     var saveCount: Int = 0
 
     mutating func merge(_ metadata: SparkSaveMetadata, countAsActiveSave: Bool) {
-        if let runtime = metadata.runtimeSeconds {
+        if let runtime = metadata.runtimeSeconds, runtime.isFinite {
             runtimeSeconds = max(runtimeSeconds, runtime)
         }
         if let date = metadata.createdAt {
@@ -179,29 +180,33 @@ private enum SparkArchiveScanner {
         var errorDescription: String? {
             switch self {
             case .sparkFoldersNotFound:
-                return "所选文件夹内没有找到 Saves 或 Backups。请在 iCloud Drive 中选择包含这两个目录的 icloud-spark 文件夹，并确认 Spark 文件已同步到本机。"
+                return "没有识别到 Spark 存档目录。请选择包含 saves 和 backups 的 Spark 本地数据文件夹；程序会读取 saves/renpy/saves、saves/staging/saves 与 backups。"
             }
         }
     }
 
     static func scan(rootURL: URL) throws -> [SparkGameSummary] {
         let fileManager = FileManager.default
-        // 兼容 iCloud Drive 中间多套一层目录的情况，最多向下查找 4 层。
-        let savesURL = locateDirectory(named: "Saves", under: rootURL, maxDepth: 4)
-        let backupsURL = locateDirectory(named: "Backups", under: rootURL, maxDepth: 4)
-        guard savesURL != nil || backupsURL != nil else {
+        let saveRoots = locateSaveRoots(under: rootURL)
+        let backupsURL = locateDirectory(named: "backups", under: rootURL, maxDepth: 5)
+        guard !saveRoots.isEmpty || backupsURL != nil else {
             throw ScanError.sparkFoldersNotFound
         }
-        var aggregates: [String: SparkAggregate] = [:]
 
-        if let savesURL,
-           let enumerator = fileManager.enumerator(
+        var aggregates: [String: SparkAggregate] = [:]
+        var visitedSaveFiles = Set<String>()
+
+        for savesURL in saveRoots {
+            guard let enumerator = fileManager.enumerator(
                 at: savesURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
-           ) {
+            ) else { continue }
+
             for case let fileURL as URL in enumerator where fileURL.pathExtension.lowercased() == "save" {
-                guard let gameName = gameNameForSave(fileURL, root: savesURL),
+                let fileKey = fileURL.standardizedFileURL.path
+                guard visitedSaveFiles.insert(fileKey).inserted,
+                      let gameName = gameNameForSave(fileURL, root: savesURL),
                       let metadata = readSaveMetadata(at: fileURL) else { continue }
                 var aggregate = aggregates[gameName] ?? SparkAggregate()
                 aggregate.merge(metadata, countAsActiveSave: true)
@@ -216,8 +221,9 @@ private enum SparkArchiveScanner {
                 options: [.skipsHiddenFiles]
            ) {
             for case let backupURL as URL in enumerator where backupURL.pathExtension.lowercased() == "zip" {
-                guard let gameName = gameNameForBackup(backupURL),
-                      let backupDate = backupDateFromFilename(backupURL.lastPathComponent) else { continue }
+                guard let backupDate = backupDateFromFilename(backupURL.lastPathComponent),
+                      let gameName = gameNameForBackup(backupURL, root: backupsURL) else { continue }
+
                 var aggregate = aggregates[gameName] ?? SparkAggregate()
                 if aggregate.lastBackupAt == nil || backupDate > aggregate.lastBackupAt! {
                     aggregate.lastBackupAt = backupDate
@@ -237,6 +243,50 @@ private enum SparkArchiveScanner {
                 saveCount: aggregate.saveCount
             )
         }.sorted { $0.gameName.localizedCaseInsensitiveCompare($1.gameName) == .orderedAscending }
+    }
+
+    // Prefer Spark's known on-device layout instead of selecting the first
+    // arbitrary directory named "saves" (which may be an outer container).
+    private static func locateSaveRoots(under root: URL) -> [URL] {
+        let preferredRelativePaths = [
+            "saves/renpy/saves",
+            "saves/staging/saves",
+            "renpy/saves",
+            "staging/saves"
+        ]
+        var results: [URL] = []
+
+        for relativePath in preferredRelativePaths {
+            let candidate = relativePath.split(separator: "/").reduce(root) {
+                $0.appendingPathComponent(String($1), isDirectory: true)
+            }
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                results.append(candidate)
+            }
+        }
+
+        if results.isEmpty {
+            // Allow a selected folder that is itself the Ren'Py saves directory.
+            if containsSaveFiles(root) {
+                results.append(root)
+            } else if let nested = locateDirectory(named: "saves", under: root, maxDepth: 5),
+                      containsSaveFiles(nested) {
+                results.append(nested)
+            }
+        }
+        return results
+    }
+
+    private static func containsSaveFiles(_ directory: URL) -> Bool {
+        guard let children = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        return children.contains { $0.pathExtension.lowercased() == "save" } ||
+            children.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
     }
 
     private static func locateDirectory(named name: String, under root: URL, maxDepth: Int) -> URL? {
@@ -271,13 +321,21 @@ private enum SparkArchiveScanner {
         return String(first)
     }
 
-    private static func gameNameForBackup(_ url: URL) -> String? {
-        let filename = url.deletingPathExtension().lastPathComponent
-        if let range = filename.range(of: "_SLOT", options: [.caseInsensitive]) {
-            return String(filename[..<range.lowerBound])
+    private static func gameNameForBackup(_ url: URL, root: URL) -> String? {
+        let components = url.deletingLastPathComponent().path
+            .replacingOccurrences(of: root.path, with: "")
+            .split(separator: "/")
+            .map(String.init)
+        if let autoBackupIndex = components.lastIndex(where: {
+            $0.caseInsensitiveCompare("autoBackup") == .orderedSame
+        }), autoBackupIndex > 0 {
+            return components[autoBackupIndex - 1]
         }
-        let parent = url.deletingLastPathComponent().lastPathComponent
-        return parent.isEmpty ? nil : parent
+        if let parent = components.last, !parent.isEmpty,
+           parent.caseInsensitiveCompare("backups") != .orderedSame {
+            return parent
+        }
+        return nil
     }
 
     private static func backupDateFromFilename(_ filename: String) -> Date? {
