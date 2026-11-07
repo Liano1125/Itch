@@ -19,78 +19,82 @@ struct SparkGameSummary: Identifiable {
 final class SparkSyncStore: ObservableObject {
     static let shared = SparkSyncStore()
 
-    @Published private(set) var folderName: String?
+    @Published private(set) var saveFolderName: String?
+    @Published private(set) var backupFolderName: String?
     @Published private(set) var lastSyncAt: Date?
     @Published private(set) var summaries: [SparkGameSummary] = []
     @Published private(set) var unmatchedGameNames: [String] = []
     @Published private(set) var isScanning = false
     @Published var errorMessage: String?
 
-    private let bookmarkKey = "itchPocket.sparkFolderBookmark.v1"
+    private let saveBookmarkKey = "itchPocket.sparkAllSavesBookmark.v1"
+    private let backupBookmarkKey = "itchPocket.sparkBackupsBookmark.v1"
     private let lastSyncKey = "itchPocket.sparkLastSyncAt.v1"
 
     private init() {
-        folderName = UserDefaults.standard.string(forKey: "itchPocket.sparkFolderName.v1")
+        saveFolderName = UserDefaults.standard.string(forKey: "itchPocket.sparkAllSavesFolderName.v1")
+        backupFolderName = UserDefaults.standard.string(forKey: "itchPocket.sparkBackupsFolderName.v1")
         lastSyncAt = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
     }
 
-    func selectFolder(_ url: URL, library: PersonalLibraryStore) async {
+    func selectSaveFolder(_ url: URL, library: PersonalLibraryStore) async {
+        await saveFolder(url, bookmarkKey: saveBookmarkKey, nameKey: "itchPocket.sparkAllSavesFolderName.v1")
+        await rescan(library: library)
+    }
+
+    func selectBackupFolder(_ url: URL, library: PersonalLibraryStore) async {
+        await saveFolder(url, bookmarkKey: backupBookmarkKey, nameKey: "itchPocket.sparkBackupsFolderName.v1")
+        await rescan(library: library)
+    }
+
+    private func saveFolder(_ url: URL, bookmarkKey: String, nameKey: String) async {
         let hasAccess = url.startAccessingSecurityScopedResource()
-        defer {
-            if hasAccess { url.stopAccessingSecurityScopedResource() }
-        }
-
-        folderName = url.lastPathComponent
-        UserDefaults.standard.set(folderName, forKey: "itchPocket.sparkFolderName.v1")
-
-        // A bookmark is useful for later scans, but failure to create one must not
-        // prevent the first scan of the folder the user just selected.
-        if let bookmark = try? url.bookmarkData(
-            options: [],
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        ) {
+        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+        let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        if let bookmark {
             UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
+            UserDefaults.standard.set(url.lastPathComponent, forKey: nameKey)
+            if bookmarkKey == saveBookmarkKey { saveFolderName = url.lastPathComponent }
+            if bookmarkKey == backupBookmarkKey { backupFolderName = url.lastPathComponent }
         } else {
-            UserDefaults.standard.removeObject(forKey: bookmarkKey)
+            errorMessage = "无法保存文件夹授权，请重新选择该目录。"
         }
-
-        await scanFolder(url, library: library)
     }
 
     func rescan(library: PersonalLibraryStore) async {
-        guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else {
-            errorMessage = "尚未保存文件夹访问授权。请重新选择 Spark 本地数据文件夹。"
+        guard !isScanning else { return }
+        let saveURL = resolveFolder(bookmarkKey: saveBookmarkKey)
+        let backupURL = resolveFolder(bookmarkKey: backupBookmarkKey)
+        guard saveURL != nil || backupURL != nil else {
+            errorMessage = "请分别选择 itchPocket-allsaves 和 itchPocket-backups 文件夹。"
             return
         }
 
+        let saveAccess = saveURL?.startAccessingSecurityScopedResource() ?? false
+        let backupAccess = backupURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if saveAccess, let saveURL { saveURL.stopAccessingSecurityScopedResource() }
+            if backupAccess, let backupURL { backupURL.stopAccessingSecurityScopedResource() }
+        }
+
+        await scanFolders(saveURL: saveURL, backupURL: backupURL, library: library)
+    }
+
+    private func resolveFolder(bookmarkKey: String) -> URL? {
+        guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return nil }
         do {
             var isStale = false
-            let url = try URL(
-                resolvingBookmarkData: bookmark,
-                options: [],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            let hasAccess = url.startAccessingSecurityScopedResource()
-            defer {
-                if hasAccess { url.stopAccessingSecurityScopedResource() }
-            }
-
-            if isStale, let refreshed = try? url.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            ) {
+            let url = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+            if isStale, let refreshed = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
                 UserDefaults.standard.set(refreshed, forKey: bookmarkKey)
             }
-            await scanFolder(url, library: library)
+            return url
         } catch {
-            errorMessage = "无法重新访问 Spark 文件夹，请重新选择：\(error.localizedDescription)"
+            return nil
         }
     }
 
-    private func scanFolder(_ url: URL, library: PersonalLibraryStore) async {
+    private func scanFolders(saveURL: URL?, backupURL: URL?, library: PersonalLibraryStore) async {
         guard !isScanning else { return }
         isScanning = true
         errorMessage = nil
@@ -100,21 +104,17 @@ final class SparkSyncStore: ObservableObject {
 
         do {
             let found = try await Task.detached(priority: .utility) {
-                try SparkArchiveScanner.scan(rootURL: url)
+                try SparkArchiveScanner.scan(saveRootURL: saveURL, backupRootURL: backupURL)
             }.value
 
             summaries = found
             var unmatched: [String] = []
-
             for summary in found {
                 let key = Self.normalized(summary.gameName)
-                guard let record = library.records.first(where: {
-                    Self.normalized($0.title) == key
-                }) else {
+                guard let record = library.records.first(where: { Self.normalized($0.title) == key }) else {
                     unmatched.append(summary.gameName)
                     continue
                 }
-
                 var updated = record
                 updated.sparkPlaytimeSeconds = summary.runtimeSeconds
                 updated.sparkLastSaveAt = summary.lastSaveAt
@@ -130,7 +130,7 @@ final class SparkSyncStore: ObservableObject {
             lastSyncAt = now
             UserDefaults.standard.set(now, forKey: lastSyncKey)
         } catch {
-            errorMessage = "扫描 Spark 数据失败：\(error.localizedDescription)"
+            errorMessage = "扫描 itchPocket 存档目录失败：\\(error.localizedDescription)"
         }
     }
 
@@ -197,29 +197,26 @@ private enum SparkArchiveScanner {
         var errorDescription: String? {
             switch self {
             case .sparkFoldersNotFound:
-                return "没有识别到 Spark 存档目录。请选择包含 saves 和 backups 的 Spark 本地数据文件夹；程序会读取 saves/renpy/saves、saves/staging/saves 与 backups。"
+                return "没有识别到存档文件夹。请检查是否选择了 itchPocket-allsaves 和 itchPocket-backups。"
             }
         }
     }
 
-    static func scan(rootURL: URL) throws -> [SparkGameSummary] {
+    static func scan(saveRootURL: URL?, backupRootURL: URL?) throws -> [SparkGameSummary] {
         let fileManager = FileManager.default
-        let saveRoots = locateSaveRoots(under: rootURL)
-        let backupsURL = locateDirectory(named: "backups", under: rootURL, maxDepth: 5)
-        guard !saveRoots.isEmpty || backupsURL != nil else {
+        guard saveRootURL != nil || backupRootURL != nil else {
             throw ScanError.sparkFoldersNotFound
         }
 
         var aggregates: [String: SparkAggregate] = [:]
         var visitedSaveFiles = Set<String>()
 
-        for (savesURL, sourceLabel) in saveRoots {
-            guard let enumerator = fileManager.enumerator(
+        if let savesURL = saveRootURL,
+           let enumerator = fileManager.enumerator(
                 at: savesURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
-            ) else { continue }
-
+           ) {
             for case let fileURL as URL in enumerator where fileURL.pathExtension.lowercased() == "save" {
                 let fileKey = fileURL.standardizedFileURL.path
                 guard visitedSaveFiles.insert(fileKey).inserted,
@@ -227,22 +224,18 @@ private enum SparkArchiveScanner {
                       let metadata = readSaveMetadata(at: fileURL) else { continue }
                 let key = normalizedGameName(gameName)
                 var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
-                // Only byte-identical archives are true duplicates. The same slot
-                // filename in staging and primary storage may contain different progress.
                 let saveIdentity: String
                 if let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) {
-                    saveIdentity = SHA256.hash(data: data)
-                        .map { String(format: "%02x", $0) }
-                        .joined()
+                    saveIdentity = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
                 } else {
                     saveIdentity = fileURL.standardizedFileURL.path
                 }
-                aggregate.merge(metadata, saveIdentity: saveIdentity, source: sourceLabel)
+                aggregate.merge(metadata, saveIdentity: saveIdentity, source: "allsaves")
                 aggregates[key] = aggregate
             }
         }
 
-        if let backupsURL,
+        if let backupsURL = backupRootURL,
            let enumerator = fileManager.enumerator(
                 at: backupsURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
@@ -251,7 +244,6 @@ private enum SparkArchiveScanner {
             for case let backupURL as URL in enumerator where backupURL.pathExtension.lowercased() == "zip" {
                 guard let backupDate = backupDateFromFilename(backupURL.lastPathComponent),
                       let gameName = gameNameForBackup(backupURL, root: backupsURL) else { continue }
-
                 let key = normalizedGameName(gameName)
                 var aggregate = aggregates[key] ?? SparkAggregate(gameName: gameName)
                 if aggregate.lastBackupAt == nil || backupDate > aggregate.lastBackupAt! {
@@ -276,82 +268,10 @@ private enum SparkArchiveScanner {
         }.sorted { $0.gameName.localizedCaseInsensitiveCompare($1.gameName) == .orderedAscending }
     }
 
-    // Prefer Spark's known on-device layout instead of selecting the first
-    // arbitrary directory named "saves" (which may be an outer container).
     private static func normalizedGameName(_ value: String) -> String {
         value.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .joined()
-    }
-
-    private static func locateSaveRoots(under root: URL) -> [(URL, String)] {
-        let preferredRelativePaths = [
-            "saves/renpy/saves",
-            "saves/staging/saves",
-            "renpy/saves",
-            "staging/saves"
-        ]
-        var results: [(URL, String)] = []
-
-        for relativePath in preferredRelativePaths {
-            let candidate = relativePath.split(separator: "/").reduce(root) {
-                $0.appendingPathComponent(String($1), isDirectory: true)
-            }
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-               isDirectory.boolValue {
-                results.append((candidate, relativePath.contains("staging") ? "临时存档" : "正式存档"))
-            }
-        }
-
-        if results.isEmpty {
-            // Allow a selected folder that is itself the Ren'Py saves directory.
-            if containsSaveFiles(root) {
-                results.append((root, "所选目录"))
-            } else if let nested = locateDirectory(named: "saves", under: root, maxDepth: 5),
-                      containsSaveFiles(nested) {
-                results.append((nested, "发现的存档目录"))
-            }
-        }
-        return results
-    }
-
-    private static func containsSaveFiles(_ directory: URL) -> Bool {
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return false }
-        for case let fileURL as URL in enumerator {
-            if fileURL.pathExtension.lowercased() == "save" { return true }
-        }
-        return false
-    }
-
-    private static func locateDirectory(named name: String, under root: URL, maxDepth: Int) -> URL? {
-        var queue: [(url: URL, depth: Int)] = [(root, 0)]
-        var visited = Set<String>()
-
-        while !queue.isEmpty {
-            let current = queue.removeFirst()
-            guard visited.insert(current.url.standardizedFileURL.path).inserted,
-                  current.depth < maxDepth,
-                  let children = try? FileManager.default.contentsOfDirectory(
-                    at: current.url,
-                    includingPropertiesForKeys: [.isDirectoryKey],
-                    options: [.skipsHiddenFiles]
-                  ) else { continue }
-
-            for child in children {
-                let values = try? child.resourceValues(forKeys: [.isDirectoryKey])
-                guard values?.isDirectory == true else { continue }
-                if child.lastPathComponent.caseInsensitiveCompare(name) == .orderedSame {
-                    return child
-                }
-                queue.append((child, current.depth + 1))
-            }
-        }
-        return nil
     }
 
     private static func gameNameForSave(_ url: URL, root: URL) -> String? {
