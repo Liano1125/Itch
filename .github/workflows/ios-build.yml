@@ -9,6 +9,11 @@ on:
       - main
   workflow_dispatch:
 
+# Prevent parallel builds from racing while replacing the same nightly Release assets.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
