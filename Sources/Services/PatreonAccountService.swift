@@ -16,13 +16,23 @@ final class PatreonAccountService: NSObject, ObservableObject, ASWebAuthenticati
     private let baseURL = URL(string: "https://itchpocket-patreon-api.kerfa405.workers.dev")!
     @Published private(set) var account: PatreonAccount?
     @Published private(set) var isLoading = false
+    @Published private(set) var isRestoring = true
     @Published var errorMessage: String?
+    private var hasAttemptedRestore = false
     private var session: ASWebAuthenticationSession?
 
     private override init() { super.init() }
 
     func restore() async {
-        guard let token = KeychainStore.read("patreon_session_token") else { return }
+        guard !hasAttemptedRestore else { return }
+        hasAttemptedRestore = true
+        defer { isRestoring = false }
+
+        guard let token = KeychainStore.read("patreon_session_token") else {
+            account = nil
+            return
+        }
+
         do {
             account = try await requestAccount(path: "/account/status", token: token)
         } catch {
