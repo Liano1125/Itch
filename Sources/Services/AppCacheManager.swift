@@ -35,7 +35,9 @@ enum AppCacheManager {
             game.descriptionText = nil
             game.galleryURLs = []
         }
-        for state in try context.fetch(FetchDescriptor<DBAppState>()) where state.key.hasPrefix("avatarFailure.") {\n            context.delete(state)\n        }\n        for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
+        for state in try context.fetch(FetchDescriptor<DBAppState>()) where state.key.hasPrefix("avatarFailure.") {
+            context.delete(state)
+        }\n        for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
             developer.avatarURL = nil
             developer.avatarSource = nil
             developer.avatarResolvedAt = nil
@@ -53,5 +55,6 @@ enum AppCacheManager {
         ))
         for snapshot in expired { context.delete(snapshot) }
         try AppDatabase.shared.save()
+        await PersistentImageCache.shared.prune()
     }
 }
