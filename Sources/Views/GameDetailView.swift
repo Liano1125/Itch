@@ -717,34 +717,30 @@ struct GameDetailView: View {
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
         let existingRecord = library.record(for: game.id)
+        let existingGame = try? AppDatabase.shared.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
-        let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
-        if let developerID {
-            let cachedDeveloperName = (try? AppDatabase.shared.developer(id: developerID))?.name
-            try? AppDatabase.shared.upsertDeveloper(
-                id: developerID,
-                name: result.developer ?? game.developer ?? existingRecord?.developer ?? cachedDeveloperName ?? "itch.io 开发者",
-                profileURL: authorURL?.absoluteString,
-                patreonURL: result.patreonURL?.absoluteString,
-                discordURL: result.discordURL?.absoluteString
-            )
+        let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) } ?? existingGame?.developerID
+        let cachedDeveloperName = developerID.flatMap { id in
+            (try? AppDatabase.shared.developer(id: id))?.name
         }
-        try? AppDatabase.shared.upsertGame(
+        try? AppDatabase.shared.upsertGameDetail(
             id: game.id,
             title: game.title,
             gameURL: game.url?.absoluteString,
             coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
             description: result.description,
+            galleryURLs: result.galleryURLs.map(\.absoluteString),
+            discoveryTags: result.discoveryTags,
             engine: result.engine,
-            developerID: developerID
+            developerID: developerID,
+            developerName: result.developer ?? game.developer ?? existingRecord?.developer ?? cachedDeveloperName,
+            developerProfileURL: authorURL?.absoluteString,
+            patreonURL: result.patreonURL?.absoluteString,
+            discordURL: result.discordURL?.absoluteString
         )
-        if !result.discoveryTags.isEmpty {
-            try? AppDatabase.shared.setDiscoveryTags(result.discoveryTags, for: game.id)
-        }
         resolvedAuthorAvatarURL = URL(string: library.record(for: game.id)?.patreonAvatarURL ?? "")
         if !result.galleryURLs.isEmpty {
             cachedGalleryURLs = result.galleryURLs
-            try? AppDatabase.shared.setGalleryURLs(result.galleryURLs.map(\.absoluteString), for: game.id)
         }
         Task {
             await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
