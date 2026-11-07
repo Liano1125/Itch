@@ -44,6 +44,16 @@ final class AppDatabase {
         try context.save()
     }
 
+    static func canonicalDeveloperID(_ rawURL: String) -> String {
+        guard var components = URLComponents(string: rawURL) else { return rawURL.lowercased() }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        components.query = nil
+        components.fragment = nil
+        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return components.string ?? rawURL.lowercased()
+    }
+
     func developer(id: String) throws -> DBDeveloper? {
         let descriptor = FetchDescriptor<DBDeveloper>(
             predicate: #Predicate { $0.id == id }
@@ -141,6 +151,15 @@ final class AppDatabase {
         guard let item = try game(id: gameID) else { return }
         guard item.descriptionText != description else { return }
         item.descriptionText = description
+        item.updatedAt = .now
+        try save()
+    }
+
+    func setDiscoveryTags(_ tags: [LibraryDiscoveryTag], for gameID: String) throws {
+        guard let item = try game(id: gameID) else { return }
+        let data = try JSONEncoder().encode(tags)
+        guard item.discoveryTagsData != data else { return }
+        item.discoveryTagsData = data
         item.updatedAt = .now
         try save()
     }
