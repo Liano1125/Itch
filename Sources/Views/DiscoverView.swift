@@ -92,13 +92,13 @@ struct DiscoverView: View {
                         feeds: DiscoveryFeed.curated,
                         reloadToken: curatedReloadToken,
                         onLoad: { feedID, games in
-                            let available = games.filter { !library.contains($0.id) }
-                            // Never replace a populated feed with an empty page/result.
-                            if !available.isEmpty || curatedGames[feedID] == nil {
-                                curatedGames[feedID] = available
+                            // Persist the raw feed; membership filtering is a presentation concern.
+                            // This lets removed library games reappear without another network fetch.
+                            if !games.isEmpty || curatedGames[feedID] == nil {
+                                curatedGames[feedID] = games
                                 persistCuratedCache()
                             }
-                            if !available.isEmpty { curatedError = nil }
+                            if !games.isEmpty { curatedError = nil }
                         },
                         onError: { curatedError = $0 },
                         onStart: { isLoadingCurated = true; curatedError = nil },
