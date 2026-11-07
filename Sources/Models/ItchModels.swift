@@ -12,6 +12,7 @@ struct ItchUser: Decodable, Identifiable {
     let displayName: String?
     let coverUrl: URL?
     let url: URL?
+    var accountCreatedAt: Date? = nil
 }
 
 // MARK: - Credentials
