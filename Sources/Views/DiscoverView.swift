@@ -26,7 +26,6 @@ struct DiscoverView: View {
                     searchBar
                     personalizedSection
                     featuredSection
-                    libraryDiscoverySection
                     browseSection
                 }
                 .padding(.horizontal, 20)
