@@ -169,7 +169,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     @discardableResult
-    func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate]) -> Int {
+    func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
         guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
         var updated = records[index]
         var history = updated.gameUpdates ?? []
@@ -187,7 +187,7 @@ final class PersonalLibraryStore: ObservableObject {
         updated.gameUpdates = Array(history.prefix(200))
         updated.updatedAt = Date()
         records[index] = updated
-        persist(updated)
+        persist(updated, save: shouldSave)
         return inserted
     }
 
