@@ -116,12 +116,21 @@ final class SparkSyncStore: ObservableObject {
                     continue
                 }
                 var updated = record
-                updated.sparkPlaytimeSeconds = summary.runtimeSeconds
-                updated.sparkLastSaveAt = summary.lastSaveAt
-                updated.sparkLastBackupAt = summary.lastBackupAt
-                updated.sparkRenpyVersion = summary.renpyVersion
-                updated.sparkSaveCount = summary.saveCount
-                updated.sparkLastLaunchAt = nil
+                updated.sparkPlaytimeSeconds = max(updated.sparkPlaytimeSeconds ?? 0, summary.runtimeSeconds)
+                if let lastSaveAt = summary.lastSaveAt,
+                   updated.sparkLastSaveAt == nil || lastSaveAt > updated.sparkLastSaveAt! {
+                    updated.sparkLastSaveAt = lastSaveAt
+                }
+                if let lastBackupAt = summary.lastBackupAt,
+                   updated.sparkLastBackupAt == nil || lastBackupAt > updated.sparkLastBackupAt! {
+                    updated.sparkLastBackupAt = lastBackupAt
+                }
+                if let version = summary.renpyVersion {
+                    updated.sparkRenpyVersion = version
+                }
+                if summary.saveSources.contains("正式存档") {
+                    updated.sparkSaveCount = summary.saveCount
+                }
                 library.update(updated)
             }
 
@@ -230,7 +239,7 @@ private enum SparkArchiveScanner {
                 } else {
                     saveIdentity = fileURL.standardizedFileURL.path
                 }
-                aggregate.merge(metadata, saveIdentity: saveIdentity, source: "allsaves")
+                aggregate.merge(metadata, saveIdentity: saveIdentity, source: "正式存档")
                 aggregates[key] = aggregate
             }
         }
