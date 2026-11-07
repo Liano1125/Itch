@@ -156,11 +156,7 @@ final class PersonalLibraryStore: ObservableObject {
 
     @discardableResult
     func recordHistoricalUpdate(gameID: String, title: String, summary: String, publishedAt: Date, url: String?, sourceID: String) -> Bool {
-        guard let index = records.firstIndex(where: { $0.id == gameID }) else { return false }
-        var updated = records[index]
-        var history = updated.gameUpdates ?? []
-        guard !history.contains(where: { $0.sourceID == sourceID || ($0.url != nil && $0.url == url) }) else { return false }
-        history.append(GameLibraryUpdate(
+        let update = GameLibraryUpdate(
             title: title,
             summary: summary,
             detectedAt: Date(),
@@ -168,13 +164,31 @@ final class PersonalLibraryStore: ObservableObject {
             url: url,
             sourceID: sourceID,
             isHistorical: true
-        ))
+        )
+        return recordHistoricalUpdates(gameID: gameID, updates: [update]) > 0
+    }
+
+    @discardableResult
+    func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate]) -> Int {
+        guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
+        var updated = records[index]
+        var history = updated.gameUpdates ?? []
+        var inserted = 0
+        for update in incoming {
+            guard !history.contains(where: {
+                ($0.sourceID != nil && $0.sourceID == update.sourceID)
+                    || ($0.url != nil && $0.url == update.url)
+            }) else { continue }
+            history.append(update)
+            inserted += 1
+        }
+        guard inserted > 0 else { return 0 }
         history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
         updated.gameUpdates = Array(history.prefix(200))
         updated.updatedAt = Date()
         records[index] = updated
         persist(updated)
-        return true
+        return inserted
     }
 
     func createCollection(title: String) {
