@@ -1003,7 +1003,7 @@ private struct DetailPageReader: UIViewRepresentable {
                 )).map(anchor => ({
                     name: clean(anchor),
                     url: absolute(anchor.getAttribute("href"))
-                })).filter(tag => tag.name && tag.url && /\\/games\\/tag-/i.test(new URL(tag.url).pathname))
+                })).filter(tag => tag.name && tag.url && new URL(tag.url).pathname.includes("/games/tag-"))
                   .filter((tag, index, array) => array.findIndex(item => item.url === tag.url) === index)
                   .slice(0, 20);
 
