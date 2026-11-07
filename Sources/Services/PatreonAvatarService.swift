@@ -22,6 +22,13 @@ final class PatreonAvatarService {
             }
         }
 
+        if cacheKeys.contains(where: { key in
+            guard let failedAt = defaults.object(forKey: failurePrefix + key) as? Date else { return false }
+            return Date().timeIntervalSince(failedAt) < failureCacheDuration
+        }) {
+            return nil
+        }
+
         var pages: [(URL, String)] = []
         if let authorURL, let html = try? await fetchHTML(authorURL) {
             pages.append((authorURL, html))
