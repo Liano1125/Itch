@@ -1,62 +1,100 @@
 import Foundation
 import CryptoKit
 
-actor TranslationCache {
+/// Translation records live in the canonical database; this type is a small
+/// repository facade, not a second JSON cache file.
+@MainActor
+final class TranslationCache {
     static let shared = TranslationCache()
 
-    struct Entry: Codable {
+    struct Entry {
         let translation: String
-        let sourceText: String
+        let sourceHash: String
         let scope: String
         let target: String
         let updatedAt: Date
     }
 
-    private var entries: [String: Entry] = [:]
-    private var hasLoaded = false
-    private let fileURL: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let directory = base.appendingPathComponent("itchPocket", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("translation-cache-v1.json")
-    }()
+    private let database = AppDatabase.shared
+    private let maximumEntries = 1200
+    private let retainedEntries = 1000
+
+    private init() {}
 
     func translation(for key: String) -> Entry? {
-        loadIfNeeded()
-        return entries[key]
+        do {
+            guard let item = try database.context.fetch(FetchDescriptor<DBTranslation>(
+                predicate: #Predicate { $0.cacheKey == key }
+            )).first else { return nil }
+            return Entry(
+                translation: item.translatedText,
+                sourceHash: item.sourceHash,
+                scope: item.scope,
+                target: item.targetLanguage,
+                updatedAt: item.updatedAt
+            )
+        } catch {
+            print("itchPocket translation cache read failed: \(error)")
+            return nil
+        }
     }
 
     func latest(scope: String, target: String) -> Entry? {
-        loadIfNeeded()
-        return entries.values
-            .filter { $0.scope == scope && $0.target == target }
-            .max { $0.updatedAt < $1.updatedAt }
+        do {
+            let items = try database.context.fetch(FetchDescriptor<DBTranslation>(
+                predicate: #Predicate { $0.scope == scope && $0.targetLanguage == target },
+                sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+            ))
+            guard let item = items.first else { return nil }
+            return Entry(
+                translation: item.translatedText,
+                sourceHash: item.sourceHash,
+                scope: item.scope,
+                target: item.targetLanguage,
+                updatedAt: item.updatedAt
+            )
+        } catch {
+            print("itchPocket translation cache lookup failed: \(error)")
+            return nil
+        }
     }
 
     func store(_ translation: String, source: String, scope: String, target: String, for key: String) {
-        loadIfNeeded()
-        entries[key] = Entry(
-            translation: translation,
-            sourceText: source,
-            scope: scope,
-            target: target,
-            updatedAt: Date()
-        )
-        if entries.count > 1200 {
-            let retained = entries.sorted { $0.value.updatedAt > $1.value.updatedAt }.prefix(1000)
-            entries = Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })
+        let context = database.context
+        do {
+            let item = try context.fetch(FetchDescriptor<DBTranslation>(
+                predicate: #Predicate { $0.cacheKey == key }
+            )).first ?? DBTranslation(
+                cacheKey: key,
+                scope: scope,
+                sourceHash: Self.hash(source),
+                targetLanguage: target,
+                translatedText: translation
+            )
+            if item.modelContext == nil { context.insert(item) }
+            item.scope = scope
+            item.sourceHash = Self.hash(source)
+            item.targetLanguage = target
+            item.translatedText = translation
+            item.updatedAt = .now
+
+            let count = try context.fetchCount(FetchDescriptor<DBTranslation>())
+            if count > maximumEntries {
+                let oldest = try context.fetch(FetchDescriptor<DBTranslation>(
+                    sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
+                ))
+                for old in oldest.prefix(max(0, count - retainedEntries)) where old.cacheKey != key {
+                    context.delete(old)
+                }
+            }
+            try database.save()
+        } catch {
+            print("itchPocket translation cache write failed: \(error)")
         }
-        save()
     }
 
-    private func loadIfNeeded() {
-        guard !hasLoaded else { return }
-        hasLoaded = true
-        entries = AppDataStore.readJSON([String: Entry].self, from: fileURL) ?? [:]
-    }
-
-    private func save() {
-        AppDataStore.writeJSON(entries, to: fileURL)
+    private static func hash(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 
