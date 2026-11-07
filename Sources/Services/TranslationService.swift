@@ -12,7 +12,7 @@ enum TranslationService {
     static let targetKey = "itchPocket.translation.target"
 
     static var provider: String {
-        UserDefaults.standard.string(forKey: providerKey) ?? "google"
+        AppDataStore.string(forKey: providerKey) ?? "google"
     }
 
     static var isConfigured: Bool {
@@ -29,7 +29,7 @@ enum TranslationService {
         scope: String,
         forceRefresh: Bool = false
     ) async throws -> CachedTranslationResult {
-        let target = UserDefaults.standard.string(forKey: targetKey) ?? "zh-CN"
+        let target = AppDataStore.string(forKey: targetKey) ?? "zh-CN"
         let key = TranslationCacheKey.make(scope: scope, source: text, target: target)
         if !forceRefresh, let cached = await TranslationCache.shared.translation(for: key) {
             return CachedTranslationResult(text: cached.translation, wasCached: true)
@@ -59,7 +59,7 @@ enum TranslationService {
     }
 
     private static func translateWithGoogle(_ text: String) async throws -> String {
-        let target = UserDefaults.standard.string(forKey: targetKey) ?? "zh-CN"
+        let target = AppDataStore.string(forKey: targetKey) ?? "zh-CN"
         var components = URLComponents(string: "https://translate.googleapis.com/translate_a/single")!
         components.queryItems = [
             URLQueryItem(name: "client", value: "gtx"),
@@ -87,12 +87,12 @@ enum TranslationService {
         guard let key = KeychainStore.read("translation.apiKey"), !key.isEmpty else {
             throw TranslationError.missingAPIKey
         }
-        let configuredBase = UserDefaults.standard.string(forKey: baseURLKey) ?? "https://api.deepseek.com"
+        let configuredBase = AppDataStore.string(forKey: baseURLKey) ?? "https://api.deepseek.com"
         let base = configuredBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let endpoint = base.hasSuffix("/chat/completions") ? base : base + "/chat/completions"
         guard let url = URL(string: endpoint) else { throw TranslationError.invalidURL }
-        let model = UserDefaults.standard.string(forKey: modelKey) ?? "deepseek-flash"
-        let target = UserDefaults.standard.string(forKey: targetKey) ?? "zh-CN"
+        let model = AppDataStore.string(forKey: modelKey) ?? "deepseek-flash"
+        let target = AppDataStore.string(forKey: targetKey) ?? "zh-CN"
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 90
