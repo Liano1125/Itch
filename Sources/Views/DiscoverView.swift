@@ -14,9 +14,12 @@ private struct DiscoveryFeed: Identifiable {
     let subtitle: String
     let url: URL
     static let curated: [DiscoveryFeed] = [
-        DiscoveryFeed(id: "popular", title: "热门新作", subtitle: "正在被玩家发现的独立游戏", url: URL(string: "https://itch.io/games/new-and-popular")!),
-        DiscoveryFeed(id: "free", title: "免费佳作", subtitle: "无需付费，也值得收藏", url: URL(string: "https://itch.io/games/price-free")!),
-        DiscoveryFeed(id: "featured", title: "编辑精选", subtitle: "从 itch.io 精选作品中寻找灵感", url: URL(string: "https://itch.io/games/featured")!)
+        DiscoveryFeed(id: "core", title: "成人视觉小说", subtitle: "Visual Novel · Adult themes", url: URL(string: "https://itch.io/games/new-and-popular/genre-visual-novel/tag-adult-themes")!),
+        DiscoveryFeed(id: "renpy", title: "Ren'Py 视觉小说", subtitle: "成人题材 · Ren'Py 引擎", url: URL(string: "https://itch.io/games/genre-visual-novel/tag-renpy/tag-adult-themes")!),
+        DiscoveryFeed(id: "3d", title: "3D 成人作品", subtitle: "成人题材 · 3D 视觉体验", url: URL(string: "https://itch.io/games/genre-visual-novel/tag-3d/tag-adult-themes")!),
+        DiscoveryFeed(id: "free", title: "免费成人视觉小说", subtitle: "只筛选符合定位的免费作品", url: URL(string: "https://itch.io/games/free/genre-visual-novel/tag-adult-themes")!),
+        DiscoveryFeed(id: "adjacent-renpy", title: "其他成人 Ren'Py 游戏", subtitle: "未标记 Visual Novel，但符合成人与 Ren'Py 标签", url: URL(string: "https://itch.io/games/tag-renpy/tag-adult-themes")!),
+        DiscoveryFeed(id: "adjacent-3d", title: "其他 3D 成人游戏", subtitle: "未标记 Visual Novel，但符合成人与 3D 标签", url: URL(string: "https://itch.io/games/tag-3d/tag-adult-themes")!)
     ]
 }
 
@@ -52,7 +55,6 @@ struct DiscoverView: View {
                     searchBar
                     curatedFeedSection
                     personalizedSection
-                    featuredSection
                     browseSection
                 }
                 .padding(.horizontal, 20)
@@ -115,7 +117,7 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("发现好玩的\n独立游戏")
+            Text("发现值得玩的\n成人视觉小说")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
@@ -175,8 +177,8 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("为你精选好游戏").font(.title3.bold())
-                    Text("来自 itch.io 的实时作品列表").font(.caption).foregroundStyle(.secondary)
+                    Text("成人视觉小说发现").font(.title3.bold())
+                    Text("围绕 Adult、Visual Novel、Ren'Py 与 3D 筛选").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if isLoadingCurated {
@@ -193,7 +195,7 @@ struct DiscoverView: View {
             }
             ForEach(DiscoveryFeed.curated) { feed in curatedFeedRow(feed) }
             if let curatedError, curatedGames.isEmpty, !isLoadingCurated {
-                Text("暂时无法加载精选内容：\\(curatedError)").font(.caption).foregroundStyle(.secondary)
+                Text("暂时无法加载作品：\\(curatedError)").font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -386,7 +388,7 @@ struct DiscoverView: View {
         if let tag = libraryDiscoveryTags.first, let url = URL(string: tag.url) {
             return url
         }
-        return URL(string: "https://itch.io/games/featured")!
+        return URL(string: "https://itch.io/games/genre-visual-novel/tag-adult-themes")!
     }
 
     private var recommendationSection: some View {
@@ -686,63 +688,37 @@ struct DiscoverView: View {
     }
 
     private var browseSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("探索游戏")
+        VStack(alignment: .leading, spacing: 16) {
+            Text("按偏好继续探索")
                 .font(.title3.bold())
 
             explorationGroup(
-                title: "热门榜单",
+                title: "成人视觉小说",
                 items: [
-                    ("热门游戏", "flame.fill", "https://itch.io/games"),
-                    ("评分最高", "star.fill", "https://itch.io/games/top-rated"),
-                    ("最新上架", "clock.fill", "https://itch.io/games/newest"),
-                    ("免费游戏", "gift.fill", "https://itch.io/games/price-free")
+                    ("最新热门", "flame.fill", "https://itch.io/games/new-and-popular/genre-visual-novel/tag-adult-themes"),
+                    ("最新发布", "clock.fill", "https://itch.io/games/most-recent/genre-visual-novel/tag-adult-themes"),
+                    ("评分较高", "star.fill", "https://itch.io/games/top-rated/genre-visual-novel/tag-adult-themes"),
+                    ("免费作品", "gift.fill", "https://itch.io/games/free/genre-visual-novel/tag-adult-themes")
                 ]
             )
 
             explorationGroup(
-                title: "游戏类型",
+                title: "引擎与画面",
                 items: [
-                    ("冒险", "map.fill", "https://itch.io/games/genre-adventure"),
-                    ("角色扮演", "person.fill", "https://itch.io/games/genre-rpg"),
-                    ("解谜", "puzzlepiece.fill", "https://itch.io/games/genre-puzzle"),
-                    ("动作", "bolt.fill", "https://itch.io/games/genre-action"),
-                    ("模拟", "slider.horizontal.3", "https://itch.io/games/genre-simulation"),
-                    ("恐怖", "moon.fill", "https://itch.io/games/genre-horror"),
-                    ("策略", "棋盘图标占位", "https://itch.io/games/genre-strategy"),
-                    ("平台跳跃", "figure.run", "https://itch.io/games/genre-platformer")
+                    ("Ren'Py", "book.fill", "https://itch.io/games/genre-visual-novel/tag-renpy/tag-adult-themes"),
+                    ("3D 作品", "cube.fill", "https://itch.io/games/genre-visual-novel/tag-3d/tag-adult-themes"),
+                    ("成人 Ren'Py 扩展", "terminal.fill", "https://itch.io/games/tag-renpy/tag-adult-themes"),
+                    ("成人 3D 扩展", "view.3d", "https://itch.io/games/tag-3d/tag-adult-themes")
                 ]
             )
 
-            explorationGroup(
-                title: "游戏平台",
-                items: [
-                    ("Windows", "desktopcomputer", "https://itch.io/games/platform-windows"),
-                    ("macOS", "laptopcomputer", "https://itch.io/games/platform-osx"),
-                    ("Linux", "terminal.fill", "https://itch.io/games/platform-linux"),
-                    ("浏览器", "globe", "https://itch.io/games/platform-web")
-                ]
+            browseRow(
+                title: "itch.io 成人视觉小说目录",
+                subtitle: "在站内查看完整筛选结果",
+                symbol: "square.grid.2x2.fill",
+                tint: .pink,
+                url: "https://itch.io/games/genre-visual-novel/tag-adult-themes"
             )
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("更多发现")
-                    .font(.headline)
-                browseRow(
-                    title: "全部游戏",
-                    subtitle: "探索 itch.io 的完整游戏目录",
-                    symbol: "square.grid.2x2.fill",
-                    tint: .blue,
-                    url: "https://itch.io/games",
-                    requiresWebLogin: true
-                )
-                browseRow(
-                    title: "Game Jam",
-                    subtitle: "看看独立开发者正在参与的创作活动",
-                    symbol: "timer",
-                    tint: .orange,
-                    url: "https://itch.io/jams"
-                )
-            }
         }
     }
 
