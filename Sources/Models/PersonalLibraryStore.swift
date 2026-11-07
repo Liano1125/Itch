@@ -44,6 +44,8 @@ struct LibraryRecord: Codable, Identifiable {
     var gameUpdates: [GameLibraryUpdate]? = nil
     var discoveryTags: [LibraryDiscoveryTag]? = nil
     var engine: String? = nil
+    var patreonURL: String? = nil
+    var discordURL: String? = nil
 }
 
 struct GameLibraryUpdate: Codable, Identifiable {
