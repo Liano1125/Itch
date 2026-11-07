@@ -19,6 +19,9 @@ struct DiscoverView: View {
     @State private var searchText = ""
     @State private var submittedQuery = ""
     @State private var showSearchResults = false
+    @State private var recommendedGames: [PublicCollectionGame] = []
+    @State private var isLoadingRecommendations = false
+    @State private var recommendationError: String?
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -41,6 +44,25 @@ struct DiscoverView: View {
             .background(Color(uiColor: .systemBackground))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .topLeading) {
+                DiscoveryFeedReader(
+                    url: recommendationURL,
+                    onLoad: { games in
+                        recommendedGames = games.filter { !library.contains($0.id) }
+                        isLoadingRecommendations = false
+                        recommendationError = nil
+                    },
+                    onError: { message in
+                        isLoadingRecommendations = false
+                        recommendationError = message
+                    },
+                    onStart: { isLoadingRecommendations = true }
+                )
+                .frame(width: 1, height: 1)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             .navigationDestination(isPresented: $showSearchResults) {
                 ItchSearchResultsView(query: submittedQuery)
             }
@@ -236,6 +258,121 @@ struct DiscoverView: View {
         }
         .prefix(10)
         .map { $0 }
+    }
+
+    private var recommendationURL: URL {
+        if let tag = libraryDiscoveryTags.first, let url = URL(string: tag.url) {
+            return url
+        }
+        return URL(string: "https://itch.io/games/featured")!
+    }
+
+    private var recommendationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(libraryDiscoveryTags.isEmpty ? "编辑精选作品" : "根据你的兴趣推荐")
+                        .font(.title3.bold())
+                    Text(libraryDiscoveryTags.isEmpty
+                         ? "从 itch.io 精选作品中发现新的独立游戏"
+                         : "根据「\(libraryDiscoveryTags[0].name)」等游戏标签寻找新作品")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if isLoadingRecommendations {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button {
+                        recommendedGames = []
+                        isLoadingRecommendations = true
+                        // Reloading is triggered by changing the reader URL token.
+                        recommendationReloadToken = UUID()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .accessibilityLabel("刷新推荐")
+                }
+            }
+
+            if !recommendedGames.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 13) {
+                        ForEach(recommendedGames.prefix(12)) { game in
+                            NavigationLink {
+                                GameDetailView(game: game)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    AsyncImage(url: game.coverURL) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().scaledToFill()
+                                        } else {
+                                            RoundedRectangle(cornerRadius: 13)
+                                                .fill(Color(uiColor: .tertiarySystemFill))
+                                                .overlay {
+                                                    Image(systemName: "gamecontroller.fill")
+                                                        .foregroundStyle(.tertiary)
+                                                }
+                                        }
+                                    }
+                                    .frame(width: 190, height: 112)
+                                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                    Text(game.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(width: 190, alignment: .leading)
+                                    if let developer = game.developer, !developer.isEmpty {
+                                        Text(developer)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .frame(width: 190, alignment: .leading)
+                                    }
+                                    if let description = game.description, !description.isEmpty {
+                                        Text(description)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                            .frame(width: 190, alignment: .leading)
+                                    }
+                                }
+                                .frame(width: 190, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            } else if isLoadingRecommendations {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("正在为你寻找值得玩的作品…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(recommendationError ?? "暂时没有获取到推荐作品。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("重新加载") {
+                        recommendationReloadToken = UUID()
+                        isLoadingRecommendations = true
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+            }
+        }
     }
 
     private var personalizedSection: some View {
@@ -757,5 +894,103 @@ private struct DeveloperPatreonAvatar: View {
                 library.update(updated)
             }
         }
+    }
+}
+
+
+private struct DiscoveryFeedReader: UIViewRepresentable {
+    let url: URL
+    let reloadToken: UUID
+    let onLoad: ([PublicCollectionGame]) -> Void
+    let onError: (String) -> Void
+    let onStart: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView(frame: .zero)
+        webView.navigationDelegate = context.coordinator
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        context.coordinator.url = url
+        context.coordinator.reloadToken = reloadToken
+        onStart()
+        webView.load(URLRequest(url: url, timeoutInterval: 30))
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.parent = self
+        guard context.coordinator.url != url || context.coordinator.reloadToken != reloadToken else { return }
+        context.coordinator.url = url
+        context.coordinator.reloadToken = reloadToken
+        onStart()
+        webView.load(URLRequest(url: url, timeoutInterval: 30))
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: DiscoveryFeedReader
+        var url: URL
+        var reloadToken: UUID
+
+        init(parent: DiscoveryFeedReader) {
+            self.parent = parent
+            self.url = parent.url
+            self.reloadToken = parent.reloadToken
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.evaluateJavaScript(Self.script) { result, error in
+                if let error {
+                    DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
+                    return
+                }
+                guard let json = result as? String, let data = json.data(using: .utf8) else {
+                    DispatchQueue.main.async { self.parent.onError("没有读取到可展示的游戏数据。") }
+                    return
+                }
+                do {
+                    let games = try JSONDecoder().decode([PublicCollectionGame].self, from: data)
+                    DispatchQueue.main.async { self.parent.onLoad(games) }
+                } catch {
+                    DispatchQueue.main.async { self.parent.onError("推荐数据解析失败：\\(error.localizedDescription)") }
+                }
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            DispatchQueue.main.async { self.parent.onError(error.localizedDescription) }
+        }
+
+        private static let script = """
+        (() => {
+          const clean = el => (el?.innerText || el?.textContent || "").replace(/\\s+/g, " ").trim();
+          const abs = value => { try { return value ? new URL(value, location.href).href : null; } catch (_) { return null; } };
+          const seen = new Set();
+          return JSON.stringify(Array.from(document.querySelectorAll(".game_cell")).map(cell => {
+            const link = cell.querySelector("a.game_link, .game_title a, a.title, a[href*='itch.io']");
+            const href = link ? abs(link.getAttribute("href")) : null;
+            const title = clean(cell.querySelector(".game_title, .title")) || clean(link);
+            if (!title) return null;
+            const id = cell.getAttribute("data-game_id") || href || title;
+            if (seen.has(id)) return null;
+            seen.add(id);
+            const img = cell.querySelector(".game_thumb img, img");
+            return {
+              id: String(id), title, url: href,
+              coverURL: abs(img?.getAttribute("data-lazy_src") || img?.getAttribute("data-lazy-src") || img?.getAttribute("data-src") || img?.currentSrc || img?.getAttribute("src")),
+              description: clean(cell.querySelector(".game_text, .game_description, .game_blurb")) || null,
+              developer: clean(cell.querySelector(".game_author a, .game_author, .author")) || null,
+              developerProfileURL: abs(cell.querySelector(".game_author a[href], .author a[href]")?.getAttribute("href")),
+              platforms: Array.from(cell.querySelectorAll(".game_platform, .game_platforms, .web_flag")).map(clean).filter(Boolean)
+            };
+          }).filter(Boolean));
+        })();
+        """
     }
 }
