@@ -202,7 +202,7 @@ struct LibraryView: View {
                         Button {
                             library.add(game)
                         } label: {
-                            Label(library.contains(game.id) ? "已加入游戏库" : "加入想玩", systemImage: library.contains(game.id) ? "checkmark" : "plus")
+                            Label(library.contains(game.id) ? "在玩" : "加入在玩", systemImage: library.contains(game.id) ? "gamecontroller" : "plus")
                                 .font(.caption.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                         }
@@ -531,7 +531,7 @@ private struct LibraryGameActions: View {
                 Button {
                     library.add(game)
                 } label: {
-                    Label("加入想玩", systemImage: "plus")
+                    Label("加入在玩", systemImage: "plus")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
