@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import SwiftData
 
 /// Translation records live in the canonical database; this type is a small
 /// repository facade, not a second JSON cache file.
