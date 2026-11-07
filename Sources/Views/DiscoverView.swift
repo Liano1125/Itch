@@ -249,8 +249,20 @@ struct DiscoverView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            } else if let curatedError {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(curatedError)
+                        .font(.caption).foregroundStyle(.secondary)
+                    NavigationLink {
+                        ItchSearchResultsView(query: feed.title, customURL: feed.url.absoluteString)
+                    } label: {
+                        Label("前往 itch.io 确认年龄并浏览", systemImage: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                    }
+                }
+                .padding(.vertical, 8)
             } else {
-                Text(curatedError == nil ? "暂时没有可展示的作品" : "此分区暂时无法加载")
+                Text("暂时没有可展示的作品")
                     .font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
             }
         }
@@ -831,6 +843,7 @@ private struct DiscoveryFeedReader: UIViewRepresentable {
 
         private static let script = """
         (() => {
+          if (/You must be 18\\+ to view this content/i.test(document.body?.innerText || "")) return "AGE_GATE";
           const clean = el => (el?.innerText || el?.textContent || "").replace(/\\s+/g, " ").trim();
           const abs = value => { try { return value ? new URL(value, location.href).href : null; } catch (_) { return null; } };
           const seen = new Set();
@@ -935,8 +948,20 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
                     self.advanceFeed(in: webView)
                     return
                 }
-                guard let json = result as? String, let data = json.data(using: .utf8) else {
+                guard let json = result as? String else {
                     DispatchQueue.main.async { self.parent.onError("没有读取到作品列表。") }
+                    self.advanceFeed(in: webView)
+                    return
+                }
+                if json == "AGE_GATE" {
+                    DispatchQueue.main.async {
+                        self.parent.onError("itch.io 要求先确认 18+ 才能读取成人作品。请进入下方页面完成确认，再点右上角刷新。")
+                    }
+                    self.advanceFeed(in: webView)
+                    return
+                }
+                guard let data = json.data(using: .utf8) else {
+                    DispatchQueue.main.async { self.parent.onError("推荐数据格式无效。") }
                     self.advanceFeed(in: webView)
                     return
                 }
