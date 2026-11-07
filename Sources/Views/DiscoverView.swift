@@ -519,7 +519,8 @@ private struct DeveloperPatreonAvatar: View {
 
     var body: some View {
         CachedRemoteImage(
-            url: avatarURL ?? cachedPatreonURL ?? fallbackURL,
+            url: avatarURL ?? cachedPatreonURL,
+            fallbackURL: fallbackURL,
             contentMode: .fill
         ) {
             Image(systemName: "person.fill")
