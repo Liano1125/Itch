@@ -41,12 +41,9 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     init() {
         load()
-        lastHistoricalSyncAt = UserDefaults.standard.object(forKey: historicalSyncDateKey) as? Date
-        lastHistoricalSyncMessage = UserDefaults.standard.string(forKey: historicalSyncMessageKey)
-        if let data = UserDefaults.standard.data(forKey: historicalSyncResultsKey),
-           let results = try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data) {
-            lastHistoricalSyncResults = results
-        }
+        lastHistoricalSyncAt = AppDataStore.date(forKey: historicalSyncDateKey)
+        lastHistoricalSyncMessage = AppDataStore.string(forKey: historicalSyncMessageKey)
+        lastHistoricalSyncResults = AppDataStore.decode([DevlogSyncGameResult].self, forKey: historicalSyncResultsKey) ?? []
     }
 
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
@@ -237,11 +234,9 @@ final class GameUpdateMonitorStore: ObservableObject {
         lastHistoricalSyncAt = Date()
         lastHistoricalSyncMessage = message
         lastHistoricalSyncResults = results
-        UserDefaults.standard.set(lastHistoricalSyncAt, forKey: historicalSyncDateKey)
-        UserDefaults.standard.set(message, forKey: historicalSyncMessageKey)
-        if let data = try? JSONEncoder().encode(results) {
-            UserDefaults.standard.set(data, forKey: historicalSyncResultsKey)
-        }
+        AppDataStore.set(lastHistoricalSyncAt, forKey: historicalSyncDateKey)
+        AppDataStore.set(message, forKey: historicalSyncMessageKey)
+        AppDataStore.encode(results, forKey: historicalSyncResultsKey)
         return message
     }
 
@@ -270,14 +265,12 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let values = try? JSONDecoder().decode([GameUpdateWatch].self, from: data) else { return }
+        let values = AppDataStore.decode([GameUpdateWatch].self, forKey: storageKey) ?? []
         watches = Dictionary(uniqueKeysWithValues: values.map { ($0.gameID, $0) })
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(Array(watches.values)) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        AppDataStore.encode(Array(watches.values), forKey: storageKey)
     }
 }
 
