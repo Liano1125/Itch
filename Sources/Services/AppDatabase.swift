@@ -137,6 +137,18 @@ final class AppDatabase {
         try save()
     }
 
+    func galleryURLs(for gameID: String) throws -> [String] {
+        try game(id: gameID)?.galleryURLs ?? []
+    }
+
+    func setGalleryURLs(_ urls: [String], for gameID: String) throws {
+        guard let item = try game(id: gameID) else { return }
+        guard item.galleryURLs != urls else { return }
+        item.galleryURLs = urls
+        item.updatedAt = .now
+        try save()
+    }
+
     func removeAllAppData() throws {
         try context.delete(model: DBAppState.self)
         try context.delete(model: DBLibraryStatusEvent.self)
