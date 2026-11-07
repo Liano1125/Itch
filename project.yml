@@ -1,6 +1,11 @@
 
 name: itchPocket
 
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
+
 options:
   bundleIdPrefix: com.liano
   deploymentTarget:
@@ -14,6 +19,10 @@ targets:
 
     sources:
       - path: Sources
+
+    dependencies:
+      - package: ZIPFoundation
+        product: ZIPFoundation
 
     info:
       path: Info.plist
