@@ -263,25 +263,26 @@ final class PersonalLibraryStore: ObservableObject {
         for index in records.indices {
             guard let metadata = metadataByGameID[records[index].id] else { continue }
             var updated = records[index]
+            var recordChanged = false
             let runtime = max(updated.sparkPlaytimeSeconds ?? 0, metadata.runtimeSeconds)
             if updated.sparkPlaytimeSeconds != runtime {
                 updated.sparkPlaytimeSeconds = runtime
-                didChange = true
+                recordChanged = true
             }
             if let lastSaveAt = metadata.lastSaveAt,
                updated.sparkLastSaveAt == nil || lastSaveAt > updated.sparkLastSaveAt! {
                 updated.sparkLastSaveAt = lastSaveAt
-                didChange = true
+                recordChanged = true
             }
             if let version = metadata.renpyVersion, updated.sparkRenpyVersion != version {
                 updated.sparkRenpyVersion = version
-                didChange = true
+                recordChanged = true
             }
             if let saveCount = metadata.saveCount, updated.sparkSaveCount != saveCount {
                 updated.sparkSaveCount = saveCount
-                didChange = true
+                recordChanged = true
             }
-            if didChange { records[index] = updated }
+            if recordChanged {\n                records[index] = updated\n                didChange = true\n            }
         }
 
         guard didChange else { return }
