@@ -1175,55 +1175,57 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let script: String = GamePageScript.source
-        webView.evaluateJavaScript(script, completionHandler: { (result: Any?, error: Error?) in
-            Task { @MainActor in
-                guard let record = self.currentRecord else {
-                    self.finish()
-                    return
-                }
-                guard error == nil,
-                      let json = result as? String,
-                      let data = json.data(using: .utf8),
-                      let payload = try? JSONDecoder().decode(GamePagePayload.self, from: data),
-                      payload.scriptError == nil else {
-                    self.finish()
-                    return
-                }
-
-                let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
-                let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
-                do {
-                    try self.database.upsertGameDetail(
-                        id: record.id,
-                        title: record.title,
-                        gameURL: record.gameURL,
-                        coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
-                        description: payload.description,
-                        galleryURLs: payload.galleryURLs ?? [],
-                        discoveryTags: payload.discoveryTags ?? [],
-                        engine: payload.engine,
-                        developerID: developerID,
-                        developerName: payload.developer ?? record.developer,
-                        developerProfileURL: authorURL?.absoluteString,
-                        patreonURL: payload.patreonURL?.absoluteString,
-                        discordURL: payload.discordURL?.absoluteString
-                    )
-                } catch {
-                    print("itchPocket detail prefetch persistence failed: \(error)")
-                }
-                try? self.database.setState(Date(), for: "detailPrefetch.lastSuccess.\(record.id)")
-                if let authorURL {
-                    Task {
-                        _ = await PatreonAvatarService.shared.avatarURL(
-                            authorURL: authorURL,
-                            gameURL: URL(string: record.gameURL ?? "")
-                        )
-                    }
-                }
-                self.finish()
+        Task { @MainActor in
+            do {
+                let result = try await webView.evaluateJavaScript(GamePageScript.source)
+                persist(result)
+            } catch {
+                finish()
             }
-        })
+        }
+    }
+
+    private func persist(_ result: Any?) {
+        guard let record = currentRecord,
+              let json = result as? String,
+              let data = json.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(GamePagePayload.self, from: data),
+              payload.scriptError == nil else {
+            finish()
+            return
+        }
+
+        let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
+        let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
+        do {
+            try database.upsertGameDetail(
+                id: record.id,
+                title: record.title,
+                gameURL: record.gameURL,
+                coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
+                description: payload.description,
+                galleryURLs: payload.galleryURLs ?? [],
+                discoveryTags: payload.discoveryTags ?? [],
+                engine: payload.engine,
+                developerID: developerID,
+                developerName: payload.developer ?? record.developer,
+                developerProfileURL: authorURL?.absoluteString,
+                patreonURL: payload.patreonURL?.absoluteString,
+                discordURL: payload.discordURL?.absoluteString
+            )
+        } catch {
+            print("itchPocket detail prefetch persistence failed: \(error)")
+        }
+        try? database.setState(Date(), for: "detailPrefetch.lastSuccess.\(record.id)")
+        if let authorURL {
+            Task {
+                _ = await PatreonAvatarService.shared.avatarURL(
+                    authorURL: authorURL,
+                    gameURL: URL(string: record.gameURL ?? "")
+                )
+            }
+        }
+        finish()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
