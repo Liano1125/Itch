@@ -500,40 +500,59 @@ struct GameDetailView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    @ViewBuilder
     private var sparkPlaySection: some View {
-        if let record = library.record(for: game.id),
-           record.sparkPlaytimeSeconds != nil
-            || record.sparkLastSaveAt != nil
-            || record.sparkRenpyVersion != nil
-            || record.sparkSaveCount != nil {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("Spark 游玩记录", systemImage: "gamecontroller")
-                        .font(.title3.bold())
-                    Spacer()
-                    Text("只读同步")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.green)
-                }
-                HStack(spacing: 9) {
-                    sparkMetric(
-                        title: "累计运行时长",
-                        value: Self.sparkDuration(record.sparkPlaytimeSeconds),
-                        symbol: "clock"
-                    )
-                    sparkMetric(
-                        title: "Ren'Py 版本",
-                        value: record.sparkRenpyVersion ?? "未读取",
-                        symbol: "cpu"
-                    )
-                }
-                sparkInfoRow("最近存档", date: record.sparkLastSaveAt)
-                sparkInfoRow("有效存档档位数量", value: record.sparkSaveCount.map { "\($0) 个" } ?? "未读取")
+        let record = library.record(for: game.id)
+        let hasSparkData = record?.sparkPlaytimeSeconds != nil
+            || record?.sparkLastSaveAt != nil
+            || record?.sparkRenpyVersion != nil
+            || record?.sparkSaveCount != nil
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Spark 游玩记录", systemImage: "gamecontroller")
+                    .font(.title3.bold())
+                Spacer()
+                Text(hasSparkData ? "已同步" : "等待同步")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(hasSparkData ? .green : .secondary)
             }
-            .padding(15)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+
+            HStack(spacing: 9) {
+                sparkMetric(
+                    title: "累计运行时长",
+                    value: Self.sparkDuration(record?.sparkPlaytimeSeconds),
+                    symbol: "clock"
+                )
+                sparkMetric(
+                    title: "Ren'Py 版本",
+                    value: record?.sparkRenpyVersion ?? "暂无记录",
+                    symbol: "cpu"
+                )
+            }
+            sparkInfoRow("最近存档", date: record?.sparkLastSaveAt)
+            sparkInfoRow(
+                "有效存档档位数量",
+                value: record?.sparkSaveCount.map { "\($0) 个" } ?? "暂无记录"
+            )
+
+            if !hasSparkData {
+                Text(record == nil
+                    ? "请先将游戏加入游戏库，再同步 Spark 存档。"
+                    : "暂未匹配到该游戏的 Spark 存档。请确认 Allsaves 中的游戏文件夹名称，并确保存档已复制完成。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await SparkSyncStore.shared.rescan(library: library) }
+                } label: {
+                    Label("立即重新扫描", systemImage: "arrow.clockwise")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+            }
         }
+        .padding(15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 
     private func sparkMetric(title: String, value: String, symbol: String) -> some View {
