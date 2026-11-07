@@ -447,17 +447,13 @@ struct DiscoverView: View {
                                 GameDetailView(game: game)
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    AsyncImage(url: game.coverURL) { phase in
-                                        if let image = phase.image {
-                                            image.resizable().scaledToFill()
-                                        } else {
-                                            RoundedRectangle(cornerRadius: 13)
-                                                .fill(Color(uiColor: .tertiarySystemFill))
-                                                .overlay {
-                                                    Image(systemName: "gamecontroller.fill")
-                                                        .foregroundStyle(.tertiary)
-                                                }
-                                        }
+                                    CachedRemoteImage(url: game.coverURL, contentMode: .fill) {
+                                        RoundedRectangle(cornerRadius: 13)
+                                            .fill(Color(uiColor: .tertiarySystemFill))
+                                            .overlay {
+                                                Image(systemName: "gamecontroller.fill")
+                                                    .foregroundStyle(.tertiary)
+                                            }
                                     }
                                     .frame(width: 190, height: 112)
                                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))

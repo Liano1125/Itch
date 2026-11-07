@@ -186,9 +186,7 @@ struct ProfileView: View {
 
             if let user = auth.user {
                 HStack(spacing: 14) {
-                    AsyncImage(url: user.coverUrl) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
+                    CachedRemoteImage(url: user.coverUrl, contentMode: .fill) {
                         Image(systemName: "person.crop.circle.fill")
                             .resizable()
                             .foregroundStyle(.secondary)

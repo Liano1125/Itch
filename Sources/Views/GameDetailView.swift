@@ -158,32 +158,18 @@ struct GameDetailView: View {
         GeometryReader { geometry in
             ZStack {
                 if let url = displayCover {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
-                                .clipped()
-
-                        case .failure:
-                            coverPlaceholder
-
-                        case .empty:
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(.quaternary)
-                                ProgressView()
-                            }
-
-                        @unknown default:
-                            coverPlaceholder
+                    CachedRemoteImage(url: url, contentMode: .fill) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(.quaternary)
+                            ProgressView()
                         }
                     }
+                    .frame(
+                        width: geometry.size.width,
+                        height: geometry.size.height
+                    )
+                    .clipped()
                 } else {
                     coverPlaceholder
                 }

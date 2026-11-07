@@ -9,6 +9,7 @@ final class PersistentImageCache {
 
     private let memory = NSCache<NSURL, UIImage>()
     private let directory: URL
+    private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
     private init() {
         directory = (try? AppDataStore.cachesDirectory(named: "itchPocket-images"))
@@ -19,6 +20,19 @@ final class PersistentImageCache {
 
     func image(for url: URL?) async -> UIImage? {
         guard let url, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        let requestKey = url.absoluteString
+        if let existing = inFlight[requestKey] {
+            return await existing.value
+        }
+
+        let task = Task { await self.loadImage(for: url) }
+        inFlight[requestKey] = task
+        let result = await task.value
+        inFlight.removeValue(forKey: requestKey)
+        return result
+    }
+
+    private func loadImage(for url: URL) async -> UIImage? {
         let key = url as NSURL
         if let cached = memory.object(forKey: key) { return cached }
 
