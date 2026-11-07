@@ -37,7 +37,8 @@ enum AppCacheManager {
         }
         for state in try context.fetch(FetchDescriptor<DBAppState>()) where state.key.hasPrefix("avatarFailure.") {
             context.delete(state)
-        }\n        for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
+        }
+        for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
             developer.avatarURL = nil
             developer.avatarSource = nil
             developer.avatarResolvedAt = nil
