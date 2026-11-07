@@ -385,9 +385,6 @@ struct DiscoverView: View {
     }
 
     private var recommendationURL: URL {
-        if let tag = libraryDiscoveryTags.first, let url = URL(string: tag.url) {
-            return url
-        }
         return URL(string: "https://itch.io/games/genre-visual-novel/tag-adult-themes")!
     }
 
