@@ -265,7 +265,7 @@ private enum SparkArchiveScanner {
     }
 
     private static func readSaveMetadata(at url: URL) -> SparkSaveMetadata? {
-        guard let archive = Archive(url: url, accessMode: .read) else { return nil }
+        guard let archive = try? Archive(url: url, accessMode: .read) else { return nil }
         var jsonData = Data()
         var versionData = Data()
 
@@ -308,7 +308,7 @@ private enum SparkArchiveScanner {
         gameName: String,
         into aggregates: inout [String: SparkAggregate]
     ) {
-        guard let archive = Archive(url: backupURL, accessMode: .read) else { return }
+        guard let archive = try? Archive(url: backupURL, accessMode: .read) else { return }
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-Spark-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(
