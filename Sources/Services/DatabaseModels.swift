@@ -239,3 +239,20 @@ final class DBLibraryStatusEvent {
         self.changedAt = changedAt
     }
 }
+
+@Model
+final class DBAppState {
+    @Attribute(.unique) var key: String
+    var stringValue: String?
+    var dateValue: Date?
+    var dataValue: Data?
+    var updatedAt: Date
+
+    init(key: String, stringValue: String? = nil, dateValue: Date? = nil, dataValue: Data? = nil, updatedAt: Date = .now) {
+        self.key = key
+        self.stringValue = stringValue
+        self.dateValue = dateValue
+        self.dataValue = dataValue
+        self.updatedAt = updatedAt
+    }
+}
