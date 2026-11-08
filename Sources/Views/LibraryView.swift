@@ -291,14 +291,14 @@ private struct PersonalGameCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 3) {
             NavigationLink {
                 GameDetailView(game: detailGame)
                     .safeAreaInset(edge: .bottom) {
                         LibraryGameActions(game: detailGame)
                     }
             } label: {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     GameCover(url: URL(string: record.coverURL ?? ""))
                     Text(record.title)
                         .font(.subheadline.weight(.semibold))
