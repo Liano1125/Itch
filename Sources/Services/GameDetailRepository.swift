@@ -21,9 +21,12 @@ final class GameDetailRepository {
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
         guard let game = try database.game(id: gameID) else { return nil }
-        let tags = game.discoveryTagsData.flatMap {
-            try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
-        } ?? []
+        return try detail(for: game)
+    }
+
+    func detail(for game: DBGame) throws -> GameDetailRecord {
+        let gameID = game.id
+        let tags = discoveryTags(for: game) ?? []
         let statusValue = try database.state(for: fetchStatusPrefix + gameID)?.stringValue
         let currentFetchDate = try database.state(for: fetchDatePrefix + gameID)?.dateValue
         let legacyFetchDate = try database.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
@@ -36,6 +39,12 @@ final class GameDetailRepository {
             fetchedAt: fetchDate,
             fetchStatus: GameDetailFetchStatus(rawValue: statusValue ?? "") ?? .unknown
         )
+    }
+
+    /// Reads the legacy tag column without another database fetch; nil means no stored value.
+    func discoveryTags(for game: DBGame) -> [LibraryDiscoveryTag]? {
+        guard let data = game.discoveryTagsData else { return nil }
+        return try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: data)
     }
 
     /// Applies only fields explicitly present in a partial response.
