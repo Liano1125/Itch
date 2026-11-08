@@ -5,31 +5,46 @@ import Foundation
 // MARK: - Models
 
 private struct GamePagePayload: Decodable {
+    /// Confirms page identity only; it does not imply every detail section was parsed.
     let isCompleteSnapshot: Bool?
     let description: String?
+    let descriptionResolved: Bool?
     let developer: String?
     let coverURL: URL?
     let galleryURLs: [URL]?
+    let galleryResolved: Bool?
     let authorURL: URL?
     let authorAvatarURL: URL?
     let patreonURL: URL?
     let discordURL: URL?
     let discoveryTags: [LibraryDiscoveryTag]?
+    let tagsResolved: Bool?
     let engine: String?
     let scriptError: String?
 }
 
 private struct GameDetailPayload {
     let description: String?
+    let descriptionResolved: Bool
     let developer: String?
     let coverURL: URL?
     let galleryURLs: [URL]
+    let galleryResolved: Bool
     let authorURL: URL?
     let authorAvatarURL: URL?
     let patreonURL: URL?
     let discordURL: URL?
     let discoveryTags: [LibraryDiscoveryTag]
+    let tagsResolved: Bool
     let engine: String?
+
+    var allDetailSectionsResolved: Bool {
+        GameDetailSnapshotPolicy.shouldMarkComplete(
+            descriptionResolved: descriptionResolved,
+            galleryResolved: galleryResolved,
+            tagsResolved: tagsResolved
+        )
+    }
 }
 
 // MARK: - Game Detail View
@@ -717,92 +732,126 @@ struct GameDetailView: View {
     // MARK: Data Handling
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
-        detail = result
-        hasLoadedCompleteDetailSnapshot = true
         let existingRecord = library.record(for: game.id)
-        let existingGame = try? AppDatabase.shared.game(id: game.id)
+        let database = AppDatabase.shared
+        let existingGame = try? database.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
         let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) } ?? existingGame?.developerID
         let existingDeveloper = developerID.flatMap { id in
-            try? AppDatabase.shared.developer(id: id)
+            try? database.developer(id: id)
         } ?? nil
-        let database = AppDatabase.shared
         let developerName = GameDetailRepository.resolvedDeveloperName(
             incoming: result.developer,
             existing: existingDeveloper?.name,
             library: game.developer ?? existingRecord?.developer
         )
-        try? database.upsertGame(
-            id: game.id,
-            title: game.title,
-            gameURL: game.url?.absoluteString,
-            coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
-            engine: result.engine,
-            developerID: developerID
-        )
-        if let developerID, let developerName {
-            try? database.upsertDeveloper(
-                id: developerID,
-                name: developerName,
-                profileURL: authorURL?.absoluteString,
-                patreonURL: result.patreonURL?.absoluteString,
-                discordURL: result.discordURL?.absoluteString
+
+        do {
+            try database.upsertGame(
+                id: game.id,
+                title: game.title,
+                gameURL: game.url?.absoluteString,
+                coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
+                engine: result.engine,
+                developerID: developerID
             )
+            if let developerID, let developerName {
+                try database.upsertDeveloper(
+                    id: developerID,
+                    name: developerName,
+                    profileURL: authorURL?.absoluteString,
+                    patreonURL: result.patreonURL?.absoluteString,
+                    discordURL: result.discordURL?.absoluteString
+                )
+            }
+
+            try GameDetailRepository.shared.applyPageSnapshot(
+                GameDetailPageSnapshot(
+                    description: result.description,
+                    descriptionResolved: result.descriptionResolved,
+                    galleryURLs: result.galleryURLs.map(\.absoluteString),
+                    galleryResolved: result.galleryResolved,
+                    discoveryTags: result.discoveryTags,
+                    tagsResolved: result.tagsResolved
+                ),
+                for: game.id
+            )
+
+            // Render the values that actually survived persistence. An unresolved
+            // section therefore continues to display its previously cached value.
+            let persisted = try GameDetailRepository.shared.detail(for: game.id)
+            let persistedGallery = (persisted?.galleryURLs ?? []).compactMap { URL(string: $0) }
+            let resolved = GameDetailPayload(
+                description: persisted?.description,
+                descriptionResolved: result.descriptionResolved,
+                developer: developerName ?? existingDeveloper?.name ?? game.developer,
+                coverURL: result.coverURL ?? game.coverURL,
+                galleryURLs: persistedGallery,
+                galleryResolved: result.galleryResolved,
+                authorURL: authorURL,
+                authorAvatarURL: result.authorAvatarURL,
+                patreonURL: result.patreonURL,
+                discordURL: result.discordURL,
+                discoveryTags: persisted?.discoveryTags ?? [],
+                tagsResolved: result.tagsResolved,
+                engine: result.engine
+            )
+            detail = resolved
+            hasLoadedCompleteDetailSnapshot = persisted?.fetchStatus == .complete
+            cachedGalleryURLs = persistedGallery
+            Task {
+                await PersistentImageCache.shared.prefetch(Array(persistedGallery.prefix(6)))
+            }
+
+            if var record = library.record(for: game.id) {
+                var changed = false
+                if let authorURL, record.developerProfileURL != authorURL.absoluteString {
+                    record.developerProfileURL = authorURL.absoluteString
+                    changed = true
+                }
+                if let avatarURL = result.authorAvatarURL,
+                   record.developerAvatarURL != avatarURL.absoluteString {
+                    record.developerAvatarURL = avatarURL.absoluteString
+                    changed = true
+                }
+                if result.tagsResolved && record.discoveryTags != resolved.discoveryTags {
+                    record.discoveryTags = resolved.discoveryTags
+                    changed = true
+                }
+                if let engine = result.engine, record.engine != engine {
+                    record.engine = engine
+                    changed = true
+                }
+                if let patreonURL = result.patreonURL?.absoluteString,
+                   record.patreonURL != patreonURL {
+                    record.patreonURL = patreonURL
+                    changed = true
+                }
+                if let discordURL = result.discordURL?.absoluteString,
+                   record.discordURL != discordURL {
+                    record.discordURL = discordURL
+                    changed = true
+                }
+                if changed { library.update(record) }
+            }
+
+            if cachedOriginalDescription != resolved.description {
+                translatedDescription = nil
+            }
+            cachedOriginalDescription = resolved.description
+            translatedUpdates = [:]
+            translationStatus = nil
+            selectedGalleryIndex = 0
+            isLoading = false
+            errorMessage = result.allDetailSectionsResolved
+                ? nil
+                : "页面已识别，但部分详情区域未能确认读取；未覆盖对应的本地缓存。"
+            Task { await translateContent() }
+        } catch {
+            // A failed save must never be presented as a successful/complete read.
+            isLoading = false
+            errorMessage = "详情保存失败，已保留原有缓存：\(error.localizedDescription)"
         }
-        try? GameDetailRepository.shared.replaceCompleteSnapshot(
-            GameDetailCompleteSnapshot(
-                description: result.description,
-                galleryURLs: result.galleryURLs.map(\.absoluteString),
-                discoveryTags: result.discoveryTags
-            ),
-            for: game.id
-        )
-        cachedGalleryURLs = result.galleryURLs
-        Task {
-            await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
-        }
-        if var record = library.record(for: game.id) {
-            var changed = false
-            if let authorURL = result.authorURL,
-               record.developerProfileURL != authorURL.absoluteString {
-                record.developerProfileURL = authorURL.absoluteString
-                changed = true
-            }
-            if let avatarURL = result.authorAvatarURL,
-               record.developerAvatarURL != avatarURL.absoluteString {
-                record.developerAvatarURL = avatarURL.absoluteString
-                changed = true
-            }
-            if record.discoveryTags != result.discoveryTags {
-                record.discoveryTags = result.discoveryTags
-                changed = true
-            }
-            if let engine = result.engine, record.engine != engine {
-                record.engine = engine
-                changed = true
-            }
-            if let patreonURL = result.patreonURL?.absoluteString,
-               record.patreonURL != patreonURL {
-                record.patreonURL = patreonURL
-                changed = true
-            }
-            if let discordURL = result.discordURL?.absoluteString,
-               record.discordURL != discordURL {
-                record.discordURL = discordURL
-                changed = true
-            }
-            if changed { library.update(record) }
-        }
-        if cachedOriginalDescription != result.description {
-            translatedDescription = nil
-        }
-        cachedOriginalDescription = result.description
-        translatedUpdates = [:]
-        translationStatus = nil
-        selectedGalleryIndex = 0
-        isLoading = false
-        errorMessage = nil
-        Task { await translateContent() }
     }
 
     private func loadCachedDescription() async {
@@ -943,6 +992,7 @@ private enum GamePageScript {
                     && pathParts.length > 0;
 
                 let description = null;
+                let descriptionResolved = false;
                 const descriptionSelectors = [
                     ".formatted_description",
                     ".game_page_content .formatted_description",
@@ -951,7 +1001,9 @@ private enum GamePageScript {
                 ];
 
                 for (const selector of descriptionSelectors) {
-                    const value = clean(document.querySelector(selector));
+                    const element = document.querySelector(selector);
+                    if (element) descriptionResolved = true;
+                    const value = clean(element);
                     if (value.length > 20) {
                         description = value;
                         break;
@@ -959,9 +1011,11 @@ private enum GamePageScript {
                 }
 
                 if (!description) {
-                    description =
-                        document.querySelector('meta[name="description"]')
-                        ?.getAttribute("content") || null;
+                    const descriptionMeta = document.querySelector('meta[name="description"]');
+                    if (descriptionMeta && descriptionMeta.hasAttribute("content")) {
+                        descriptionResolved = true;
+                        description = (descriptionMeta.getAttribute("content") || "").trim() || null;
+                    }
                 }
 
                 let developer = null;
@@ -1011,6 +1065,9 @@ private enum GamePageScript {
                 // itch.io screenshot images are linked to their original-size asset.
                 // Read the anchor href first (usually /original/...), then fall back to lazy-loaded img sources.
                 const galleryCandidates = [];
+                const galleryResolved = Boolean(document.querySelector(
+                    ".screenshot_list, .screenshot_container, .game_page_screenshots, #game_screenshots, .screenshot"
+                ));
                 const screenshotAnchors = Array.from(document.querySelectorAll(
                     '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox]'
                 ));
@@ -1039,6 +1096,9 @@ private enum GamePageScript {
                     .filter((value, index, array) => array.indexOf(value) === index)
                     .slice(0, 30);
 
+                const tagsResolved = Boolean(document.querySelector(
+                    ".game_tags, .game_page_tags, a.game_tag[href], .game_info_panel_widget a[href*=\"/games/tag-\"]"
+                ));
                 const discoveryTags = Array.from(document.querySelectorAll(
                     'a.game_tag[href], .game_tags a[href], .game_info_panel_widget a[href*="/games/tag-"]'
                 )).map(anchor => ({
@@ -1094,14 +1154,17 @@ private enum GamePageScript {
                 return JSON.stringify({
                     isCompleteSnapshot,
                     description,
+                    descriptionResolved,
                     developer,
                     coverURL,
                     galleryURLs,
+                    galleryResolved,
                     authorURL,
                     authorAvatarURL,
                     patreonURL,
                     discordURL,
                     discoveryTags,
+                    tagsResolved,
                     engine,
                     scriptError: null
                 });
@@ -1109,14 +1172,17 @@ private enum GamePageScript {
                 return JSON.stringify({
                     isCompleteSnapshot: false,
                     description: null,
+                    descriptionResolved: false,
                     developer: null,
                     coverURL: null,
                     galleryURLs: [],
+                    galleryResolved: false,
                     authorURL: null,
                     authorAvatarURL: null,
                     patreonURL: null,
                     discordURL: null,
                     discoveryTags: [],
+                    tagsResolved: false,
                     engine: null,
                     scriptError: String(error)
                 });
@@ -1254,11 +1320,14 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                     )
                 }
             }
-            try GameDetailRepository.shared.replaceCompleteSnapshot(
-                GameDetailCompleteSnapshot(
+            try GameDetailRepository.shared.applyPageSnapshot(
+                GameDetailPageSnapshot(
                     description: payload.description,
+                    descriptionResolved: payload.descriptionResolved == true,
                     galleryURLs: (payload.galleryURLs ?? []).map(\.absoluteString),
-                    discoveryTags: payload.discoveryTags ?? []
+                    galleryResolved: payload.galleryResolved == true,
+                    discoveryTags: payload.discoveryTags ?? [],
+                    tagsResolved: payload.tagsResolved == true
                 ),
                 for: record.id
             )
@@ -1408,14 +1477,17 @@ private struct DetailPageReader: UIViewRepresentable {
                     self.parent.onLoad(
                         GameDetailPayload(
                             description: payload.description,
+                            descriptionResolved: payload.descriptionResolved == true,
                             developer: payload.developer,
                             coverURL: payload.coverURL,
                             galleryURLs: payload.galleryURLs ?? [],
+                            galleryResolved: payload.galleryResolved == true,
                             authorURL: payload.authorURL,
                             authorAvatarURL: payload.authorAvatarURL,
                             patreonURL: payload.patreonURL,
                             discordURL: payload.discordURL,
                             discoveryTags: payload.discoveryTags ?? [],
+                            tagsResolved: payload.tagsResolved == true,
                             engine: payload.engine
                         )
                     )
