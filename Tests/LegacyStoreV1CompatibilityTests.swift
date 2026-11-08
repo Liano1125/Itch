@@ -174,7 +174,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testFutureBootstrapMarkerBlocksExplicitLegacyRecovery() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-future-marker-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-future-marker-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -199,8 +199,9 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             finalDirectory: finalDirectory,
             recoverInvalidExistingV2: true
         )) { error in
-            guard case LegacyStoreBootstrap.BootstrapError.unsupportedVersion("3.0.0") = error else {
-                return XCTFail("Expected unsupported-version protection, received: \\(error)")
+            guard let bootstrapError = error as? LegacyStoreBootstrap.BootstrapError,
+                  case .unsupportedVersion("3.0.0") = bootstrapError else {
+                return XCTFail("Expected unsupported-version protection, received: \(error)")
             }
         }
 
@@ -216,7 +217,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testFutureMigrationReceiptBlocksExplicitLegacyRecovery() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-future-receipt-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-future-receipt-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -242,8 +243,9 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             finalDirectory: finalDirectory,
             recoverInvalidExistingV2: true
         )) { error in
-            guard case LegacyStoreBootstrap.BootstrapError.unsupportedVersion("3.0.0") = error else {
-                return XCTFail("Expected unsupported-version protection, received: \\(error)")
+            guard let bootstrapError = error as? LegacyStoreBootstrap.BootstrapError,
+                  case .unsupportedVersion("3.0.0") = bootstrapError else {
+                return XCTFail("Expected unsupported-version protection, received: \(error)")
             }
         }
 
