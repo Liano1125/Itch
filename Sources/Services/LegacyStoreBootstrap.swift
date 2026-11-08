@@ -79,6 +79,7 @@ enum LegacyStoreBootstrap {
         legacyStoreURL: URL,
         finalDirectory: URL,
         beforePromotion: (() throws -> Void)? = nil,
+        afterPendingMarker: (() throws -> Void)? = nil,
         afterPromotion: (() throws -> Void)? = nil,
         recoverInvalidExistingV2: Bool = false
     ) throws -> URL {
@@ -250,6 +251,7 @@ enum LegacyStoreBootstrap {
                 state: .pending,
                 sourceWasLegacy: shouldCopyLegacy
             )
+            try afterPendingMarker?()
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
             try afterPromotion?()
             try writeBootstrapMarker(
