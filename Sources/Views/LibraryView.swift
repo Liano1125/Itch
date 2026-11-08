@@ -257,7 +257,7 @@ struct LibraryView: View {
                         .disabled(library.contains(game.id))
                     }
                     .padding(10)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .appGlassSurface(cornerRadius: 17)
                 }
             }
         }
@@ -364,7 +364,7 @@ private struct PersonalGameCard: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .appGlassSurface(cornerRadius: 16)
     }
 }
 
