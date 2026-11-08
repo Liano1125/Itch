@@ -2,6 +2,34 @@ import XCTest
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
+    func testPartialGameDetailUpdatePreservesFieldsThatWereNotProvided() {
+        XCTAssertEqual(
+            GameDetailPersistencePolicy.resolvedValue(existing: "saved description", incoming: nil, mode: .partial),
+            "saved description"
+        )
+        XCTAssertEqual(
+            GameDetailPersistencePolicy.resolvedValue(existing: ["old.jpg"], incoming: nil, mode: .partial),
+            ["old.jpg"]
+        )
+    }
+
+    func testPartialGameDetailUpdateAllowsExplicitEmptyArraysToClearFields() {
+        XCTAssertEqual(
+            GameDetailPersistencePolicy.resolvedValue(existing: ["old.jpg"], incoming: [], mode: .partial),
+            []
+        )
+    }
+
+    func testCompleteGameDetailSnapshotTreatsNilAndEmptyValuesAsAuthoritative() {
+        XCTAssertNil(
+            GameDetailPersistencePolicy.resolvedValue(existing: "saved description", incoming: nil, mode: .complete)
+        )
+        XCTAssertEqual(
+            GameDetailPersistencePolicy.resolvedValue(existing: ["old.jpg"], incoming: [], mode: .complete),
+            []
+        )
+    }
+
     func testPartialLibrarySnapshotDoesNotDeleteOmittedHistory() {
         let shouldDelete = LibraryUpdatePersistencePolicy.shouldDeleteStoredUpdate(
             storedID: "older-update",
