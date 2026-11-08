@@ -5,6 +5,7 @@ import Foundation
 // MARK: - Models
 
 private struct GamePagePayload: Decodable {
+    let isCompleteSnapshot: Bool?
     let description: String?
     let developer: String?
     let coverURL: URL?
@@ -922,6 +923,10 @@ private enum GamePageScript {
                     }
                 };
 
+                const isCompleteSnapshot = Boolean(document.querySelector(
+                    '.game_page, .game_page_title, .game_page_content, .game_info_panel_widget, .game_author'
+                ));
+
                 let description = null;
                 const descriptionSelectors = [
                     ".formatted_description",
@@ -1072,6 +1077,7 @@ private enum GamePageScript {
                 const discordURL = links.find(value => /(^|\\.)discord\\.(gg|com)$/i.test(new URL(value).hostname) || /discord\\.com\\/invite\\//i.test(value)) || null;
 
                 return JSON.stringify({
+                    isCompleteSnapshot,
                     description,
                     developer,
                     coverURL,
@@ -1086,6 +1092,7 @@ private enum GamePageScript {
                 });
             } catch (error) {
                 return JSON.stringify({
+                    isCompleteSnapshot: false,
                     description: null,
                     developer: null,
                     coverURL: null,
@@ -1199,7 +1206,8 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
               let json = result as? String,
               let data = json.data(using: .utf8),
               let payload = try? JSONDecoder().decode(GamePagePayload.self, from: data),
-              payload.scriptError == nil else {
+              payload.scriptError == nil,
+              payload.isCompleteSnapshot == true else {
             finish()
             return
         }
@@ -1364,6 +1372,11 @@ private struct DetailPageReader: UIViewRepresentable {
 
                 if let scriptError = payload.scriptError {
                     self.fail("游戏主页 JavaScript 错误：\(scriptError)")
+                    return
+                }
+
+                guard payload.isCompleteSnapshot == true else {
+                    self.fail("无法确认当前页面是完整的 itch.io 游戏页面，已保留原有详情资料。")
                     return
                 }
 
