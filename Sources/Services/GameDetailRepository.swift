@@ -32,8 +32,8 @@ final class GameDetailRepository {
         let gameID = game.id
         let tags = discoveryTags(for: game) ?? []
         let statusValue = try appStateRepository.state(for: fetchStatusPrefix + gameID)?.stringValue
-        let currentFetchDate = try database.state(for: fetchDatePrefix + gameID)?.dateValue
-        let legacyFetchDate = try database.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
+        let currentFetchDate = try appStateRepository.state(for: fetchDatePrefix + gameID)?.dateValue
+        let legacyFetchDate = try appStateRepository.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
         let fetchDate = currentFetchDate ?? legacyFetchDate
 
         return GameDetailRecord(
@@ -105,7 +105,7 @@ final class GameDetailRepository {
                 game.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
             }
             if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
-                let existingStatus = try database.state(for: statusKey)?.stringValue
+                let existingStatus = try appStateRepository.state(for: statusKey)?.stringValue
                 if existingStatus == nil {
                     try appStateRepository.setString(GameDetailFetchStatus.partial.rawValue, for: statusKey, clearOtherValues: true, save: false)
                 }
@@ -148,9 +148,9 @@ final class GameDetailRepository {
                 try appStateRepository.setDate(fetchedAt, for: dateKey, clearOtherValues: true, save: false)
                 try appStateRepository.setString(GameDetailFetchStatus.complete.rawValue, for: statusKey, clearOtherValues: true, save: false)
             } else {
-                let existingStatus = try database.state(for: statusKey)?.stringValue
+                let existingStatus = try appStateRepository.state(for: statusKey)?.stringValue
                 if existingStatus == nil || existingStatus == GameDetailFetchStatus.unknown.rawValue {
-                    try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+                    try appStateRepository.setString(GameDetailFetchStatus.partial.rawValue, for: statusKey, clearOtherValues: true, save: false)
                 }
             }
 
