@@ -98,6 +98,39 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testPreviousMarkerFormatIsUpgradedAfterV2Validation() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-old-marker-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let storeURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+
+        let oldMarker: [String: Any] = [
+            "schemaVersion": "2.0.0",
+            "sourceWasLegacy": true,
+            "initializedAt": ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: 1_700_000_000))
+        ]
+        let oldMarkerData = try JSONSerialization.data(withJSONObject: oldMarker)
+        try oldMarkerData.write(to: markerURL)
+
+        let reopened = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertEqual(reopened, storeURL)
+        let upgraded = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        XCTAssertEqual(upgraded?["state"] as? String, "committed")
+    }
+
+    @MainActor
     func testUnreadableMarkerDoesNotSilentlyRestartFromLegacySnapshot() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-bootstrap-corrupt-marker-\(UUID().uuidString)", isDirectory: true)
@@ -116,6 +149,15 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         ))
         XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
         XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+
+        // Explicit recovery may proceed after the user accepts the rollback,
+        // but the unreadable marker never triggers an automatic rebuild.
+        let recovered = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            recoverInvalidExistingV2: true
+        )
+        XCTAssertEqual(try v2GameCount(at: recovered), 2)
     }
 
     @MainActor
