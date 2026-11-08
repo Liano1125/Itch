@@ -461,22 +461,22 @@ enum LegacyStoreBootstrap {
             // A completion receipt proves this store passed the full copy/validation
             // path. Every model remains fetchable, but legitimate row deletions
             // are allowed after migration.
-        _ = try context.fetchCount(FetchDescriptor<DBDeveloper>())
-        _ = try context.fetchCount(FetchDescriptor<DBGame>())
-        _ = try context.fetchCount(FetchDescriptor<DBLibraryEntry>())
-        _ = try context.fetchCount(FetchDescriptor<DBGameUpdate>())
-        _ = try context.fetchCount(FetchDescriptor<DBCalendarEvent>())
-        _ = try context.fetchCount(FetchDescriptor<DBSparkMetadata>())
-        _ = try context.fetchCount(FetchDescriptor<DBTranslation>())
-        _ = try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>())
-        _ = try context.fetchCount(FetchDescriptor<DBUpdateWatch>())
-        _ = try context.fetchCount(FetchDescriptor<DBLibraryCollection>())
-        _ = try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>())
-        _ = try context.fetchCount(FetchDescriptor<DBAppState>())
-        _ = try context.fetchCount(FetchDescriptor<DBGameDetail>())
-        _ = try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>())
+            _ = try context.fetchCount(FetchDescriptor<DBDeveloper>())
+            _ = try context.fetchCount(FetchDescriptor<DBGame>())
+            _ = try context.fetchCount(FetchDescriptor<DBLibraryEntry>())
+            _ = try context.fetchCount(FetchDescriptor<DBGameUpdate>())
+            _ = try context.fetchCount(FetchDescriptor<DBCalendarEvent>())
+            _ = try context.fetchCount(FetchDescriptor<DBSparkMetadata>())
+            _ = try context.fetchCount(FetchDescriptor<DBTranslation>())
+            _ = try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>())
+            _ = try context.fetchCount(FetchDescriptor<DBUpdateWatch>())
+            _ = try context.fetchCount(FetchDescriptor<DBLibraryCollection>())
+            _ = try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>())
+            _ = try context.fetchCount(FetchDescriptor<DBAppState>())
+            _ = try context.fetchCount(FetchDescriptor<DBGameDetail>())
+            _ = try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>())
 
-        // A readable SQLite store can still contain logically broken join
+            // A readable SQLite store can still contain logically broken join
         // records. Re-check the V2 invariants every time an existing store is
         // reused, without comparing mutable business-row counts to old values.
         let currentGames = try context.fetch(FetchDescriptor<DBGame>())
