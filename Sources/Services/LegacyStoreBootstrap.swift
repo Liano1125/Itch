@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SwiftData
 
@@ -55,7 +54,6 @@ enum LegacyStoreBootstrap {
 
     private struct MigrationReceipt: Codable, Equatable {
         let schemaVersion: String
-        let sourceFingerprint: String?
         let counts: MigrationCounts
         let completedAt: Date
     }
@@ -121,14 +119,12 @@ enum LegacyStoreBootstrap {
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
         let stagingStoreURL = stagingDirectory.appendingPathComponent(v2StoreFileName)
         let hasLegacyStore = fileManager.fileExists(atPath: legacyStoreURL.path)
-        let sourceFingerprint = hasLegacyStore ? try fingerprint(of: legacyStoreURL) : nil
 
         do {
             if hasLegacyStore {
                 _ = try copyLegacyStore(
                     from: legacyStoreURL,
                     to: stagingStoreURL,
-                    sourceFingerprint: sourceFingerprint
                 )
                 try beforePromotion?()
             }
@@ -146,7 +142,6 @@ enum LegacyStoreBootstrap {
                 try container.mainContext.save()
                 try writeMigrationReceipt(
                     at: stagingStoreURL,
-                    sourceFingerprint: nil,
                     counts: .zero
                 )
             }
@@ -171,7 +166,6 @@ enum LegacyStoreBootstrap {
     private static func copyLegacyStore(
         from sourceURL: URL,
         to destinationURL: URL,
-        sourceFingerprint: String?
     ) throws -> MigrationCounts {
         let sourceSchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let sourceConfiguration = ModelConfiguration(
@@ -402,7 +396,6 @@ enum LegacyStoreBootstrap {
         try validate(context: destinationContext, expected: expected)
         try writeMigrationReceipt(
             at: destinationURL,
-            sourceFingerprint: sourceFingerprint,
             counts: expected
         )
         return expected
@@ -426,12 +419,13 @@ enum LegacyStoreBootstrap {
               receipt.schemaVersion == migrationReceiptSchemaVersion else {
             throw BootstrapError.validationFailed("The V2 migration-completion receipt is missing or invalid.")
         }
-        if let legacyStoreURL {
-            let currentFingerprint = try fingerprint(of: legacyStoreURL)
-            guard receipt.sourceFingerprint == currentFingerprint else {
-                throw BootstrapError.validationFailed("The V2 migration receipt does not match the preserved legacy database.")
-            }
-        }
+        // Do not compare raw SQLite/WAL bytes with a startup-time fingerprint.
+        // SQLite may checkpoint or recreate WAL files without changing logical
+        // rows, so byte hashes are not a stable identity for a preserved store.
+        // Once a receipt exists, the V2 store is authoritative; validate its
+        // schema, recorded migration baseline, logical references and SQLite
+        // integrity instead of rejecting it because the legacy file layout moved.
+        _ = legacyStoreURL
 
         do {
             let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -516,7 +510,6 @@ enum LegacyStoreBootstrap {
 
     private static func writeMigrationReceipt(
         at storeURL: URL,
-        sourceFingerprint: String?,
         counts: MigrationCounts
     ) throws {
         let receipt = MigrationReceipt(
@@ -531,36 +524,6 @@ enum LegacyStoreBootstrap {
         let receiptURL = storeURL.deletingLastPathComponent()
             .appendingPathComponent(migrationReceiptFileName)
         try data.write(to: receiptURL, options: .atomic)
-    }
-
-    /// Hash the stable SQLite store and WAL files. The transient SHM file is
-    /// intentionally excluded because SQLite may recreate/remove it at will.
-    private static func fingerprint(of storeURL: URL) throws -> String {
-        var hasher = SHA256()
-        let candidates = [
-            storeURL,
-            URL(fileURLWithPath: storeURL.path + "-wal")
-        ]
-        for candidate in candidates {
-            hasher.update(data: Data(candidate.lastPathComponent.utf8))
-            guard FileManager.default.fileExists(atPath: candidate.path) else {
-                hasher.update(data: Data("<missing>".utf8))
-                continue
-            }
-            let handle = try FileHandle(forReadingFrom: candidate)
-            do {
-                while true {
-                    let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
-                    if chunk.isEmpty { break }
-                    hasher.update(data: chunk)
-                }
-                try handle.close()
-            } catch {
-                try? handle.close()
-                throw error
-            }
-        }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func validate(context: ModelContext, expected: MigrationCounts) throws {
