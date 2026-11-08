@@ -2,12 +2,13 @@ import Foundation
 import SwiftData
 
 /// The detail cache still uses DBGame's legacy columns in this phase.
-/// This repository is the only feature-facing read/write boundary for them.
+/// GameRepository owns those columns; this repository owns detail semantics
+/// and the associated fetch-status AppState keys.
 @MainActor
 final class GameDetailRepository {
     static let shared = GameDetailRepository(database: .shared)
 
-    private let database: AppDatabase
+    private let gameRepository: GameRepository
     private let appStateRepository: AppStateRepository
     private let saveChanges: () throws -> Void
 
@@ -16,29 +17,24 @@ final class GameDetailRepository {
     private let legacyPrefetchDatePrefix = "detailPrefetch.lastSuccess."
 
     init(database: AppDatabase, saveChanges: (() throws -> Void)? = nil) {
-        self.database = database
+        self.gameRepository = GameRepository(database: database)
         self.appStateRepository = AppStateRepository(database: database)
         self.saveChanges = saveChanges ?? { try database.save() }
     }
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
-        guard let game = try database.game(id: gameID) else { return nil }
-        return try detail(for: game)
-    }
-
-    func detail(for game: DBGame) throws -> GameDetailRecord {
-        let gameID = game.id
-        let tags = discoveryTags(for: game) ?? []
+        guard let game = try gameRepository.game(id: gameID),
+              let legacy = try gameRepository.legacyDetail(for: gameID) else { return nil }
+        let tags = Self.decodeTags(legacy.discoveryTagsData) ?? []
         let statusValue = try appStateRepository.state(for: fetchStatusPrefix + gameID)?.stringValue
         let currentFetchDate = try appStateRepository.state(for: fetchDatePrefix + gameID)?.dateValue
         let legacyFetchDate = try appStateRepository.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
-        let fetchDate = currentFetchDate ?? legacyFetchDate
 
         return GameDetailRecord(
-            description: game.descriptionText,
-            galleryURLs: game.galleryURLs,
+            description: legacy.descriptionText,
+            galleryURLs: legacy.galleryURLs,
             discoveryTags: tags,
-            fetchedAt: fetchDate,
+            fetchedAt: currentFetchDate ?? legacyFetchDate,
             fetchStatus: GameDetailFetchStatus(rawValue: statusValue ?? "") ?? .unknown
         )
     }
@@ -62,10 +58,9 @@ final class GameDetailRepository {
         return usable(incoming) ?? usable(existing) ?? usable(library)
     }
 
-    /// Reads the legacy tag column without another database fetch; nil means no stored value.
-    func discoveryTags(for game: DBGame) -> [LibraryDiscoveryTag]? {
-        guard let data = game.discoveryTagsData else { return nil }
-        return try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: data)
+    func discoveryTags(for gameID: String) throws -> [LibraryDiscoveryTag]? {
+        guard let game = try gameRepository.game(id: gameID) else { return nil }
+        return Self.decodeTags(game.discoveryTagsData)
     }
 
     /// Applies only fields explicitly present in a partial response.
@@ -75,33 +70,33 @@ final class GameDetailRepository {
         for gameID: String,
         save shouldSave: Bool = true
     ) throws {
-        guard let game = try database.game(id: gameID) else { return }
+        guard let original = try gameRepository.legacyDetail(for: gameID) else { return }
         let statusKey = fetchStatusPrefix + gameID
-        let original = GameFieldsSnapshot(game: game)
         let stateSnapshots = try captureStates(for: [statusKey])
+        var next = original
+        next.descriptionText = GameDetailPersistencePolicy.resolvedValue(
+            existing: original.descriptionText,
+            incoming: update.description,
+            mode: .partial
+        )
+        if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
+            existing: Optional(original.galleryURLs),
+            incoming: update.galleryURLs,
+            mode: .partial
+        ) {
+            next.galleryURLs = galleryURLs
+        }
+        let existingTags = Self.decodeTags(original.discoveryTagsData)
+        if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
+            existing: existingTags,
+            incoming: update.discoveryTags,
+            mode: .partial
+        ) {
+            next.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
+        }
+
         do {
-            game.descriptionText = GameDetailPersistencePolicy.resolvedValue(
-                existing: game.descriptionText,
-                incoming: update.description,
-                mode: .partial
-            )
-            if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
-                existing: Optional(game.galleryURLs),
-                incoming: update.galleryURLs,
-                mode: .partial
-            ) {
-                game.galleryURLs = galleryURLs
-            }
-            let existingTags = game.discoveryTagsData.flatMap {
-                try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
-            }
-            if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
-                existing: existingTags,
-                incoming: update.discoveryTags,
-                mode: .partial
-            ) {
-                game.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
-            }
+            try gameRepository.setLegacyDetail(next, for: gameID, save: false)
             if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
                 let existingStatus = try appStateRepository.state(for: statusKey)?.stringValue
                 if existingStatus == nil {
@@ -110,7 +105,7 @@ final class GameDetailRepository {
             }
             if shouldSave { try commit() }
         } catch {
-            original.restore(to: game)
+            try? gameRepository.setLegacyDetail(original, for: gameID, save: false)
             restoreStates(stateSnapshots)
             throw error
         }
@@ -125,23 +120,20 @@ final class GameDetailRepository {
         for gameID: String,
         fetchedAt: Date = .now
     ) throws -> GameDetailFetchStatus {
-        guard let game = try database.game(id: gameID) else { return .unknown }
+        guard let original = try gameRepository.legacyDetail(for: gameID) else { return .unknown }
 
         let statusKey = fetchStatusPrefix + gameID
         let dateKey = fetchDatePrefix + gameID
-        let original = GameFieldsSnapshot(game: game)
         let stateSnapshots = try captureStates(for: [statusKey, dateKey])
-        do {
-            if snapshot.descriptionResolved {
-                game.descriptionText = snapshot.description
-            }
-            if snapshot.galleryResolved {
-                game.galleryURLs = snapshot.galleryURLs
-            }
-            if snapshot.tagsResolved {
-                game.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
-            }
+        var next = original
+        if snapshot.descriptionResolved { next.descriptionText = snapshot.description }
+        if snapshot.galleryResolved { next.galleryURLs = snapshot.galleryURLs }
+        if snapshot.tagsResolved {
+            next.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+        }
 
+        do {
+            try gameRepository.setLegacyDetail(next, for: gameID, save: false)
             if snapshot.isComplete {
                 try appStateRepository.setDate(fetchedAt, for: dateKey, clearOtherValues: true, save: false)
                 try appStateRepository.setString(GameDetailFetchStatus.complete.rawValue, for: statusKey, clearOtherValues: true, save: false)
@@ -155,10 +147,15 @@ final class GameDetailRepository {
             try commit()
             return snapshot.isComplete ? .complete : .partial
         } catch {
-            original.restore(to: game)
+            try? gameRepository.setLegacyDetail(original, for: gameID, save: false)
             restoreStates(stateSnapshots)
             throw error
         }
+    }
+
+    private static func decodeTags(_ data: Data?) -> [LibraryDiscoveryTag]? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: data)
     }
 
     private func commit() throws {
@@ -168,24 +165,6 @@ final class GameDetailRepository {
     private struct StateSnapshot {
         let key: String
         let state: StoredAppState?
-    }
-
-    private struct GameFieldsSnapshot {
-        let descriptionText: String?
-        let galleryURLs: [String]
-        let discoveryTagsData: Data?
-
-        init(game: DBGame) {
-            descriptionText = game.descriptionText
-            galleryURLs = game.galleryURLs
-            discoveryTagsData = game.discoveryTagsData
-        }
-
-        func restore(to game: DBGame) {
-            game.descriptionText = descriptionText
-            game.galleryURLs = galleryURLs
-            game.discoveryTagsData = discoveryTagsData
-        }
     }
 
     private func captureStates(for keys: [String]) throws -> [StateSnapshot] {
@@ -201,7 +180,6 @@ final class GameDetailRepository {
             try? appStateRepository.restore(snapshot.state, for: snapshot.key)
         }
     }
-
 }
 
 struct GameDetailRecord {
@@ -253,8 +231,19 @@ enum GameDetailSnapshotPolicy {
     static func resolvedValue<Value>(
         existing: Value,
         incoming: Value,
-        isResolved: Bool
+        mode: GameDetailUpdateMode
     ) -> Value {
-        isResolved ? incoming : existing
+        mode == .partial && isMissing(incoming) ? existing : incoming
     }
+
+    private static func isMissing<Value>(_ value: Value) -> Bool {
+        (value as? OptionalProtocol)?.isNil ?? false
+    }
+}
+
+private protocol OptionalProtocol {
+    var isNil: Bool { get }
+}
+extension Optional: OptionalProtocol {
+    fileprivate var isNil: Bool { self == nil }
 }
