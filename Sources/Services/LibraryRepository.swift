@@ -44,6 +44,12 @@ final class LibraryRepository {
             }
             let normalizedIDs = normalizedItems.map(\.gameID)
             let legacyIDs = Self.uniqueInOrder(row.gameIDs)
+            guard Set(normalizedIDs).count == normalizedIDs.count,
+                  normalizedItems.allSatisfy({
+                      $0.id == DBLibraryCollectionItem.stableID(collectionID: row.id, gameID: $0.gameID)
+                  }) else {
+                throw RepositoryError.membershipOutOfSync(row.id)
+            }
 
             // V2 migration creates both representations. A wholly absent join
             // set can still be read from the legacy array for older/incomplete
@@ -107,6 +113,9 @@ final class LibraryRepository {
             throw RepositoryError.collectionNotFound(collectionID)
         }
 
+        // Do not let a stale in-memory snapshot silently overwrite a
+        // partially migrated or inconsistent normalized membership set.
+        _ = try membershipIDs(for: row)
         let gameIDs = Self.uniqueInOrder(collection.gameIDs)
         try validateGamesExist(gameIDs)
         row.title = cleaned
@@ -217,6 +226,12 @@ final class LibraryRepository {
         }
         let normalizedIDs = items.map(\.gameID)
         let legacyIDs = Self.uniqueInOrder(collection.gameIDs)
+        guard Set(normalizedIDs).count == normalizedIDs.count,
+              items.allSatisfy({
+                  $0.id == DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: $0.gameID)
+              }) else {
+            throw RepositoryError.membershipOutOfSync(collectionID)
+        }
         if items.isEmpty && !legacyIDs.isEmpty { return legacyIDs }
         guard normalizedIDs == legacyIDs else {
             throw RepositoryError.membershipOutOfSync(collectionID)
@@ -234,6 +249,12 @@ final class LibraryRepository {
             predicate: #Predicate { $0.collectionID == collectionID }
         )
         let existing = try database.context.fetch(descriptor)
+        guard Set(existing.map(\.gameID)).count == existing.count,
+              existing.allSatisfy({
+                  $0.id == DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: $0.gameID)
+              }) else {
+            throw RepositoryError.membershipOutOfSync(collectionID)
+        }
         let existingByGameID = Dictionary(uniqueKeysWithValues: existing.map { ($0.gameID, $0) })
         let desiredIDs = Set(gameIDs)
         for item in existing where !desiredIDs.contains(item.gameID) {
