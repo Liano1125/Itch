@@ -24,7 +24,7 @@ enum LegacyStoreBootstrap {
         let state: BootstrapState?
         let sourceWasLegacy: Bool
         let initializedAt: Date
-        let updatedAt: Date
+        let updatedAt: Date?
     }
 
     enum BootstrapError: LocalizedError {
@@ -92,6 +92,7 @@ enum LegacyStoreBootstrap {
         let hasFinalDirectory = fileManager.fileExists(atPath: finalDirectory.path)
 
         var marker: BootstrapMarker?
+        var markerWasUnreadable = false
         if hasMarkerFile {
             do {
                 let data = try Data(contentsOf: markerURL)
@@ -101,6 +102,7 @@ enum LegacyStoreBootstrap {
                 }
                 marker = decoded
             } catch {
+                markerWasUnreadable = true
                 guard recoverInvalidExistingV2, hasLegacyStore else {
                     throw BootstrapError.validationFailed(
                         "The V2 bootstrap marker is unreadable. Automatic migration is blocked because the database history cannot be established: \(error.localizedDescription)"
@@ -174,7 +176,7 @@ enum LegacyStoreBootstrap {
         // rebuild it, and only from a known legacy source.
         if markerState == .committed {
             guard recoverInvalidExistingV2,
-                  marker?.sourceWasLegacy == true,
+                  (marker?.sourceWasLegacy == true || markerWasUnreadable),
                   hasLegacyStore else {
                 throw BootstrapError.validationFailed(
                     "The committed V2 database is missing. A legacy snapshot is not available for safe recovery."
