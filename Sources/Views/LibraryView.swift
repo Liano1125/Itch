@@ -292,16 +292,17 @@ private struct PersonalGameCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 1) {
             NavigationLink {
                 GameDetailView(game: detailGame)
                     .safeAreaInset(edge: .bottom) {
                         LibraryGameActions(game: detailGame)
                     }
             } label: {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 1) {
                     GameCover(url: URL(string: record.coverURL ?? ""))
                     Text(record.title)
+                        .padding(.top, 4)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
                         .foregroundStyle(.primary)
@@ -357,13 +358,17 @@ private struct PersonalGameCard: View {
             }
             .buttonStyle(.plain)
 
-            Text(record.notes.isEmpty ? " " : record.notes)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .frame(height: 24, alignment: .topLeading)
+            if !record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(record.notes)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(height: 24, alignment: .topLeading)
+            }
         }
-        .padding(8)
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .appGlassSurface(cornerRadius: 16)
     }

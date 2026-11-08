@@ -402,7 +402,7 @@ struct GameCalendarView: View {
             }
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .appGlassSurface(cornerRadius: 17)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.065), lineWidth: 1)

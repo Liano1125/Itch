@@ -153,7 +153,7 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("发现值得玩的视觉小说游戏")
+            Text("发现值得玩的 Ren'Py 游戏")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
