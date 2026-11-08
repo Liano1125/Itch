@@ -366,7 +366,11 @@ final class PersonalLibraryStore: ObservableObject {
             try libraryRepository.removeGameFromLibrary(gameID: id)
             records.removeAll { $0.id == id }
             statusEvents.removeValue(forKey: id)
-            collections = try libraryRepository.collections()
+            do {
+                collections = try libraryRepository.collections()
+            } catch {
+                print("itchPocket collection reload after removal failed: \(error)")
+            }
         } catch {
             print("itchPocket library removal failed: \(error)")
         }
@@ -436,7 +440,12 @@ final class PersonalLibraryStore: ObservableObject {
                     )
                 }
             }
-            collections = try libraryRepository.collections()
+            do {
+                collections = try libraryRepository.collections()
+            } catch {
+                print("itchPocket collection load failed: \(error)")
+                collections = []
+            }
         } catch {
             print("itchPocket database load failed: \(error)")
             records = []
