@@ -311,12 +311,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
         let legacyURL = directory.appendingPathComponent("itchPocket.store")
         let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
-        let finalStoreURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
         try createExactUnversionedLegacyStore(at: legacyURL)
-        try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+        let finalStoreURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
 
-        // This database opens and all tables are readable, but its join row
-        // violates the V2 collection ownership invariant.
+        // Start with a genuinely completed migration and valid receipt, then
+        // introduce an invalid join row into the existing V2 database.
         do {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
@@ -342,18 +344,20 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testExistingV2StoreWithCollectionItemReferencingMissingGameIsRejected() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-orphan-game-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-orphan-game-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let legacyURL = directory.appendingPathComponent("itchPocket.store")
         let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
-        let finalStoreURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
         try createExactUnversionedLegacyStore(at: legacyURL)
-        try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+        let finalStoreURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
 
-        // This V2 store opens and has a valid collection, but its membership
-        // points to a game that does not exist.
+        // Keep the migration receipt valid while introducing a broken game
+        // reference, so this test exercises the relationship validator itself.
         do {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
@@ -365,6 +369,37 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
                 gameID: "missing-game",
                 sortOrder: 0
             ))
+            try container.mainContext.save()
+        }
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: finalStoreURL.path))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+    }
+
+    @MainActor
+    func testExistingEmptyV2StoreWithoutReceiptIsRejectedWhenLegacyHasData() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-empty-v2-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let finalStoreURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+
+        // A structurally readable but empty V2 store must not be mistaken for
+        // a completed migration when the preserved legacy database has games.
+        do {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+            let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
             try container.mainContext.save()
         }
 
