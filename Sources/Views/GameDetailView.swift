@@ -45,6 +45,7 @@ struct GameDetailView: View {
     @State private var reloadToken = UUID()
     @State private var translatedDescription: String?
     @State private var cachedOriginalDescription: String?
+    @State private var hasLoadedCompleteDetailSnapshot = false
     @State private var translatedUpdates: [String: String] = [:]
     @State private var translationStatus: String?
     @State private var showingOriginalDescription = false
@@ -72,8 +73,8 @@ struct GameDetailView: View {
     }
 
     private var displayDescription: String? {
-        if let detail { return detail.description }
-        return cachedOriginalDescription ?? game.description
+        if hasLoadedCompleteDetailSnapshot { return detail?.description }
+        return detail?.description ?? cachedOriginalDescription ?? game.description
     }
 
     var body: some View {
@@ -716,6 +717,7 @@ struct GameDetailView: View {
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         detail = result
+        hasLoadedCompleteDetailSnapshot = true
         let existingRecord = library.record(for: game.id)
         let existingGame = try? AppDatabase.shared.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
@@ -803,6 +805,7 @@ struct GameDetailView: View {
         if let savedGame = try? database.game(id: game.id) {
             let developer = savedGame.developerID.flatMap { try? database.developer(id: $0) }
             let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
+            hasLoadedCompleteDetailSnapshot = savedDetail?.fetchStatus == .complete
             let cachedDetail = GameDetailPayload(
                 description: savedDetail?.description,
                 developer: developer?.name ?? game.developer,
@@ -815,7 +818,7 @@ struct GameDetailView: View {
                 discoveryTags: savedDetail?.discoveryTags ?? [],
                 engine: savedGame.engine
             )
-            if cachedDetail.description != nil || cachedDetail.coverURL != nil || !cachedDetail.galleryURLs.isEmpty {
+            if cachedDetail.description != nil || cachedDetail.coverURL != nil || !cachedDetail.galleryURLs.isEmpty || hasLoadedCompleteDetailSnapshot {
                 detail = cachedDetail
                 cachedGalleryURLs = cachedDetail.galleryURLs
                 cachedOriginalDescription = cachedDetail.description
