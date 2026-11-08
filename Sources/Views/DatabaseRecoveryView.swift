@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DatabaseRecoveryView: View {
+    @State private var showingLegacyRecoveryConfirmation = false
+
     let errorMessage: String
     let onRetry: () -> Void
     let onRecover: () -> Void
@@ -43,11 +45,19 @@ struct DatabaseRecoveryView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
-                Button(role: .destructive, action: onRecover) {
+                Button(role: .destructive) {
+                    showingLegacyRecoveryConfirmation = true
+                } label: {
                     Label("保留问题数据库并从旧库恢复", systemImage: "externaldrive.badge.arrow.clockwise")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .alert("确认从旧数据库恢复？", isPresented: $showingLegacyRecoveryConfirmation) {
+                    Button("取消", role: .cancel) {}
+                    Button("从旧库恢复", role: .destructive, action: onRecover)
+                } message: {
+                    Text("旧数据库只是首次迁移时的历史快照，不包含迁移后新增或修改的数据。恢复会隔离保留当前问题数据库，再从旧快照重建；迁移后的变更可能无法恢复。建议仅在确认接受数据回退后继续。")
+                }
             }
         }
         .padding(24)
