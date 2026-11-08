@@ -24,3 +24,24 @@ enum CalendarSourceUpdateLinkPolicy {
         return incoming ?? existing
     }
 }
+
+enum GameDetailPersistenceMode {
+    case partial
+    case complete
+}
+
+enum GameDetailPersistencePolicy {
+    static func resolvedValue<Value>(
+        existing: Value?,
+        incoming: Value?,
+        mode: GameDetailPersistenceMode
+    ) -> Value? {
+        switch mode {
+        case .partial:
+            return incoming ?? existing
+        case .complete:
+            return incoming
+        }
+    }
+}
+
