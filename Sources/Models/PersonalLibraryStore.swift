@@ -120,9 +120,13 @@ final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var collections: [PersonalGameCollection] = []
     @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
 
-    private let database = AppDatabase.shared
+    private let database: AppDatabase
+    private let libraryRepository: LibraryRepository
 
     init() {
+        let database = AppDatabase.shared
+        self.database = database
+        self.libraryRepository = LibraryRepository(database: database)
         load()
     }
 
@@ -215,25 +219,30 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func createCollection(title: String) {
-        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        collections.insert(PersonalGameCollection(title: cleaned), at: 0)
-        saveCollections()
+        do {
+            let collection = try libraryRepository.createCollection(title: title)
+            collections.insert(collection, at: 0)
+        } catch {
+            print("itchPocket collection creation failed: \(error)")
+        }
     }
 
     func updateCollection(_ collection: PersonalGameCollection) {
         guard let index = collections.firstIndex(where: { $0.id == collection.id }) else { return }
-        var updated = collection
-        updated.title = updated.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !updated.title.isEmpty else { return }
-        updated.updatedAt = Date()
-        collections[index] = updated
-        saveCollections()
+        do {
+            collections[index] = try libraryRepository.updateCollection(collection)
+        } catch {
+            print("itchPocket collection update failed: \(error)")
+        }
     }
 
     func deleteCollection(_ id: String) {
-        collections.removeAll { $0.id == id }
-        saveCollections()
+        do {
+            try libraryRepository.deleteCollection(id: id)
+            collections.removeAll { $0.id == id }
+        } catch {
+            print("itchPocket collection deletion failed: \(error)")
+        }
     }
 
     func containsGame(_ gameID: String, in collectionID: String) -> Bool {
@@ -241,14 +250,14 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func toggleGame(_ gameID: String, in collectionID: String) {
-        guard let index = collections.firstIndex(where: { $0.id == collectionID }) else { return }
-        if collections[index].gameIDs.contains(gameID) {
-            collections[index].gameIDs.removeAll { $0 == gameID }
-        } else {
-            collections[index].gameIDs.append(gameID)
+        do {
+            let updated = try libraryRepository.toggleGame(gameID, in: collectionID)
+            if let index = collections.firstIndex(where: { $0.id == collectionID }) {
+                collections[index] = updated
+            }
+        } catch {
+            print("itchPocket collection membership update failed: \(error)")
         }
-        collections[index].updatedAt = Date()
-        saveCollections()
     }
 
     func add(_ game: PublicCollectionGame, status: LibraryStatus = .playing) {
@@ -353,27 +362,18 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func remove(_ id: String) {
-        records.removeAll { $0.id == id }
-        statusEvents.removeValue(forKey: id)
-        let context = database.context
         do {
-            if let entry = try context.fetch(FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == id })).first {
-                context.delete(entry)
+            try libraryRepository.removeGameFromLibrary(gameID: id)
+            records.removeAll { $0.id == id }
+            statusEvents.removeValue(forKey: id)
+            do {
+                collections = try libraryRepository.collections()
+            } catch {
+                print("itchPocket collection reload after removal failed: \(error)")
             }
-            if let metadata = try context.fetch(FetchDescriptor<DBSparkMetadata>(predicate: #Predicate { $0.gameID == id })).first {
-                context.delete(metadata)
-            }
-            try database.save()
         } catch {
             print("itchPocket library removal failed: \(error)")
         }
-        saveStatusEvents(save: false)
-        for index in collections.indices where collections[index].gameIDs.contains(id) {
-            collections[index].gameIDs.removeAll { $0 == id }
-            collections[index].updatedAt = Date()
-        }
-        saveCollections(save: false)
-        try? database.save()
     }
 
     private func load() {
@@ -440,8 +440,11 @@ final class PersonalLibraryStore: ObservableObject {
                     )
                 }
             }
-            collections = try context.fetch(FetchDescriptor<DBLibraryCollection>()).map {
-                PersonalGameCollection(id: $0.id, title: $0.title, gameIDs: $0.gameIDs, createdAt: $0.createdAt, updatedAt: $0.updatedAt)
+            do {
+                collections = try libraryRepository.collections()
+            } catch {
+                print("itchPocket collection load failed: \(error)")
+                collections = []
             }
         } catch {
             print("itchPocket database load failed: \(error)")
@@ -585,33 +588,6 @@ final class PersonalLibraryStore: ObservableObject {
             if shouldSave { try database.save() }
         } catch {
             print("itchPocket status history save failed: \(error)")
-        }
-    }
-
-    private func saveCollections(save shouldSave: Bool = true) {
-        let context = database.context
-        do {
-            let existing = try context.fetch(FetchDescriptor<DBLibraryCollection>())
-            let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
-            let desiredIDs = Set(collections.map(\.id))
-            for item in existing where !desiredIDs.contains(item.id) { context.delete(item) }
-            for collection in collections {
-                let item = existingByID[collection.id] ?? DBLibraryCollection(
-                    id: collection.id,
-                    title: collection.title,
-                    gameIDs: collection.gameIDs,
-                    createdAt: collection.createdAt,
-                    updatedAt: collection.updatedAt
-                )
-                if item.modelContext == nil { context.insert(item) }
-                if item.title != collection.title { item.title = collection.title }
-                if item.gameIDs != collection.gameIDs { item.gameIDs = collection.gameIDs }
-                if item.createdAt != collection.createdAt { item.createdAt = collection.createdAt }
-                if item.updatedAt != collection.updatedAt { item.updatedAt = collection.updatedAt }
-            }
-            if shouldSave { try database.save() }
-        } catch {
-            print("itchPocket collections save failed: \(error)")
         }
     }
 
