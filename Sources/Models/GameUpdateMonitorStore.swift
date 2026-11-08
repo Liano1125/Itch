@@ -46,12 +46,13 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
     private let database = AppDatabase.shared
-    private let watchRepository = UpdateMonitorRepository()
+    private let watchRepository: UpdateMonitorRepository
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
     init() {
+        watchRepository = UpdateMonitorRepository(database: database)
         load()
         do {
             lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
