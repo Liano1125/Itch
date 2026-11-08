@@ -123,12 +123,14 @@ final class PersonalLibraryStore: ObservableObject {
     private let database: AppDatabase
     private let libraryRepository: LibraryRepository
     private let statusHistoryRepository: LibraryStatusHistoryRepository
+    private let gameUpdateRepository: GameUpdateRepository
 
     init() {
         let database = AppDatabase.shared
         self.database = database
         self.libraryRepository = LibraryRepository(database: database)
         self.statusHistoryRepository = LibraryStatusHistoryRepository(database: database)
+        self.gameUpdateRepository = GameUpdateRepository(database: database)
         load()
     }
 
@@ -201,23 +203,25 @@ final class PersonalLibraryStore: ObservableObject {
     func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
         guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
         var updated = records[index]
-        var history = updated.gameUpdates ?? []
-        var inserted = 0
-        for update in incoming {
-            guard !history.contains(where: {
-                ($0.sourceID != nil && $0.sourceID == update.sourceID)
-                    || ($0.url != nil && $0.url == update.url)
-            }) else { continue }
-            history.append(update)
-            inserted += 1
+        do {
+            let insertedUpdates = try gameUpdateRepository.appendHistoricalUpdates(
+                incoming,
+                for: gameID,
+                save: false
+            )
+            guard !insertedUpdates.isEmpty else { return 0 }
+            var history = updated.gameUpdates ?? []
+            history.append(contentsOf: insertedUpdates)
+            history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
+            updated.gameUpdates = Array(history.prefix(200))
+            updated.updatedAt = Date()
+            records[index] = updated
+            persist(updated, save: shouldSave)
+            return insertedUpdates.count
+        } catch {
+            print("itchPocket historical update persistence failed: \(error)")
+            return 0
         }
-        guard inserted > 0 else { return 0 }
-        history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
-        updated.gameUpdates = Array(history.prefix(200))
-        updated.updatedAt = Date()
-        records[index] = updated
-        persist(updated, save: shouldSave)
-        return inserted
     }
 
     func createCollection(title: String) {
@@ -394,27 +398,14 @@ final class PersonalLibraryStore: ObservableObject {
             let games = try context.fetch(FetchDescriptor<DBGame>())
             let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
             let developers = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBDeveloper>()).map { ($0.id, $0) })
-            let updates = try context.fetch(FetchDescriptor<DBGameUpdate>())
+            let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBSparkMetadata>()).map { ($0.gameID, $0) })
             let gameByID = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0) })
-            let updatesByGame = Dictionary(grouping: updates, by: \.gameID)
-
             records = entries.compactMap { entry in
                 guard let game = gameByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
                 let spark = metadata[game.id]
-                let gameUpdates = (updatesByGame[game.id] ?? []).map {
-                    GameLibraryUpdate(
-                        id: $0.id,
-                        title: $0.title,
-                        summary: $0.summary,
-                        detectedAt: $0.detectedAt,
-                        publishedAt: $0.publishedAt,
-                        url: $0.url,
-                        sourceID: $0.sourceID,
-                        isHistorical: $0.isHistorical
-                    )
-                }.sorted { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
+                let gameUpdates = updatesByGame[game.id] ?? []
                 return LibraryRecord(
                     id: game.id,
                     title: game.title,
@@ -538,33 +529,14 @@ final class PersonalLibraryStore: ObservableObject {
             if entry.addedAt != record.addedAt { entry.addedAt = record.addedAt }
             if entry.updatedAt != record.updatedAt { entry.updatedAt = record.updatedAt }
 
-            // A snapshot is partial by default. Deletion is allowed only when
-            // the caller explicitly confirms that it contains the full history.
-            let oldUpdates = try context.fetch(FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.gameID == gameID }))
-            let updates = record.gameUpdates ?? []
-            let currentIDs = Set(updates.map { $0.id })
-            for old in oldUpdates where LibraryUpdatePersistencePolicy.shouldDeleteStoredUpdate(
-                storedID: old.id,
-                incomingIDs: currentIDs,
-                isCompleteSnapshot: updatesAreCompleteSnapshot
-            ) {
-                context.delete(old)
-            }
-            for update in updates {
-                let updateID = update.id
-                let updateDescriptor = FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.id == updateID })
-                let item = try context.fetch(updateDescriptor).first ?? DBGameUpdate(id: updateID, gameID: gameID, summary: update.summary)
-                if item.modelContext == nil { context.insert(item) }
-                if item.gameID != gameID { item.gameID = gameID }
-                if item.title != update.title { item.title = update.title }
-                if item.summary != update.summary { item.summary = update.summary }
-                if item.detectedAt != update.detectedAt { item.detectedAt = update.detectedAt }
-                if item.publishedAt != update.publishedAt { item.publishedAt = update.publishedAt }
-                if item.url != update.url { item.url = update.url }
-                if item.sourceID != update.sourceID { item.sourceID = update.sourceID }
-                let isHistorical = update.isHistorical ?? false
-                if item.isHistorical != isHistorical { item.isHistorical = isHistorical }
-            }
+            // LibraryRecord history is a partial projection (historical entries are capped).
+            // The repository preserves omitted rows unless a caller explicitly supplies a complete snapshot.
+            try gameUpdateRepository.synchronize(
+                record.gameUpdates ?? [],
+                for: gameID,
+                completeSnapshot: updatesAreCompleteSnapshot,
+                save: false
+            )
             if shouldSave { try database.save() }
         } catch {
             print("itchPocket library database write failed: \(error)")

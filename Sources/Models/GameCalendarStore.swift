@@ -53,8 +53,12 @@ final class GameCalendarStore: ObservableObject {
     static let shared = GameCalendarStore()
     @Published private(set) var events: [GameCalendarEvent] = []
     private let database = AppDatabase.shared
+    private let gameUpdateRepository: GameUpdateRepository
 
-    init() { load() }
+    init() {
+        self.gameUpdateRepository = GameUpdateRepository(database: database)
+        load()
+    }
 
     func add(_ event: GameCalendarEvent) {
         guard !events.contains(where: { $0.id == event.id }) else { return }
@@ -78,17 +82,13 @@ final class GameCalendarStore: ObservableObject {
 
     @discardableResult
     func addDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
-        let context = database.context
         var inserted = 0
         for update in updates {
             guard !events.contains(where: { $0.gameID == update.gameID && $0.sourceFingerprint == update.fingerprint }) else { continue }
-            let gameID = update.gameID
-            let detectedAt = update.detectedAt
-            let descriptor = FetchDescriptor<DBGameUpdate>(
-                predicate: #Predicate { $0.gameID == gameID && $0.detectedAt == detectedAt }
+            let updateID = try? gameUpdateRepository.detectedUpdateID(
+                gameID: update.gameID,
+                detectedAt: update.detectedAt
             )
-            let updateRows = (try? context.fetch(descriptor)) ?? []
-            let updateID = updateRows.first?.id
             let event = GameCalendarEvent(
                 gameID: update.gameID,
                 gameTitle: update.gameTitle,
@@ -135,31 +135,16 @@ final class GameCalendarStore: ObservableObject {
             guard let sourceID = update.sourceID else { continue }
             let fingerprint = "devlog:\(sourceID)"
             guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { continue }
-            let descriptor = FetchDescriptor<DBGameUpdate>(
-                predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
-            )
-            let storedUpdate: DBGameUpdate
-            if let existing = (try? context.fetch(descriptor))?.first {
-                storedUpdate = existing
-                // Refresh metadata without replacing the stable database identity.
-                storedUpdate.title = update.title
-                storedUpdate.summary = update.summary
-                storedUpdate.publishedAt = update.publishedAt
-                storedUpdate.url = update.url
-                storedUpdate.isHistorical = true
-            } else {
-                storedUpdate = DBGameUpdate(
-                    id: update.id,
-                    gameID: gameID,
-                    title: update.title,
-                    summary: update.summary,
-                    detectedAt: update.detectedAt,
-                    publishedAt: update.publishedAt,
-                    url: update.url,
-                    sourceID: sourceID,
-                    isHistorical: true
+            let storedUpdate: GameLibraryUpdate
+            do {
+                storedUpdate = try gameUpdateRepository.upsertHistorical(
+                    update,
+                    for: gameID,
+                    save: false
                 )
-                context.insert(storedUpdate)
+            } catch {
+                print("itchPocket historical update repository write failed: \(error)")
+                continue
             }
             let event = GameCalendarEvent(
                 gameID: gameID,
@@ -218,12 +203,12 @@ final class GameCalendarStore: ObservableObject {
         do {
             let storedEvents = try context.fetch(FetchDescriptor<DBCalendarEvent>())
             let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
-            let updates = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGameUpdate>()).map { ($0.id, $0) })
+            let updatesByID = try gameUpdateRepository.loadUpdatesByID()
             events = storedEvents.compactMap { stored in
                 // A linked update is usable only when it belongs to this exact game.
                 // Calendar rows also retain their own title/date/notes as a durable fallback.
-                let linkedUpdate = stored.sourceUpdateID.flatMap { updates[$0] }
-                let update = linkedUpdate.flatMap { $0.gameID == stored.gameID ? $0 : nil }
+                let linkedUpdate = stored.sourceUpdateID.flatMap { updatesByID[$0] }
+                let update = linkedUpdate.flatMap { $0.gameID == stored.gameID ? $0.update : nil }
                 let game = games[stored.gameID]
                 let title = update?.title.map { "更新：\($0)" } ?? stored.title ?? "日历事件"
                 let date = update?.publishedAt
@@ -232,7 +217,7 @@ final class GameCalendarStore: ObservableObject {
                     ?? .now
                 let notes: String
                 if let update, !update.summary.isEmpty {
-                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical ? "\n来源：itch.io Devlog（历史发布日期）" : "")
+                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical == true ? "\n来源：itch.io Devlog（历史发布日期）" : "")
                 } else {
                     notes = stored.notes ?? ""
                 }
