@@ -30,6 +30,67 @@ final class PersistencePoliciesTests: XCTestCase {
         )
     }
 
+    func testUnresolvedDescriptionPreservesCachedValue() {
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.resolvedValue(
+                existing: "cached description",
+                incoming: nil,
+                isResolved: false
+            ),
+            "cached description"
+        )
+    }
+
+    func testResolvedNilDescriptionCanExplicitlyClearCachedValue() {
+        XCTAssertNil(
+            GameDetailSnapshotPolicy.resolvedValue(
+                existing: Optional("cached description"),
+                incoming: Optional<String>.none,
+                isResolved: true
+            )
+        )
+    }
+
+    func testUnresolvedGalleryPreservesCachedImages() {
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.resolvedValue(
+                existing: ["old-1.jpg", "old-2.jpg"],
+                incoming: [String](),
+                isResolved: false
+            ),
+            ["old-1.jpg", "old-2.jpg"]
+        )
+    }
+
+    func testResolvedEmptyGalleryCanExplicitlyClearCachedImages() {
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.resolvedValue(
+                existing: ["old.jpg"],
+                incoming: [String](),
+                isResolved: true
+            ),
+            []
+        )
+    }
+
+    func testPageIsNotCompleteUntilEveryDetailSectionWasResolved() {
+        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
+            descriptionResolved: true,
+            galleryResolved: false,
+            tagsResolved: true
+        ))
+        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
+            descriptionResolved: false,
+            galleryResolved: true,
+            tagsResolved: true
+        ))
+        XCTAssertTrue(GameDetailSnapshotPolicy.shouldMarkComplete(
+            descriptionResolved: true,
+            galleryResolved: true,
+            tagsResolved: true
+        ))
+    }
+
     func testDeveloperNameResolutionPreservesExistingNameWhenPageOmitsIt() {
         XCTAssertEqual(
             GameDetailRepository.resolvedDeveloperName(
