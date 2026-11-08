@@ -519,10 +519,10 @@ final class PersonalLibraryStore: ObservableObject {
             if entry.addedAt != record.addedAt { entry.addedAt = record.addedAt }
             if entry.updatedAt != record.updatedAt { entry.updatedAt = record.updatedAt }
 
-            let oldUpdates = try context.fetch(FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.gameID == gameID }))
+            // LibraryRecord may contain a partial history (or nil when the
+            // caller did not load updates). Absence from this snapshot is not
+            // an explicit deletion request, so only upsert supplied rows here.
             let updates = record.gameUpdates ?? []
-            let currentIDs = Set(updates.map(\.id))
-            for old in oldUpdates where !currentIDs.contains(old.id) { context.delete(old) }
             for update in updates {
                 let updateID = update.id
                 let updateDescriptor = FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.id == updateID })
