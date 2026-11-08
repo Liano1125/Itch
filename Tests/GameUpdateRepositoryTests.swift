@@ -153,6 +153,41 @@ final class GameUpdateRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testHistoricalAppendRejectsSameGameIDCollisionWithoutOverwriting() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGameUpdate(
+            id: "collision",
+            gameID: "game-a",
+            title: "Original",
+            summary: "Must remain unchanged",
+            sourceID: "original-source",
+            url: "https://example.com/original",
+            isHistorical: true
+        ))
+        try database.save()
+
+        let repository = GameUpdateRepository(database: database)
+        XCTAssertThrowsError(try repository.appendHistoricalUpdates([
+            GameLibraryUpdate(
+                id: "collision",
+                title: "Replacement",
+                summary: "Must not overwrite",
+                sourceID: "different-source",
+                url: "https://example.com/different",
+                isHistorical: true
+            )
+        ], for: "game-a", save: false))
+
+        let rows = try database.context.fetch(FetchDescriptor<DBGameUpdate>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, "collision")
+        XCTAssertEqual(rows.first?.title, "Original")
+        XCTAssertEqual(rows.first?.summary, "Must remain unchanged")
+        XCTAssertEqual(rows.first?.sourceID, "original-source")
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
+    @MainActor
     func testDetectedUpdateLookupIsScopedToGameAndTimestamp() throws {
         let database = try AppDatabase(inMemory: true)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
