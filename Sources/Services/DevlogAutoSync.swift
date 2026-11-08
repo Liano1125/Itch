@@ -78,8 +78,16 @@ enum DevlogAutoSync {
     }
 
     static func handle(_ task: BGAppRefreshTask) {
-        scheduleNext()
         let operation = Task { @MainActor in
+            // The app can be launched into its database-recovery screen if
+            // durable storage cannot be opened. A background refresh must
+            // never touch the shared stores until startup has installed it.
+            guard AppDatabase.isInstalled else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            scheduleNext()
             await refreshIfNeeded(
                 monitor: .shared,
                 library: .shared,
