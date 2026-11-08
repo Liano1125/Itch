@@ -100,7 +100,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testPreviousMarkerFormatIsUpgradedAfterV2Validation() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-old-marker-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-old-marker-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -113,12 +113,16 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             finalDirectory: finalDirectory
         )
 
-        let oldMarker: [String: Any] = [
-            "schemaVersion": "2.0.0",
-            "sourceWasLegacy": true,
-            "initializedAt": ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: 1_700_000_000))
-        ]
-        let oldMarkerData = try JSONSerialization.data(withJSONObject: oldMarker)
+        struct PreviousMarker: Encodable {
+            let schemaVersion: String
+            let sourceWasLegacy: Bool
+            let initializedAt: Date
+        }
+        let oldMarkerData = try JSONEncoder().encode(PreviousMarker(
+            schemaVersion: "2.0.0",
+            sourceWasLegacy: true,
+            initializedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        ))
         try oldMarkerData.write(to: markerURL)
 
         let reopened = try LegacyStoreBootstrap.prepareStore(
