@@ -9,6 +9,7 @@ struct itchPocketApp: App {
     @StateObject private var authService = ItchAuthService()
     @State private var database: AppDatabase?
     @State private var databaseError: String?
+    @State private var canRecoverFromLegacy = AppDatabase.hasLegacyStoreForRecovery
 
     init() {
         do {
@@ -35,7 +36,9 @@ struct itchPocketApp: App {
                 } else {
                     DatabaseRecoveryView(
                         errorMessage: databaseError ?? "数据库暂时无法打开。",
-                        onRetry: retryDatabase
+                        onRetry: retryDatabase,
+                        onRecover: recoverFromLegacy,
+                        canRecoverFromLegacy: canRecoverFromLegacy
                     )
                 }
             }
@@ -51,6 +54,21 @@ struct itchPocketApp: App {
             databaseError = nil
         } catch {
             databaseError = error.localizedDescription
+            canRecoverFromLegacy = AppDatabase.hasLegacyStoreForRecovery
+        }
+    }
+
+    @MainActor
+    private func recoverFromLegacy() {
+        do {
+            let recoveredDatabase = try AppDatabase(recoverCorruptV2: true)
+            AppDatabase.installShared(recoveredDatabase)
+            database = recoveredDatabase
+            databaseError = nil
+            canRecoverFromLegacy = false
+        } catch {
+            databaseError = error.localizedDescription
+            canRecoverFromLegacy = AppDatabase.hasLegacyStoreForRecovery
         }
     }
 }
