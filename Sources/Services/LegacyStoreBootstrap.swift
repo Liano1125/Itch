@@ -103,7 +103,7 @@ enum LegacyStoreBootstrap {
             } catch {
                 guard recoverInvalidExistingV2, hasLegacyStore else {
                     throw BootstrapError.validationFailed(
-                        "The V2 bootstrap marker is unreadable. Automatic migration is blocked because the database history cannot be established: \\(error.localizedDescription)"
+                        "The V2 bootstrap marker is unreadable. Automatic migration is blocked because the database history cannot be established: \(error.localizedDescription)"
                     )
                 }
                 try validateLegacyStore(at: legacyStoreURL)
@@ -150,7 +150,7 @@ enum LegacyStoreBootstrap {
             } catch {
                 guard recoverInvalidExistingV2 else {
                     throw BootstrapError.validationFailed(
-                        "Existing V2 store was not reusable and has been left untouched: \\(error.localizedDescription)"
+                        "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
                     )
                 }
                 guard hasLegacyStore, marker?.sourceWasLegacy != false else {
@@ -160,7 +160,7 @@ enum LegacyStoreBootstrap {
                 }
                 try validateLegacyStore(at: legacyStoreURL)
                 let quarantineDirectory = parentDirectory.appendingPathComponent(
-                    "itchPocket-v2.quarantine-\\(UUID().uuidString)",
+                    "itchPocket-v2.quarantine-\(UUID().uuidString)",
                     isDirectory: true
                 )
                 // Keep the entire previous V2 directory, including SQLite
