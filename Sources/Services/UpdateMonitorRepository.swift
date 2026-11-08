@@ -11,7 +11,7 @@ final class UpdateMonitorRepository {
 
     private let database: AppDatabase
 
-    init(database: AppDatabase = AppDatabase.shared) {
+    init(database: AppDatabase) {
         self.database = database
     }
 
