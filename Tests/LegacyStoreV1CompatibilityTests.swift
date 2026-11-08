@@ -63,7 +63,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testRecoveryWithoutLegacyStoreLeavesInvalidV2Untouched() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-no-legacy-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-no-legacy-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
