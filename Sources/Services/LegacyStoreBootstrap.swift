@@ -124,7 +124,7 @@ enum LegacyStoreBootstrap {
             if hasLegacyStore {
                 _ = try copyLegacyStore(
                     from: legacyStoreURL,
-                    to: stagingStoreURL,
+                    to: stagingStoreURL
                 )
                 try beforePromotion?()
             }
@@ -165,7 +165,7 @@ enum LegacyStoreBootstrap {
 
     private static func copyLegacyStore(
         from sourceURL: URL,
-        to destinationURL: URL,
+        to destinationURL: URL
     ) throws -> MigrationCounts {
         let sourceSchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let sourceConfiguration = ModelConfiguration(
@@ -514,7 +514,6 @@ enum LegacyStoreBootstrap {
     ) throws {
         let receipt = MigrationReceipt(
             schemaVersion: migrationReceiptSchemaVersion,
-            sourceFingerprint: sourceFingerprint,
             counts: counts,
             completedAt: .now
         )
