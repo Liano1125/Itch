@@ -380,6 +380,27 @@ enum LegacyStoreBootstrap {
         _ = try context.fetchCount(FetchDescriptor<DBAppState>())
         _ = try context.fetchCount(FetchDescriptor<DBGameDetail>())
         _ = try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>())
+
+        // A readable SQLite store can still contain logically broken join
+        // records. Re-check the V2 invariants every time an existing store is
+        // reused, without comparing mutable business-row counts to old values.
+        let gameIDs = Set(try context.fetch(FetchDescriptor<DBGame>()).map(\\.id))
+        let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+        guard details.allSatisfy({ gameIDs.contains($0.gameID) }) else {
+            throw BootstrapError.validationFailed("A game-detail record references a missing game.")
+        }
+
+        let collectionIDs = Set(try context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\\.id))
+        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+        var membershipsByCollection: [String: Set<String>] = [:]
+        for item in items {
+            guard collectionIDs.contains(item.collectionID) else {
+                throw BootstrapError.validationFailed("A collection item references a missing collection.")
+            }
+            guard membershipsByCollection[item.collectionID, default: []].insert(item.gameID).inserted else {
+                throw BootstrapError.validationFailed("A collection contains duplicate membership for game \\(item.gameID).")
+            }
+        }
     }
 
     private static func validate(context: ModelContext, expected: MigrationCounts) throws {
