@@ -8,6 +8,8 @@ final class AppDatabase {
     /// Installed by the app entry point only after durable storage is verified.
     private static var sharedInstance: AppDatabase?
 
+    static var isInstalled: Bool { sharedInstance != nil }
+
     static var shared: AppDatabase {
         guard let sharedInstance else {
             preconditionFailure("AppDatabase.shared accessed before successful database startup.")
