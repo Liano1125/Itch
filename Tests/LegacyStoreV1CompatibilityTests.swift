@@ -17,11 +17,18 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
         try createExactUnversionedLegacyStore(at: legacyURL)
 
+        var reachedPendingMarker = false
         XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
             legacyStoreURL: legacyURL,
             finalDirectory: finalDirectory,
-            afterPendingMarker: { throw SimulatedTermination.afterPendingMarker }
-        ))
+            afterPendingMarker: {
+                reachedPendingMarker = true
+                throw SimulatedTermination.afterPendingMarker
+            }
+        )) { error in
+            XCTAssertEqual(error as? SimulatedTermination, .afterPendingMarker)
+        }
+        XCTAssertTrue(reachedPendingMarker, "The pending-marker interruption hook was not reached.")
         XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
         let pending = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
