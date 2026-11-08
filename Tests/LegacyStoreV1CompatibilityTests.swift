@@ -84,6 +84,60 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
+
+    @MainActor
+    func testV1ToV2MigrationCopiesDetailsCollectionsAndCalendarSnapshot() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v1-v2-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let storeURL = directory.appendingPathComponent("itchPocket.store")
+        try createUnversionedLegacyStore(at: storeURL)
+
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL)
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: ItchPocketMigrationPlan.self,
+            configurations: [configuration]
+        )
+        let context = container.mainContext
+
+        let detail = try XCTUnwrap(
+            context.fetch(FetchDescriptor<DBGameDetail>()).first { $0.gameID == "legacy-game-a" }
+        )
+        XCTAssertEqual(detail.descriptionText, "Saved legacy description")
+        XCTAssertEqual(detail.galleryURLs, [
+            "https://example.com/one.jpg", "https://example.com/two.jpg"
+        ])
+        XCTAssertEqual(detail.discoveryTagsData, Data("legacy-tags".utf8))
+        XCTAssertNil(detail.fetchedAt)
+        XCTAssertFalse(detail.isComplete)
+
+        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+            .filter { $0.collectionID == "legacy-collection" }
+            .sorted { $0.sortOrder < $1.sortOrder }
+        XCTAssertEqual(items.map(\\.gameID), ["legacy-game-b", "legacy-game-a"])
+        XCTAssertEqual(items.map(\\.sortOrder), [0, 1])
+        XCTAssertEqual(items.map(\\.id), items.map {
+            DBLibraryCollectionItem.stableID(collectionID: $0.collectionID, gameID: $0.gameID)
+        })
+
+        let migratedCollection = try XCTUnwrap(
+            context.fetch(FetchDescriptor<DBLibraryCollection>()).first
+        )
+        XCTAssertEqual(
+            migratedCollection.gameIDs,
+            ["legacy-game-b", "legacy-game-a", "legacy-game-b"]
+        )
+
+        let event = try XCTUnwrap(context.fetch(FetchDescriptor<DBCalendarEvent>()).first)
+        XCTAssertEqual(event.gameTitleSnapshot, "Legacy Game A")
+        XCTAssertEqual(event.sourceUpdateID, "legacy-update-a")
+        XCTAssertNil(event.date)
+    }
+
     @MainActor
     private func createUnversionedLegacyStore(at storeURL: URL) throws {
         // Keep this list in exact parity with the pre-migration AppDatabase
