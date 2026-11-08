@@ -296,15 +296,18 @@ struct GameCalendarView: View {
                 .fill(eventColor(event.kind))
                 .frame(width: 4, height: 38)
             VStack(alignment: .leading, spacing: 4) {
-                Text(displayTitle(for: event)).font(.subheadline.weight(.semibold))
-                if event.kind == .update,
-                   let updateTitle = translatedEventTitles[event.id] {
-                    Text(updateTitle)
+                if event.kind == .update {
+                    Text(calendarUpdateTitle(event))
+                        .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(event.gameTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
+                } else {
+                    Text(event.title).font(.subheadline.weight(.semibold))
                 }
-                Text("\(event.kind.rawValue) · \(chineseDate(event.date, format: "HH:mm"))")
+                Text("(event.kind.rawValue) · (chineseDate(event.date, format: "HH:mm"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -372,17 +375,19 @@ struct GameCalendarView: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                Text(displayTitle(for: event))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if event.kind == .update,
-                   let updateTitle = translatedEventTitles[event.id] ?? Optional(event.title.replacingOccurrences(of: "更新：", with: "")),
-                   !updateTitle.isEmpty {
-                    Text(updateTitle)
-                        .font(.caption.weight(.medium))
+                if event.kind == .update {
+                    Text(calendarUpdateTitle(event))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(event.gameTitle)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(event.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -408,6 +413,13 @@ struct GameCalendarView: View {
                     .strokeBorder(Color.primary.opacity(0.065), lineWidth: 1)
             }
         }
+    }
+
+    private func calendarUpdateTitle(_ event: GameCalendarEvent) -> String {
+        let rawTitle = event.title
+            .replacingOccurrences(of: "更新：", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return translatedEventTitles[event.id] ?? (rawTitle.isEmpty ? "游戏更新" : rawTitle)
     }
 
     private func cleanTimelineNote(_ note: String) -> String {

@@ -23,6 +23,12 @@ private struct DeveloperRecommendation: Identifiable {
     let id: String
     let name: String
     let records: [LibraryRecord]
+
+    var avatarRecord: LibraryRecord {
+        records.first(where: { $0.developerAvatarURL != nil || $0.patreonAvatarURL != nil })
+            ?? records.first(where: { $0.developerProfileURL != nil })
+            ?? records[0]
+    }
 }
 
 struct DiscoverView: View {
@@ -607,7 +613,7 @@ struct DiscoverView: View {
                             ItchSearchResultsView(query: developer.name)
                         } label: {
                             HStack(spacing: 12) {
-                                DeveloperPatreonAvatar(record: developer.records[0])
+                                DeveloperPatreonAvatar(record: developer.avatarRecord)
                                     .frame(width: 44, height: 44).clipShape(Circle())
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(developer.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
@@ -773,9 +779,16 @@ private struct DeveloperPatreonAvatar: View {
     let record: LibraryRecord
     @State private var avatarURL: URL?
 
+    private var storedAvatarURL: URL? {
+        [record.developerAvatarURL, record.patreonAvatarURL]
+            .compactMap { $0 }
+            .compactMap(URL.init(string:))
+            .first
+    }
+
     var body: some View {
         CachedRemoteImage(
-            url: avatarURL,
+            url: storedAvatarURL ?? avatarURL,
             contentMode: .fill
         ) {
             Image(systemName: "person.fill")
