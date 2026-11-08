@@ -124,6 +124,7 @@ final class PersonalLibraryStore: ObservableObject {
     private let libraryRepository: LibraryRepository
     private let statusHistoryRepository: LibraryStatusHistoryRepository
     private let gameUpdateRepository: GameUpdateRepository
+    private let sparkRepository: SparkRepository
 
     init() {
         let database = AppDatabase.shared
@@ -131,6 +132,7 @@ final class PersonalLibraryStore: ObservableObject {
         self.libraryRepository = LibraryRepository(database: database)
         self.statusHistoryRepository = LibraryStatusHistoryRepository(database: database)
         self.gameUpdateRepository = GameUpdateRepository(database: database)
+        self.sparkRepository = SparkRepository(database: database)
         load()
     }
 
@@ -323,7 +325,6 @@ final class PersonalLibraryStore: ObservableObject {
         guard !metadataByGameID.isEmpty else { return }
         var didChange = false
         var changedGameIDs = Set<String>()
-        let context = database.context
 
         for index in records.indices {
             guard let metadata = metadataByGameID[records[index].id] else { continue }
@@ -356,21 +357,20 @@ final class PersonalLibraryStore: ObservableObject {
 
         guard didChange else { return }
         do {
-            for record in records where changedGameIDs.contains(record.id) {
-                guard let runtime = record.sparkPlaytimeSeconds else { continue }
-                let gameID = record.id
-                let descriptor = FetchDescriptor<DBSparkMetadata>(
-                    predicate: #Predicate { $0.gameID == gameID }
+            let scannedAt = Date()
+            let snapshots = records.compactMap { record -> StoredSparkMetadata? in
+                guard changedGameIDs.contains(record.id),
+                      let runtime = record.sparkPlaytimeSeconds else { return nil }
+                return StoredSparkMetadata(
+                    gameID: record.id,
+                    runtimeSeconds: runtime,
+                    lastSaveAt: record.sparkLastSaveAt,
+                    renpyVersion: record.sparkRenpyVersion,
+                    saveCount: record.sparkSaveCount,
+                    scannedAt: scannedAt
                 )
-                let item = try context.fetch(descriptor).first
-                    ?? DBSparkMetadata(gameID: record.id, runtimeSeconds: runtime)
-                if item.modelContext == nil { context.insert(item) }
-                item.runtimeSeconds = runtime
-                item.lastSaveAt = record.sparkLastSaveAt
-                item.renpyVersion = record.sparkRenpyVersion
-                item.saveCount = record.sparkSaveCount
-                item.scannedAt = .now
             }
+            try sparkRepository.upsert(snapshots, save: false)
             try database.save()
         } catch {
             print("itchPocket Spark metadata save failed: \(error)")
@@ -399,7 +399,7 @@ final class PersonalLibraryStore: ObservableObject {
             let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
             let developers = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBDeveloper>()).map { ($0.id, $0) })
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
-            let metadata = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBSparkMetadata>()).map { ($0.gameID, $0) })
+            let metadata = try sparkRepository.loadByGameID()
             let gameByID = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0) })
             records = entries.compactMap { entry in
                 guard let game = gameByID[entry.gameID] else { return nil }
