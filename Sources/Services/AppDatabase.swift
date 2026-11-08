@@ -6,7 +6,18 @@ import SwiftData
 @MainActor
 final class AppDatabase {
     /// Installed by the app entry point only after durable storage is verified.
-    static var shared: AppDatabase!
+    private static var sharedInstance: AppDatabase?
+
+    static var shared: AppDatabase {
+        guard let sharedInstance else {
+            preconditionFailure("AppDatabase.shared accessed before successful database startup.")
+        }
+        return sharedInstance
+    }
+
+    static func installShared(_ database: AppDatabase) {
+        sharedInstance = database
+    }
 
     let container: ModelContainer
     var context: ModelContext { container.mainContext }
