@@ -67,7 +67,8 @@ enum LegacyStoreBootstrap {
         legacyStoreURL: URL,
         finalDirectory: URL,
         beforePromotion: (() throws -> Void)? = nil,
-        afterPromotion: (() throws -> Void)? = nil
+        afterPromotion: (() throws -> Void)? = nil,
+        recoverInvalidExistingV2: Bool = false
     ) throws -> URL {
         let fileManager = FileManager.default
         let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreFileName)
@@ -83,11 +84,26 @@ enum LegacyStoreBootstrap {
                 )
                 return finalStoreURL
             } catch {
-                // Never delete or silently rebuild a pre-existing destination.
-                // Keep both it and the legacy source intact for diagnosis/recovery.
-                throw BootstrapError.validationFailed(
-                    "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
-                )
+                guard recoverInvalidExistingV2 else {
+                    // Default startup is deliberately non-destructive.
+                    throw BootstrapError.validationFailed(
+                        "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
+                    )
+                }
+                guard fileManager.fileExists(atPath: legacyStoreURL.path) else {
+                    throw BootstrapError.validationFailed(
+                        "The V2 store is invalid and no preserved legacy database is available. No files were changed."
+                    )
+                }
+                try validateLegacyStore(at: legacyStoreURL)
+                let quarantineDirectory = finalDirectory.deletingLastPathComponent()
+                    .appendingPathComponent(
+                        "itchPocket-v2.quarantine-\(UUID().uuidString)",
+                        isDirectory: true
+                    )
+                // Same-volume move preserves the complete V2 directory, including
+                // SQLite sidecars and the migration receipt, for later inspection.
+                try fileManager.moveItem(at: finalDirectory, to: quarantineDirectory)
             }
         }
 
@@ -420,10 +436,11 @@ enum LegacyStoreBootstrap {
             }
         }
 
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        let context = container.mainContext
+        do {
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
 
-        // A completion receipt proves this store passed the full copy/validation
+            // A completion receipt proves this store passed the full copy/validation
         // path. Also reject a V2 store that has fewer games than the source
         // snapshot recorded in that receipt (for example, an accidentally empty DB).
         _ = try context.fetchCount(FetchDescriptor<DBDeveloper>())
@@ -455,19 +472,49 @@ enum LegacyStoreBootstrap {
         }
 
         let collectionIDs = Set(try context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\.id))
-        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
-        var membershipsByCollection: [String: Set<String>] = [:]
-        for item in items {
-            guard collectionIDs.contains(item.collectionID) else {
-                throw BootstrapError.validationFailed("A collection item references a missing collection.")
-            }
-            guard gameIDs.contains(item.gameID) else {
-                throw BootstrapError.validationFailed("A collection item references a missing game.")
-            }
-            guard membershipsByCollection[item.collectionID, default: []].insert(item.gameID).inserted else {
-                throw BootstrapError.validationFailed("A collection contains duplicate membership for game \(item.gameID).")
+            let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+            var membershipsByCollection: [String: Set<String>] = [:]
+            for item in items {
+                guard collectionIDs.contains(item.collectionID) else {
+                    throw BootstrapError.validationFailed("A collection item references a missing collection.")
+                }
+                guard gameIDs.contains(item.gameID) else {
+                    throw BootstrapError.validationFailed("A collection item references a missing game.")
+                }
+                guard membershipsByCollection[item.collectionID, default: []].insert(item.gameID).inserted else {
+                    throw BootstrapError.validationFailed("A collection contains duplicate membership for game \(item.gameID).")
+                }
             }
         }
+
+        // SwiftData has released its container before SQLite is opened directly.
+        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+    }
+
+    /// Validate the preserved source before moving a broken V2 directory aside.
+    /// The legacy store is opened read-only and is never migrated in place.
+    private static func validateLegacyStore(at storeURL: URL) throws {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        let configuration = ModelConfiguration(
+            legacyConfigurationName,
+            schema: schema,
+            url: storeURL,
+            allowsSave: false
+        )
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBDeveloper>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGame>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBLibraryEntry>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGameUpdate>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBCalendarEvent>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBSparkMetadata>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBTranslation>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBDiscoverySnapshot>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBUpdateWatch>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBLibraryCollection>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBLibraryStatusEvent>())
+        _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBAppState>())
     }
 
     private static func writeMigrationReceipt(
