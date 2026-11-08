@@ -412,14 +412,28 @@ enum LegacyStoreBootstrap {
         }
 
         let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+        let gamesByID = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0) })
         for detail in details {
-            guard detail.fetchedAt == nil, !detail.isComplete else {
-                throw BootstrapError.validationFailed("Legacy detail metadata was incorrectly marked fresh for game \(detail.gameID).")
+            guard let game = gamesByID[detail.gameID],
+                  detail.descriptionText == game.descriptionText,
+                  detail.galleryURLs == game.galleryURLs,
+                  detail.discoveryTagsData == game.discoveryTagsData,
+                  detail.fetchedAt == nil,
+                  !detail.isComplete else {
+                throw BootstrapError.validationFailed("Migrated detail does not match its legacy game record: \(detail.gameID).")
             }
         }
 
         let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
         let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+        let collectionIDs = Set(collections.map(\\.id))
+        guard items.allSatisfy({ collectionIDs.contains($0.collectionID) }) else {
+            throw BootstrapError.validationFailed("A collection item references a missing collection.")
+        }
+        let stableItemIDs = items.map(\\.id)
+        guard Set(stableItemIDs).count == stableItemIDs.count else {
+            throw BootstrapError.validationFailed("Duplicate collection item identifiers were found.")
+        }
         for collection in collections {
             let expectedIDs = collection.gameIDs.enumerated().reduce(into: [(Int, String)]()) { result, pair in
                 if !result.contains(where: { $0.1 == pair.element }) {
