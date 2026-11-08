@@ -111,7 +111,6 @@ final class AppDatabase {
         title: String,
         gameURL: String? = nil,
         coverURL: String? = nil,
-        description: String? = nil,
         engine: String? = nil,
         developerID: String? = nil
     ) throws {
@@ -121,7 +120,6 @@ final class AppDatabase {
         if item.title != title { item.title = title; changed = true }
         if let gameURL, item.gameURL != gameURL { item.gameURL = gameURL; changed = true }
         if let coverURL, item.coverURL != coverURL { item.coverURL = coverURL; changed = true }
-        if let description, item.descriptionText != description { item.descriptionText = description; changed = true }
         if let engine, item.engine != engine { item.engine = engine; changed = true }
         if let developerID, item.developerID != developerID { item.developerID = developerID; changed = true }
         if changed { item.updatedAt = .now }
@@ -155,86 +153,6 @@ final class AppDatabase {
         let item = try state(for: key) ?? DBAppState(key: key)
         if item.modelContext == nil { context.insert(item) }
         item.dataValue = value
-        item.updatedAt = .now
-        try save()
-    }
-
-    func upsertGameDetail(
-        id: String,
-        title: String,
-        gameURL: String?,
-        coverURL: String?,
-        description: String?,
-        galleryURLs: [String],
-        discoveryTags: [LibraryDiscoveryTag],
-        engine: String?,
-        developerID: String?,
-        developerName: String?,
-        developerProfileURL: String?,
-        patreonURL: String?,
-        discordURL: String?
-    ) throws {
-        let context = self.context
-        if let developerID {
-            let descriptor = FetchDescriptor<DBDeveloper>(predicate: #Predicate { $0.id == developerID })
-            let developer = try context.fetch(descriptor).first
-                ?? DBDeveloper(id: developerID, name: developerName ?? "itch.io 开发者")
-            if developer.modelContext == nil { context.insert(developer) }
-            var changed = false
-            if let developerName, developer.name != developerName { developer.name = developerName; changed = true }
-            if let developerProfileURL, developer.profileURL != developerProfileURL {
-                developer.profileURL = developerProfileURL
-                changed = true
-            }
-            if let patreonURL, developer.patreonURL != patreonURL { developer.patreonURL = patreonURL; changed = true }
-            if let discordURL, developer.discordURL != discordURL { developer.discordURL = discordURL; changed = true }
-            if changed { developer.updatedAt = .now }
-        }
-
-        let descriptor = FetchDescriptor<DBGame>(predicate: #Predicate { $0.id == id })
-        let game = try context.fetch(descriptor).first ?? DBGame(id: id, title: title)
-        if game.modelContext == nil { context.insert(game) }
-        var changed = false
-        if game.title != title { game.title = title; changed = true }
-        if let gameURL, game.gameURL != gameURL { game.gameURL = gameURL; changed = true }
-        if let coverURL, game.coverURL != coverURL { game.coverURL = coverURL; changed = true }
-        if let description, game.descriptionText != description { game.descriptionText = description; changed = true }
-        if !galleryURLs.isEmpty && game.galleryURLs != galleryURLs { game.galleryURLs = galleryURLs; changed = true }
-        if !discoveryTags.isEmpty {
-            let data = try JSONEncoder().encode(discoveryTags)
-            if game.discoveryTagsData != data { game.discoveryTagsData = data; changed = true }
-        }
-        if let engine, game.engine != engine { game.engine = engine; changed = true }
-        if let developerID, game.developerID != developerID { game.developerID = developerID; changed = true }
-        if changed { game.updatedAt = .now }
-        try save()
-    }
-
-    func setGameDescription(_ description: String, for gameID: String) throws {
-        guard let item = try game(id: gameID) else { return }
-        guard item.descriptionText != description else { return }
-        item.descriptionText = description
-        item.updatedAt = .now
-        try save()
-    }
-
-    func setDiscoveryTags(_ tags: [LibraryDiscoveryTag], for gameID: String) throws {
-        guard let item = try game(id: gameID) else { return }
-        let data = try JSONEncoder().encode(tags)
-        guard item.discoveryTagsData != data else { return }
-        item.discoveryTagsData = data
-        item.updatedAt = .now
-        try save()
-    }
-
-    func galleryURLs(for gameID: String) throws -> [String] {
-        try game(id: gameID)?.galleryURLs ?? []
-    }
-
-    func setGalleryURLs(_ urls: [String], for gameID: String) throws {
-        guard let item = try game(id: gameID) else { return }
-        guard item.galleryURLs != urls else { return }
-        item.galleryURLs = urls
         item.updatedAt = .now
         try save()
     }
