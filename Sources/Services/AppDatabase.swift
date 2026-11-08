@@ -14,33 +14,33 @@ final class AppDatabase {
     init(inMemory: Bool = false) throws {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         if inMemory {
-                let configuration = ModelConfiguration(
-                    "itchPocket",
-                    schema: schema,
-                    isStoredInMemoryOnly: true
-                )
-                container = try ModelContainer(for: schema, configurations: [configuration])
+            let configuration = ModelConfiguration(
+                "itchPocket",
+                schema: schema,
+                isStoredInMemoryOnly: true
+            )
+            container = try ModelContainer(for: schema, configurations: [configuration])
         } else {
-                // Resolve the exact pre-versioning store location through the
-                // same configuration name used by released builds.
-                let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
-                let legacyConfiguration = ModelConfiguration(
-                    LegacyStoreBootstrap.legacyConfigurationName,
-                    schema: legacySchema
-                )
-                let finalDirectory = legacyConfiguration.url
-                    .deletingLastPathComponent()
-                    .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
-                let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
-                    legacyStoreURL: legacyConfiguration.url,
-                    finalDirectory: finalDirectory
-                )
-                let configuration = ModelConfiguration(
-                    LegacyStoreBootstrap.v2ConfigurationName,
-                    schema: schema,
-                    url: v2StoreURL
-                )
-                container = try ModelContainer(for: schema, configurations: [configuration])
+            // Resolve the exact pre-versioning store location through the
+            // same configuration name used by released builds.
+            let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+            let legacyConfiguration = ModelConfiguration(
+                LegacyStoreBootstrap.legacyConfigurationName,
+                schema: legacySchema
+            )
+            let finalDirectory = legacyConfiguration.url
+                .deletingLastPathComponent()
+                .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+            let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
+                legacyStoreURL: legacyConfiguration.url,
+                finalDirectory: finalDirectory
+            )
+            let configuration = ModelConfiguration(
+                LegacyStoreBootstrap.v2ConfigurationName,
+                schema: schema,
+                url: v2StoreURL
+            )
+            container = try ModelContainer(for: schema, configurations: [configuration])
         }
     }
 
