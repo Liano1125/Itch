@@ -136,7 +136,7 @@ struct GameDetailRecord {
     let fetchStatus: GameDetailFetchStatus
 }
 
-enum GameDetailFetchStatus: String {
+enum GameDetailFetchStatus: String, Equatable {
     case unknown
     case partial
     case complete
