@@ -53,7 +53,28 @@ jobs:
             -list \
             -project itchPocket.xcodeproj
 
-      # 6. 编译 iPhone 真机 Release 版本
+      # 6. Run persistence regression tests on an available iPhone simulator
+      - name: Run persistence regression tests
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next((d["udid"] for group in data["devices"].values() for d in group if d.get("isAvailable") and d.get("name", "").startswith("iPhone")), ""))')"
+
+          if [ -z "$DEVICE_ID" ]; then
+            echo "::error::No available iPhone simulator found"
+            xcrun simctl list devices available
+            exit 1
+          fi
+
+          xcodebuild \
+            -project itchPocket.xcodeproj \
+            -scheme itchPocket \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/itchPocketTestDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            test
+
+      # 7. 编译 iPhone 真机 Release 版本
       - name: Build for physical iOS devices
         run: |
           xcodebuild \
