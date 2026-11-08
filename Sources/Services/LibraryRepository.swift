@@ -234,18 +234,23 @@ final class LibraryRepository {
             predicate: #Predicate { $0.collectionID == collectionID }
         )
         let existing = try database.context.fetch(descriptor)
-        let existingAddedAt = Dictionary(uniqueKeysWithValues: existing.map { ($0.gameID, $0.addedAt) })
-        for item in existing {
+        let existingByGameID = Dictionary(uniqueKeysWithValues: existing.map { ($0.gameID, $0) })
+        let desiredIDs = Set(gameIDs)
+        for item in existing where !desiredIDs.contains(item.gameID) {
             database.context.delete(item)
         }
         for (index, gameID) in gameIDs.enumerated() {
-            database.context.insert(DBLibraryCollectionItem(
-                id: DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: gameID),
-                collectionID: collectionID,
-                gameID: gameID,
-                sortOrder: index,
-                addedAt: existingAddedAt[gameID] ?? now
-            ))
+            if let item = existingByGameID[gameID] {
+                item.sortOrder = index
+            } else {
+                database.context.insert(DBLibraryCollectionItem(
+                    id: DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: gameID),
+                    collectionID: collectionID,
+                    gameID: gameID,
+                    sortOrder: index,
+                    addedAt: now
+                ))
+            }
         }
     }
 
