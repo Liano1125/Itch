@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - main
+      # Stacked persistence PRs may target the migration branch before it merges.
+      - fix/legacy-v2-bootstrap
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.

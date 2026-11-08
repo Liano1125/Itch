@@ -5,37 +5,65 @@ import SwiftData
 /// repositories backed by this container instead of creating their own files.
 @MainActor
 final class AppDatabase {
-    static let shared = AppDatabase()
+    /// Installed by the app entry point only after durable storage is verified.
+    private static var sharedInstance: AppDatabase?
+
+    static var isInstalled: Bool { sharedInstance != nil }
+
+    static var shared: AppDatabase {
+        guard let sharedInstance else {
+            preconditionFailure("AppDatabase.shared accessed before successful database startup.")
+        }
+        return sharedInstance
+    }
+
+    static func installShared(_ database: AppDatabase) {
+        sharedInstance = database
+    }
 
     let container: ModelContainer
     var context: ModelContext { container.mainContext }
 
-    init(inMemory: Bool = false) {
-        let schema = Schema([
-            DBDeveloper.self,
-            DBGame.self,
-            DBLibraryEntry.self,
-            DBGameUpdate.self,
-            DBCalendarEvent.self,
-            DBSparkMetadata.self,
-            DBTranslation.self,
-            DBDiscoverySnapshot.self,
-            DBUpdateWatch.self,
-            DBLibraryCollection.self,
-            DBLibraryStatusEvent.self,
-            DBAppState.self
-        ])
+    static var hasLegacyStoreForRecovery: Bool {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let configuration = ModelConfiguration(
-            "itchPocket",
-            schema: schema,
-            isStoredInMemoryOnly: inMemory
+            LegacyStoreBootstrap.legacyConfigurationName,
+            schema: schema
         )
-        do {
+        return FileManager.default.fileExists(atPath: configuration.url.path)
+    }
+
+    init(inMemory: Bool = false, recoverCorruptV2: Bool = false) throws {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        if inMemory {
+            let configuration = ModelConfiguration(
+                "itchPocket",
+                schema: schema,
+                isStoredInMemoryOnly: true
+            )
             container = try ModelContainer(for: schema, configurations: [configuration])
-        } catch {
-            // A failed database open must be surfaced rather than silently
-            // falling back to a second, divergent persistence mechanism.
-            fatalError("Unable to open itchPocket database: \(error.localizedDescription)")
+        } else {
+            // Resolve the exact pre-versioning store location through the
+            // same configuration name used by released builds.
+            let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+            let legacyConfiguration = ModelConfiguration(
+                LegacyStoreBootstrap.legacyConfigurationName,
+                schema: legacySchema
+            )
+            let finalDirectory = legacyConfiguration.url
+                .deletingLastPathComponent()
+                .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+            let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
+                legacyStoreURL: legacyConfiguration.url,
+                finalDirectory: finalDirectory,
+                recoverInvalidExistingV2: recoverCorruptV2
+            )
+            let configuration = ModelConfiguration(
+                LegacyStoreBootstrap.v2ConfigurationName,
+                schema: schema,
+                url: v2StoreURL
+            )
+            container = try ModelContainer(for: schema, configurations: [configuration])
         }
     }
 
@@ -159,6 +187,8 @@ final class AppDatabase {
 
     func removeAllAppData() throws {
         try context.delete(model: DBAppState.self)
+        try context.delete(model: DBLibraryCollectionItem.self)
+        try context.delete(model: DBGameDetail.self)
         try context.delete(model: DBLibraryStatusEvent.self)
         try context.delete(model: DBLibraryCollection.self)
         try context.delete(model: DBUpdateWatch.self)

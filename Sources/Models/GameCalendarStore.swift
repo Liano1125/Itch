@@ -239,7 +239,7 @@ final class GameCalendarStore: ObservableObject {
                 return GameCalendarEvent(
                     id: stored.id,
                     gameID: stored.gameID,
-                    gameTitle: game?.title ?? "未知游戏",
+                    gameTitle: game?.title ?? stored.gameTitleSnapshot ?? "未知游戏",
                     gameURL: game?.gameURL,
                     title: title,
                     date: date,
@@ -272,6 +272,7 @@ final class GameCalendarStore: ObservableObject {
             )
             if item.modelContext == nil { context.insert(item) }
             item.gameID = event.gameID
+            item.gameTitleSnapshot = event.gameTitle
             item.kind = event.kind.rawValue
             item.reminderEnabled = event.reminderEnabled
             item.reminderMinutes = event.reminderMinutes
