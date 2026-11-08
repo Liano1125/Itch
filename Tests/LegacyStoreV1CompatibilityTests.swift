@@ -172,6 +172,92 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testFutureBootstrapMarkerBlocksExplicitLegacyRecovery() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-future-marker-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let storeURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+
+        var marker = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        )
+        marker["schemaVersion"] = "3.0.0"
+        let futureMarkerData = try JSONSerialization.data(withJSONObject: marker)
+        try futureMarkerData.write(to: markerURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            recoverInvalidExistingV2: true
+        )) { error in
+            guard case LegacyStoreBootstrap.BootstrapError.unsupportedVersion("3.0.0") = error else {
+                return XCTFail("Expected unsupported-version protection, received: \\(error)")
+            }
+        }
+
+        XCTAssertEqual(try Data(contentsOf: markerURL), futureMarkerData)
+        XCTAssertEqual(try v2GameCount(at: storeURL), 2)
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).contains { $0.lastPathComponent.hasPrefix("itchPocket-v2.quarantine-") })
+    }
+
+    @MainActor
+    func testFutureMigrationReceiptBlocksExplicitLegacyRecovery() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-future-receipt-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        let receiptURL = directory.appendingPathComponent(LegacyStoreBootstrap.migrationReceiptFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let storeURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+
+        var receipt = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: receiptURL)) as? [String: Any]
+        )
+        receipt["schemaVersion"] = "3.0.0"
+        let futureReceiptData = try JSONSerialization.data(withJSONObject: receipt)
+        try futureReceiptData.write(to: receiptURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            recoverInvalidExistingV2: true
+        )) { error in
+            guard case LegacyStoreBootstrap.BootstrapError.unsupportedVersion("3.0.0") = error else {
+                return XCTFail("Expected unsupported-version protection, received: \\(error)")
+            }
+        }
+
+        XCTAssertEqual(try Data(contentsOf: receiptURL), futureReceiptData)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+        XCTAssertEqual(try v2GameCount(at: storeURL), 2)
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).contains { $0.lastPathComponent.hasPrefix("itchPocket-v2.quarantine-") })
+    }
+
+    @MainActor
     func testSQLiteQuickCheckRejectsCorruptDatabaseBytes() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-sqlite-check-\(UUID().uuidString)", isDirectory: true)
