@@ -91,7 +91,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
         let legacyURL = directory.appendingPathComponent("itchPocket.store")
         let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
-        try createUnversionedLegacyStore(at: legacyURL)
+        try createExactUnversionedLegacyStore(at: legacyURL)
 
         let finalURL = try LegacyStoreBootstrap.prepareStore(
             legacyStoreURL: legacyURL,
@@ -189,7 +189,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let legacyURL = directory.appendingPathComponent("itchPocket.store")
         let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
         let stagingDirectory = directory.appendingPathComponent("itchPocket-v2.staging", isDirectory: true)
-        try createUnversionedLegacyStore(at: legacyURL)
+        try createExactUnversionedLegacyStore(at: legacyURL)
 
         XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
             legacyStoreURL: legacyURL,
@@ -224,7 +224,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
         let legacyURL = directory.appendingPathComponent("itchPocket.store")
         let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
-        try createUnversionedLegacyStore(at: legacyURL)
+        try createExactUnversionedLegacyStore(at: legacyURL)
 
         let firstURL = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
         let secondURL = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
@@ -324,4 +324,135 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
         try context.save()
     }
+    @MainActor
+    private func createExactUnversionedLegacyStore(at storeURL: URL) throws {
+        // Build the database from the frozen V1 model types without attaching
+        // VersionedSchema metadata, matching the released unversioned store.
+        let schema = Schema(ItchPocketSchemaV1.models)
+        let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+
+        let developer = ItchPocketSchemaV1.DBDeveloper()
+        developer.id = "legacy-developer"
+        developer.name = "Legacy Developer"
+        developer.profileURL = "https://example.com/developer"
+        context.insert(developer)
+
+        let gameA = ItchPocketSchemaV1.DBGame()
+        gameA.id = "legacy-game-a"
+        gameA.title = "Legacy Game A"
+        gameA.gameURL = "https://example.com/game-a"
+        gameA.coverURL = "https://example.com/cover.jpg"
+        gameA.descriptionText = "Saved legacy description"
+        gameA.galleryURLs = ["https://example.com/one.jpg", "https://example.com/two.jpg"]
+        gameA.discoveryTagsData = Data("legacy-tags".utf8)
+        gameA.engine = "Ren'Py"
+        gameA.developerID = "legacy-developer"
+        gameA.updatedAt = Date(timeIntervalSince1970: 1_700_000_001)
+        context.insert(gameA)
+
+        let gameB = ItchPocketSchemaV1.DBGame()
+        gameB.id = "legacy-game-b"
+        gameB.title = "Legacy Game B"
+        context.insert(gameB)
+
+        let entry = ItchPocketSchemaV1.DBLibraryEntry()
+        entry.gameID = "legacy-game-a"
+        entry.status = "playing"
+        entry.isFavorite = true
+        entry.notes = "Keep this note"
+        entry.addedAt = Date(timeIntervalSince1970: 1_700_000_002)
+        entry.updatedAt = Date(timeIntervalSince1970: 1_700_000_003)
+        context.insert(entry)
+
+        let update = ItchPocketSchemaV1.DBGameUpdate()
+        update.id = "legacy-update-a"
+        update.gameID = "legacy-game-a"
+        update.title = "Legacy update"
+        update.summary = "Historical update"
+        update.detectedAt = Date(timeIntervalSince1970: 1_700_000_004)
+        update.publishedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        update.url = "https://example.com/update"
+        update.sourceID = "legacy-source-a"
+        update.isHistorical = true
+        context.insert(update)
+
+        let event = ItchPocketSchemaV1.DBCalendarEvent()
+        event.id = "legacy-calendar-a"
+        event.gameID = "legacy-game-a"
+        event.title = "Legacy calendar event"
+        event.date = nil
+        event.kind = "custom"
+        event.reminderEnabled = true
+        event.reminderMinutes = 45
+        event.notes = "Calendar note"
+        event.sourceFingerprint = "legacy-fingerprint"
+        event.sourceUpdateID = "legacy-update-a"
+        context.insert(event)
+
+        let spark = ItchPocketSchemaV1.DBSparkMetadata()
+        spark.gameID = "legacy-game-a"
+        spark.runtimeSeconds = 1234
+        spark.lastSaveAt = Date(timeIntervalSince1970: 1_700_000_005)
+        spark.renpyVersion = "8.2.0"
+        spark.saveCount = 3
+        spark.scannedAt = Date(timeIntervalSince1970: 1_700_000_006)
+        context.insert(spark)
+
+        let translation = ItchPocketSchemaV1.DBTranslation()
+        translation.cacheKey = "legacy-translation"
+        translation.scope = "description"
+        translation.sourceHash = "legacy-hash"
+        translation.sourceText = "hello"
+        translation.targetLanguage = "zh-CN"
+        translation.translatedText = "你好"
+        translation.updatedAt = Date(timeIntervalSince1970: 1_700_000_007)
+        context.insert(translation)
+
+        let snapshot = ItchPocketSchemaV1.DBDiscoverySnapshot()
+        snapshot.key = "legacy-discovery"
+        snapshot.payload = Data("legacy-payload".utf8)
+        snapshot.fetchedAt = Date(timeIntervalSince1970: 1_700_000_008)
+        snapshot.expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
+        context.insert(snapshot)
+
+        let watch = ItchPocketSchemaV1.DBUpdateWatch()
+        watch.gameID = "legacy-game-a"
+        watch.entityTag = "legacy-etag"
+        watch.lastModified = "Wed, 01 Jan 2025 00:00:00 GMT"
+        watch.contentHash = "legacy-content-hash"
+        watch.lastCheckedAt = Date(timeIntervalSince1970: 1_700_000_009)
+        watch.hasBaseline = true
+        watch.isEnabled = true
+        context.insert(watch)
+
+        let collection = ItchPocketSchemaV1.DBLibraryCollection()
+        collection.id = "legacy-collection"
+        collection.title = "Legacy collection"
+        collection.gameIDs = ["legacy-game-b", "legacy-game-a", "legacy-game-b"]
+        collection.createdAt = Date(timeIntervalSince1970: 1_700_000_010)
+        collection.updatedAt = Date(timeIntervalSince1970: 1_700_000_011)
+        context.insert(collection)
+
+        let statusEvent = ItchPocketSchemaV1.DBLibraryStatusEvent()
+        statusEvent.id = "legacy-status-event"
+        statusEvent.gameID = "legacy-game-a"
+        statusEvent.fromStatus = nil
+        statusEvent.toStatus = "playing"
+        statusEvent.changedAt = Date(timeIntervalSince1970: 1_700_000_012)
+        context.insert(statusEvent)
+
+        let appState = ItchPocketSchemaV1.DBAppState()
+        appState.key = "legacy.test.state"
+        appState.stringValue = "preserve-me"
+        appState.dateValue = Date(timeIntervalSince1970: 1_700_000_013)
+        appState.dataValue = Data("opaque-state".utf8)
+        appState.updatedAt = Date(timeIntervalSince1970: 1_700_000_014)
+        context.insert(appState)
+
+        try context.save()
+    }
+
+
 }
