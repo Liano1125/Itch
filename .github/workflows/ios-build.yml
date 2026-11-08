@@ -12,6 +12,7 @@ on:
       - refactor/library-repository-collections-v2
       # Run the next repository slice stacked on this branch.
       - refactor/library-status-history-repository
+      - refactor/game-update-repository
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
