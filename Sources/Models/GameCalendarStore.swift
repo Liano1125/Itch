@@ -280,11 +280,11 @@ final class GameCalendarStore: ObservableObject {
             // removed or migrated. The relation enriches the event; it is not its only source.
             // A missing sourceUpdateID means "leave the existing link alone".
             // Callers must opt in to clearing it explicitly.
-            if clearSourceUpdateLink {
-                item.sourceUpdateID = nil
-            } else if let sourceUpdateID {
-                item.sourceUpdateID = sourceUpdateID
-            }
+            item.sourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
+                existing: item.sourceUpdateID,
+                incoming: sourceUpdateID,
+                clear: clearSourceUpdateLink
+            )
             item.title = event.title
             item.date = event.date
             item.notes = event.notes
