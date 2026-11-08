@@ -83,43 +83,159 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
-    func testV1ToV2MigrationCopiesDetailsCollectionsAndCalendarSnapshot() throws {
+    func testLegacyBootstrapCopiesAllDataAndKeepsOriginalStore() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v1-v2-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let storeURL = directory.appendingPathComponent("itchPocket.store")
-        try createUnversionedLegacyStore(at: storeURL)
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try createUnversionedLegacyStore(at: legacyURL)
+
+        let finalURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path), "The original database must remain in place.")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: finalURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("itchPocket-v2.staging").path))
 
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
-        let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL)
-        let container = try ModelContainer(for: schema, migrationPlan: ItchPocketMigrationPlan.self, configurations: [configuration])
+        let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalURL)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = container.mainContext
 
-        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first { $0.gameID == "legacy-game-a" })
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDeveloper>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 2)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBSparkMetadata>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBTranslation>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollection>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAppState>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 2)
+
+        let game = try XCTUnwrap(context.fetch(FetchDescriptor<DBGame>()).first { $0.id == "legacy-game-a" })
+        XCTAssertEqual(game.title, "Legacy Game A")
+        XCTAssertEqual(game.descriptionText, "Saved legacy description")
+        XCTAssertEqual(game.galleryURLs, ["https://example.com/one.jpg", "https://example.com/two.jpg"])
+        XCTAssertEqual(game.discoveryTagsData, Data("legacy-tags".utf8))
+
+        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first)
+        XCTAssertEqual(detail.gameID, "legacy-game-a")
         XCTAssertEqual(detail.descriptionText, "Saved legacy description")
-        XCTAssertEqual(detail.galleryURLs, ["https://example.com/one.jpg", "https://example.com/two.jpg"])
-        XCTAssertEqual(detail.discoveryTagsData, Data("legacy-tags".utf8))
         XCTAssertNil(detail.fetchedAt)
         XCTAssertFalse(detail.isComplete)
 
-        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
-            .filter { $0.collectionID == "legacy-collection" }
-            .sorted { $0.sortOrder < $1.sortOrder }
-        XCTAssertEqual(items.map(\.gameID), ["legacy-game-b", "legacy-game-a"])
-        XCTAssertEqual(items.map(\.sortOrder), [0, 1])
-        XCTAssertEqual(items.map(\.id), items.map {
-            DBLibraryCollectionItem.stableID(collectionID: $0.collectionID, gameID: $0.gameID)
-        })
+        let libraryEntry = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryEntry>()).first)
+        XCTAssertEqual(libraryEntry.status, "playing")
+        XCTAssertTrue(libraryEntry.isFavorite)
+        XCTAssertEqual(libraryEntry.notes, "Keep this note")
 
-        let migratedCollection = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryCollection>()).first)
-        XCTAssertEqual(migratedCollection.gameIDs, ["legacy-game-b", "legacy-game-a", "legacy-game-b"])
+        let update = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameUpdate>()).first)
+        XCTAssertEqual(update.id, "legacy-update-a")
+        XCTAssertEqual(update.sourceID, "legacy-source-a")
+        XCTAssertTrue(update.isHistorical)
 
         let event = try XCTUnwrap(context.fetch(FetchDescriptor<DBCalendarEvent>()).first)
         XCTAssertEqual(event.gameTitleSnapshot, "Legacy Game A")
         XCTAssertEqual(event.sourceUpdateID, "legacy-update-a")
         XCTAssertNil(event.date)
+
+        let spark = try XCTUnwrap(context.fetch(FetchDescriptor<DBSparkMetadata>()).first)
+        XCTAssertEqual(spark.runtimeSeconds, 1234)
+        XCTAssertEqual(spark.renpyVersion, "8.2.0")
+        XCTAssertEqual(spark.saveCount, 3)
+
+        let translation = try XCTUnwrap(context.fetch(FetchDescriptor<DBTranslation>()).first)
+        XCTAssertEqual(translation.translatedText, "你好")
+        let discovery = try XCTUnwrap(context.fetch(FetchDescriptor<DBDiscoverySnapshot>()).first)
+        XCTAssertEqual(discovery.payload, Data("legacy-payload".utf8))
+        let watch = try XCTUnwrap(context.fetch(FetchDescriptor<DBUpdateWatch>()).first)
+        XCTAssertEqual(watch.entityTag, "legacy-etag")
+        XCTAssertTrue(watch.hasBaseline)
+        XCTAssertTrue(watch.isEnabled)
+
+        let collection = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryCollection>()).first)
+        XCTAssertEqual(collection.gameIDs, ["legacy-game-b", "legacy-game-a", "legacy-game-b"])
+        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+            .sorted { $0.sortOrder < $1.sortOrder }
+        XCTAssertEqual(items.map(\.gameID), ["legacy-game-b", "legacy-game-a"])
+        XCTAssertEqual(items.map(\.sortOrder), [0, 1])
+
+        let status = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).first)
+        XCTAssertEqual(status.id, "legacy-status-event")
+        XCTAssertEqual(status.toStatus, "playing")
+        let state = try XCTUnwrap(context.fetch(FetchDescriptor<DBAppState>()).first)
+        XCTAssertEqual(state.stringValue, "preserve-me")
+        XCTAssertEqual(state.dataValue, Data("opaque-state".utf8))
+    }
+
+    @MainActor
+    func testBootstrapFailureKeepsLegacyStoreAndCanRetry() throws {
+        enum InjectedFailure: Error { case stopBeforePromotion }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-retry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let stagingDirectory = directory.appendingPathComponent("itchPocket-v2.staging", isDirectory: true)
+        try createUnversionedLegacyStore(at: legacyURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            beforePromotion: { throw InjectedFailure.stopBeforePromotion }
+        ))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+
+        // The old store is still readable after an interrupted migration.
+        let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        let legacyConfiguration = ModelConfiguration("itchPocket", schema: legacySchema, url: legacyURL)
+        let legacyContainer = try ModelContainer(for: legacySchema, configurations: [legacyConfiguration])
+        XCTAssertEqual(try legacyContainer.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGame>()), 2)
+
+        let recoveredURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recoveredURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+    }
+
+    @MainActor
+    func testRepeatedBootstrapReusesCompletedV2StoreWithoutDuplicatingRows() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-repeat-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try createUnversionedLegacyStore(at: legacyURL)
+
+        let firstURL = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
+        let secondURL = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
+        XCTAssertEqual(firstURL, secondURL)
+
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: secondURL)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 2)
     }
 
     @MainActor
