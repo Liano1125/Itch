@@ -8,7 +8,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         enum SimulatedTermination: Error { case afterPendingMarker }
 
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-pending-legacy-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-pending-legacy-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -42,7 +42,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         enum SimulatedTermination: Error { case afterPendingMarker }
 
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-pending-fresh-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-pending-fresh-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -73,7 +73,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testValidV2StoreCanRecreateMissingMarkerAsCommitted() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-marker-repair-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-marker-repair-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -100,7 +100,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testUnreadableMarkerDoesNotSilentlyRestartFromLegacySnapshot() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-corrupt-marker-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-corrupt-marker-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
