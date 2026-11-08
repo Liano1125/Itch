@@ -283,47 +283,42 @@ private struct PersonalGameCard: View {
         )
     }
 
+    private var latestUpdateText: String? {
+        guard let update = record.gameUpdates?.max(by: {
+            ($0.publishedAt ?? $0.detectedAt) < ($1.publishedAt ?? $1.detectedAt)
+        }) else { return nil }
+        return "最近更新 · \((update.publishedAt ?? update.detectedAt).formatted(date: .abbreviated, time: .omitted))"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 7) {
             NavigationLink {
                 GameDetailView(game: detailGame)
                     .safeAreaInset(edge: .bottom) {
                         LibraryGameActions(game: detailGame)
                     }
             } label: {
-                VStack(alignment: .leading, spacing: 9) {
+                VStack(alignment: .leading, spacing: 6) {
                     GameCover(url: URL(string: record.coverURL ?? ""))
-                        .frame(maxWidth: .infinity)
                     Text(record.title)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
                         .foregroundStyle(.primary)
-                        .frame(height: 40, alignment: .topLeading)
-                    Group {
-                        if let developer = record.developer, !developer.isEmpty {
-                            Text(developer)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        } else {
-                            Color.clear
-                        }
-                    }
-                    .frame(height: 16, alignment: .leading)
-                    Group {
-                        if let latestUpdate = record.gameUpdates?.max(by: { ($0.publishedAt ?? $0.detectedAt) < ($1.publishedAt ?? $1.detectedAt) }) {
-                            Label("最近更新 · \((latestUpdate.publishedAt ?? latestUpdate.detectedAt).formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.orange)
-                                .lineLimit(1)
-                        } else {
-                            Color.clear
-                        }
-                    }
-                    .frame(height: 15, alignment: .leading)
+                        .frame(height: 36, alignment: .topLeading)
+                    Text(record.developer?.isEmpty == false ? record.developer! : " ")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(height: 14, alignment: .leading)
+                    Text(latestUpdateText ?? " ")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .frame(height: 14, alignment: .leading)
                 }
             }
             .buttonStyle(.plain)
+
             Menu {
                 ForEach(LibraryStatus.allCases) { status in
                     Button {
@@ -348,46 +343,50 @@ private struct PersonalGameCard: View {
                     Label("从游戏库移除", systemImage: "trash")
                 }
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     Label(record.status.rawValue, systemImage: record.status.symbol)
-                    Spacer()
+                    Spacer(minLength: 4)
                     if record.isFavorite { Image(systemName: "heart.fill").foregroundStyle(.pink) }
-                    Image(systemName: "chevron.down").font(.caption)
+                    Image(systemName: "chevron.down").font(.caption2)
                 }
                 .font(.caption.weight(.medium))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
             }
             .buttonStyle(.plain)
+
             Text(record.notes.isEmpty ? " " : record.notes)
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
-                .frame(height: 30, alignment: .topLeading)
+                .frame(height: 26, alignment: .topLeading)
         }
-        .padding(10)
-        // Keep every library card the same height even when optional metadata
-        // (developer, update date, notes) is absent or unusually long.
-        .frame(maxWidth: .infinity, minHeight: 350, maxHeight: 350, alignment: .top)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
 private struct GameCover: View {
     let url: URL?
+
     var body: some View {
-        ZStack {
-            Color(uiColor: .tertiarySystemFill)
-            CachedRemoteImage(url: url, contentMode: .fill) {
-                Image(systemName: "gamecontroller.fill")
-                    .foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            ZStack {
+                Color(uiColor: .tertiarySystemFill)
+                CachedRemoteImage(url: url, contentMode: .fill) {
+                    Image(systemName: "gamecontroller.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // The image's intrinsic dimensions must never determine the card layout.
+        // Every grid cell gets the same width, so this fixed ratio produces
+        // identical cover bounds regardless of the source image's dimensions.
         .aspectRatio(1.25, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
