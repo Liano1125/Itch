@@ -281,7 +281,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testExistingCorruptV2StoreIsRejectedWithoutTouchingEitherStore() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-corrupt-v2-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-corrupt-v2-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -307,7 +307,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         enum SimulatedTermination: Error { case afterPromotion }
 
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-post-promotion-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-post-promotion-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
