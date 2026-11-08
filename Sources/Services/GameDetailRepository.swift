@@ -70,7 +70,7 @@ final class GameDetailRepository {
         if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
             let statusKey = fetchStatusPrefix + gameID
             if try database.state(for: statusKey)?.stringValue == nil {
-                setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+                try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
             }
         }
         if shouldSave { try database.save() }
@@ -104,23 +104,21 @@ final class GameDetailRepository {
         ) ?? []
         game.discoveryTagsData = try JSONEncoder().encode(resolvedTags)
 
-        setState(fetchedAt, for: fetchDatePrefix + gameID)
-        setState(GameDetailFetchStatus.complete.rawValue, for: fetchStatusPrefix + gameID)
+        try setState(fetchedAt, for: fetchDatePrefix + gameID)
+        try setState(GameDetailFetchStatus.complete.rawValue, for: fetchStatusPrefix + gameID)
         try database.save()
     }
 
-    private func setState(_ value: Date, for key: String) {
-        let item = (try? database.state(for: key)) ?? nil
-        let state = item ?? DBAppState(key: key)
+    private func setState(_ value: Date, for key: String) throws {
+        let state = try database.state(for: key) ?? DBAppState(key: key)
         if state.modelContext == nil { context.insert(state) }
         state.dateValue = value
         state.stringValue = nil
         state.updatedAt = .now
     }
 
-    private func setState(_ value: String, for key: String) {
-        let item = (try? database.state(for: key)) ?? nil
-        let state = item ?? DBAppState(key: key)
+    private func setState(_ value: String, for key: String) throws {
+        let state = try database.state(for: key) ?? DBAppState(key: key)
         if state.modelContext == nil { context.insert(state) }
         state.stringValue = value
         state.dateValue = nil
