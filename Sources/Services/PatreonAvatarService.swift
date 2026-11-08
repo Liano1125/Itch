@@ -7,6 +7,7 @@ final class PatreonAvatarService {
     private let failureCacheDuration: TimeInterval = 6 * 60 * 60
     private let avatarCacheDuration: TimeInterval = 7 * 24 * 60 * 60
     private let database = AppDatabase.shared
+    private lazy var appStateRepository = AppStateRepository(database: database)
     private var inFlight: [String: Task<URL?, Never>] = [:]
     private var didInvalidateLegacyCache = false
 
@@ -215,11 +216,11 @@ final class PatreonAvatarService {
         guard !didInvalidateLegacyCache else { return }
         didInvalidateLegacyCache = true
         let key = "itchPocket.avatarResolver.version"
-        let current = try? database.state(for: key)?.stringValue
+        let current = try? appStateRepository.state(for: key)?.stringValue
         guard current != "2" else { return }
         do {
             try database.invalidateDeveloperAvatarCaches()
-            try database.setState("2", for: key)
+            try appStateRepository.setString("2", for: key)
         } catch {
             print("itchPocket legacy avatar cache invalidation failed: \(error)")
         }
