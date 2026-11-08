@@ -468,7 +468,7 @@ struct GameDetailView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        .appGlassSurface(cornerRadius: 16)
     }
 
     private var sparkPlaySection: some View {
@@ -523,7 +523,7 @@ struct GameDetailView: View {
         }
         .padding(15)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .appGlassSurface(cornerRadius: 18)
     }
 
     private func sparkMetric(title: String, value: String, symbol: String) -> some View {
@@ -603,7 +603,7 @@ struct GameDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+            .appGlassSurface(cornerRadius: 18)
         }
     }
 
@@ -658,7 +658,7 @@ struct GameDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+            .appGlassSurface(cornerRadius: 18)
         }
     }
 
