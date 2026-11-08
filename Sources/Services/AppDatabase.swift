@@ -5,22 +5,22 @@ import SwiftData
 /// repositories backed by this container instead of creating their own files.
 @MainActor
 final class AppDatabase {
-    static let shared = AppDatabase()
+    /// Installed by the app entry point only after durable storage is verified.
+    static var shared: AppDatabase!
 
     let container: ModelContainer
     var context: ModelContext { container.mainContext }
 
-    init(inMemory: Bool = false) {
+    init(inMemory: Bool = false) throws {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
-        do {
-            if inMemory {
+        if inMemory {
                 let configuration = ModelConfiguration(
                     "itchPocket",
                     schema: schema,
                     isStoredInMemoryOnly: true
                 )
                 container = try ModelContainer(for: schema, configurations: [configuration])
-            } else {
+        } else {
                 // Resolve the exact pre-versioning store location through the
                 // same configuration name used by released builds.
                 let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
@@ -41,11 +41,6 @@ final class AppDatabase {
                     url: v2StoreURL
                 )
                 container = try ModelContainer(for: schema, configurations: [configuration])
-            }
-        } catch {
-            // Never create an empty fallback store after a failed migration.
-            // The original itchPocket store remains available for recovery.
-            fatalError("Unable to open itchPocket database safely: \(error.localizedDescription)")
         }
     }
 
