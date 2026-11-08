@@ -152,7 +152,7 @@ struct GameCalendarView: View {
             .padding(.top, 2)
         }
         .padding(16)
-        .appGlassSurface(cornerRadius: 22)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
@@ -165,8 +165,9 @@ struct GameCalendarView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 34, height: 34)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: Circle())
         }
-        .buttonStyle(AppGlassButtonStyle())
+        .buttonStyle(.plain)
     }
 
     private func legendItem(color: Color, title: String) -> some View {
@@ -204,12 +205,17 @@ struct GameCalendarView: View {
                     .foregroundStyle(isSelected ? .white : .primary)
                 VStack(spacing: 2) {
                     ForEach(dayEvents.prefix(2)) { event in
-                        Text(displayTitle(for: event))
-                            .font(.system(size: 7, weight: .semibold))
-                            .lineLimit(1)
-                            .foregroundStyle(isSelected ? .white : eventColor(event.kind))
-                            .padding(.horizontal, 3)
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 2) {
+                            Circle()
+                                .fill(isSelected ? Color.white.opacity(0.95) : eventColor(event.kind))
+                                .frame(width: 3, height: 3)
+                            Text(displayTitle(for: event))
+                                .font(.system(size: 7, weight: .semibold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(isSelected ? .white : eventColor(event.kind))
+                        .padding(.horizontal, 3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if dayEvents.count > 2 {
                         Text("+\(dayEvents.count - 2)")
@@ -275,7 +281,7 @@ struct GameCalendarView: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .appGlassSurface(cornerRadius: 17)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
                 .overlay {
                     RoundedRectangle(cornerRadius: 17)
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -315,7 +321,7 @@ struct GameCalendarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .appGlassSurface(cornerRadius: 15)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
         .overlay {
             RoundedRectangle(cornerRadius: 15)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -380,8 +386,10 @@ struct GameCalendarView: View {
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if event.kind == .update {
-                    Text(calendarUpdateTitle(event))
+                if event.kind == .update,
+                   let updateTitle = translatedEventTitles[event.id] ?? Optional(event.title.replacingOccurrences(of: "更新：", with: "")),
+                   !updateTitle.isEmpty {
+                    Text(updateTitle)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
