@@ -303,6 +303,43 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testExistingV2StoreWithOrphanedCollectionItemIsRejected() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-orphan-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let finalStoreURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+
+        // This database opens and all tables are readable, but its join row
+        // violates the V2 collection ownership invariant.
+        do {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+            let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            container.mainContext.insert(DBLibraryCollectionItem(
+                id: "orphan-item",
+                collectionID: "missing-collection",
+                gameID: "legacy-game-a",
+                sortOrder: 0
+            ))
+            try container.mainContext.save()
+        }
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: finalStoreURL.path))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+    }
+
+    @MainActor
     func testRestartAfterPromotionReusesValidatedV2Store() throws {
         enum SimulatedTermination: Error { case afterPromotion }
 
