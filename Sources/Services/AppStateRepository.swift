@@ -88,7 +88,12 @@ final class AppStateRepository {
     }
 
     func removeAll(save shouldSave: Bool = true) throws {
-        try database.context.delete(model: DBAppState.self)
+        // Use tracked per-model deletions so save:false remains part of the
+        // caller's ModelContext transaction instead of issuing a bulk delete.
+        let rows = try database.context.fetch(FetchDescriptor<DBAppState>())
+        for row in rows {
+            database.context.delete(row)
+        }
         if shouldSave { try database.save() }
     }
 
