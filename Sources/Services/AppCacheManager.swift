@@ -30,11 +30,9 @@ enum AppCacheManager {
         try context.delete(model: DBTranslation.self)
         try context.delete(model: DBDiscoverySnapshot.self)
 
-        // These are refetchable page enrichments, not user-authored data.
-        for game in try context.fetch(FetchDescriptor<DBGame>()) {
-            game.descriptionText = nil
-            game.galleryURLs = []
-        }
+        // Game descriptions and galleries still live on DBGame in the legacy schema.
+        // Keep them intact until DBGameDetail is introduced with a verified migration;
+        // clearing them here would erase persisted detail data outside the cache tables.
         for state in try context.fetch(FetchDescriptor<DBAppState>()) where state.key.hasPrefix("avatarFailure.") {
             context.delete(state)
         }
