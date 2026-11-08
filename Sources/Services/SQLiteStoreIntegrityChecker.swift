@@ -11,9 +11,9 @@ enum SQLiteStoreIntegrityChecker {
 
         var errorDescription: String? {
             switch self {
-            case .openFailed(let detail): return "SQLite database could not be opened read-only: \\(detail)"
-            case .queryFailed(let detail): return "SQLite quick_check could not run: \\(detail)"
-            case .integrityFailed(let detail): return "SQLite quick_check reported corruption: \\(detail)"
+            case .openFailed(let detail): return "SQLite database could not be opened read-only: \(detail)"
+            case .queryFailed(let detail): return "SQLite quick_check could not run: \(detail)"
+            case .integrityFailed(let detail): return "SQLite quick_check reported corruption: \(detail)"
             }
         }
     }
