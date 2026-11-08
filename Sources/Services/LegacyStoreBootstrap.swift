@@ -30,6 +30,7 @@ enum LegacyStoreBootstrap {
     enum BootstrapError: LocalizedError {
         case incompleteDestination(URL)
         case validationFailed(String)
+        case unsupportedVersion(String)
 
         var errorDescription: String? {
             switch self {
@@ -37,6 +38,8 @@ enum LegacyStoreBootstrap {
                 return "The V2 database directory exists but its store is missing: \(url.path)"
             case .validationFailed(let detail):
                 return "The V2 database copy did not pass integrity validation: \(detail)"
+            case .unsupportedVersion(let version):
+                return "The database was created by an unsupported newer or incompatible version (\(version)). Open it with a compatible newer version. Recovery from the legacy snapshot is blocked to prevent data loss."
             }
         }
     }
@@ -98,10 +101,14 @@ enum LegacyStoreBootstrap {
                 let data = try Data(contentsOf: markerURL)
                 let decoded = try JSONDecoder().decode(BootstrapMarker.self, from: data)
                 guard decoded.schemaVersion == migrationReceiptSchemaVersion else {
-                    throw BootstrapError.validationFailed("The V2 bootstrap marker uses an unsupported schema version.")
+                    throw BootstrapError.unsupportedVersion(decoded.schemaVersion)
                 }
                 marker = decoded
             } catch {
+                if let bootstrapError = error as? BootstrapError,
+                   case .unsupportedVersion = bootstrapError {
+                    throw bootstrapError
+                }
                 markerWasUnreadable = true
                 guard recoverInvalidExistingV2, hasLegacyStore else {
                     throw BootstrapError.validationFailed(
@@ -150,6 +157,10 @@ enum LegacyStoreBootstrap {
                 }
                 return finalStoreURL
             } catch {
+                if let bootstrapError = error as? BootstrapError,
+                   case .unsupportedVersion = bootstrapError {
+                    throw bootstrapError
+                }
                 guard recoverInvalidExistingV2 else {
                     throw BootstrapError.validationFailed(
                         "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
@@ -519,10 +530,19 @@ enum LegacyStoreBootstrap {
         )
         let receiptURL = storeURL.deletingLastPathComponent()
             .appendingPathComponent(migrationReceiptFileName)
-        guard let receiptData = try? Data(contentsOf: receiptURL),
-              let receipt = try? JSONDecoder().decode(MigrationReceipt.self, from: receiptData),
-              receipt.schemaVersion == migrationReceiptSchemaVersion else {
+        guard let receiptData = try? Data(contentsOf: receiptURL) else {
             throw BootstrapError.validationFailed("The V2 migration-completion receipt is missing or invalid.")
+        }
+        let receipt: MigrationReceipt
+        do {
+            receipt = try JSONDecoder().decode(MigrationReceipt.self, from: receiptData)
+        } catch {
+            throw BootstrapError.validationFailed(
+                "The V2 migration-completion receipt is unreadable: \(error.localizedDescription)"
+            )
+        }
+        guard receipt.schemaVersion == migrationReceiptSchemaVersion else {
+            throw BootstrapError.unsupportedVersion(receipt.schemaVersion)
         }
         // Do not compare raw SQLite/WAL bytes with a startup-time fingerprint.
         // SQLite may checkpoint or recreate WAL files without changing logical
