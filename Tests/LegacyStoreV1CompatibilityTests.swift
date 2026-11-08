@@ -202,10 +202,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
 
         // The old store is still readable after an interrupted migration.
-        let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
-        let legacyConfiguration = ModelConfiguration("itchPocket", schema: legacySchema, url: legacyURL)
-        let legacyContainer = try ModelContainer(for: legacySchema, configurations: [legacyConfiguration])
-        XCTAssertEqual(try legacyContainer.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGame>()), 2)
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
 
         let recoveredURL = try LegacyStoreBootstrap.prepareStore(
             legacyStoreURL: legacyURL,
@@ -452,6 +449,15 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         context.insert(appState)
 
         try context.save()
+    }
+
+
+    @MainActor
+    private func legacyGameCount(at storeURL: URL) throws -> Int {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL, allowsSave: false)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        return try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGame>())
     }
 
 
