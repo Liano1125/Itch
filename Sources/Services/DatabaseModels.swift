@@ -254,3 +254,55 @@ final class DBAppState {
         self.updatedAt = updatedAt
     }
 }
+
+
+/// Normalized, independently invalidatable game-detail cache.
+/// Legacy detail columns on DBGame remain until the V3 cutover is verified.
+@Model
+final class DBGameDetail {
+    @Attribute(.unique) var gameID: String
+    var descriptionText: String?
+    var galleryURLs: [String]
+    var discoveryTagsData: Data?
+    var fetchedAt: Date?
+    var isComplete: Bool
+
+    init(
+        gameID: String,
+        descriptionText: String? = nil,
+        galleryURLs: [String] = [],
+        discoveryTagsData: Data? = nil,
+        fetchedAt: Date? = nil,
+        isComplete: Bool = false
+    ) {
+        self.gameID = gameID
+        self.descriptionText = descriptionText
+        self.galleryURLs = galleryURLs
+        self.discoveryTagsData = discoveryTagsData
+        self.fetchedAt = fetchedAt
+        self.isComplete = isComplete
+    }
+}
+
+/// Join record for collection membership. Composite uniqueness is enforced by
+/// LibraryRepository using (collectionID, gameID); id is deterministic for migration.
+@Model
+final class DBLibraryCollectionItem {
+    @Attribute(.unique) var id: String
+    var collectionID: String
+    var gameID: String
+    var sortOrder: Int
+    var addedAt: Date
+
+    init(id: String, collectionID: String, gameID: String, sortOrder: Int, addedAt: Date = .now) {
+        self.id = id
+        self.collectionID = collectionID
+        self.gameID = gameID
+        self.sortOrder = sortOrder
+        self.addedAt = addedAt
+    }
+
+    static func stableID(collectionID: String, gameID: String) -> String {
+        "\(collectionID.utf8.count):\(collectionID)\(gameID.utf8.count):\(gameID)"
+    }
+}
