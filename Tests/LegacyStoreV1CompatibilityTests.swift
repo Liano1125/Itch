@@ -311,7 +311,9 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             gameID: "legacy-game-a",
             title: "Legacy update",
             summary: "Historical update",
+            detectedAt: Date(timeIntervalSince1970: 1_700_000_004),
             publishedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            url: "https://example.com/update",
             sourceID: "legacy-source-a",
             isHistorical: true
         ))
