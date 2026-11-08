@@ -290,7 +290,7 @@ final class GameDetailRepositoryTests: XCTestCase {
             )
         )
 
-        let stored = try repository.detail(for: "test-game")
+        let stored = try XCTUnwrap(repository.detail(for: "test-game"))
         XCTAssertEqual(stored.description, "Previously saved description")
         XCTAssertEqual(stored.galleryURLs, ["https://example.com/old.jpg"])
         XCTAssertNotEqual(stored.fetchStatus, .complete)
