@@ -74,9 +74,6 @@ enum LegacyStoreBootstrap {
         let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreFileName)
 
         if fileManager.fileExists(atPath: finalDirectory.path) {
-            guard fileManager.fileExists(atPath: finalStoreURL.path) else {
-                throw BootstrapError.incompleteDestination(finalStoreURL)
-            }
             do {
                 try validateV2Store(
                     at: finalStoreURL,
