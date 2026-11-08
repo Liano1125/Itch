@@ -76,36 +76,44 @@ final class GameDetailRepository {
         save shouldSave: Bool = true
     ) throws {
         guard let game = try database.game(id: gameID) else { return }
-        game.descriptionText = GameDetailPersistencePolicy.resolvedValue(
-            existing: game.descriptionText,
-            incoming: update.description,
-            mode: .partial
-        )
-        if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
-            existing: Optional(game.galleryURLs),
-            incoming: update.galleryURLs,
-            mode: .partial
-        ) {
-            game.galleryURLs = galleryURLs
-        }
-        let existingTags = game.discoveryTagsData.flatMap {
-            try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
-        }
-        if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
-            existing: existingTags,
-            incoming: update.discoveryTags,
-            mode: .partial
-        ) {
-            game.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
-        }
-        if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
-            let statusKey = fetchStatusPrefix + gameID
-            let existingStatus = try database.state(for: statusKey)?.stringValue
-            if existingStatus == nil {
-                try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+        let statusKey = fetchStatusPrefix + gameID
+        let original = GameFieldsSnapshot(game: game)
+        let stateSnapshots = try captureStates(for: [statusKey])
+        do {
+            game.descriptionText = GameDetailPersistencePolicy.resolvedValue(
+                existing: game.descriptionText,
+                incoming: update.description,
+                mode: .partial
+            )
+            if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
+                existing: Optional(game.galleryURLs),
+                incoming: update.galleryURLs,
+                mode: .partial
+            ) {
+                game.galleryURLs = galleryURLs
             }
+            let existingTags = game.discoveryTagsData.flatMap {
+                try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
+            }
+            if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
+                existing: existingTags,
+                incoming: update.discoveryTags,
+                mode: .partial
+            ) {
+                game.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
+            }
+            if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
+                let existingStatus = try database.state(for: statusKey)?.stringValue
+                if existingStatus == nil {
+                    try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+                }
+            }
+            if shouldSave { try commit() }
+        } catch {
+            original.restore(to: game)
+            restoreStates(stateSnapshots)
+            throw error
         }
-        if shouldSave { try commit() }
     }
 
     /// Applies only fields the page parser positively identified.
@@ -119,39 +127,101 @@ final class GameDetailRepository {
     ) throws -> GameDetailFetchStatus {
         guard let game = try database.game(id: gameID) else { return .unknown }
 
-        if snapshot.descriptionResolved {
-            game.descriptionText = snapshot.description
-        }
-        if snapshot.galleryResolved {
-            game.galleryURLs = snapshot.galleryURLs
-        }
-        if snapshot.tagsResolved {
-            game.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
-        }
-
         let statusKey = fetchStatusPrefix + gameID
-        if snapshot.isComplete {
-            try setState(fetchedAt, for: fetchDatePrefix + gameID)
-            try setState(GameDetailFetchStatus.complete.rawValue, for: statusKey)
-        } else {
-            let existingStatus = try database.state(for: statusKey)?.stringValue
-            if existingStatus == nil || existingStatus == GameDetailFetchStatus.unknown.rawValue {
-                try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+        let dateKey = fetchDatePrefix + gameID
+        let original = GameFieldsSnapshot(game: game)
+        let stateSnapshots = try captureStates(for: [statusKey, dateKey])
+        do {
+            if snapshot.descriptionResolved {
+                game.descriptionText = snapshot.description
             }
-        }
+            if snapshot.galleryResolved {
+                game.galleryURLs = snapshot.galleryURLs
+            }
+            if snapshot.tagsResolved {
+                game.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+            }
 
-        try commit()
-        return snapshot.isComplete ? .complete : .partial
+            if snapshot.isComplete {
+                try setState(fetchedAt, for: dateKey)
+                try setState(GameDetailFetchStatus.complete.rawValue, for: statusKey)
+            } else {
+                let existingStatus = try database.state(for: statusKey)?.stringValue
+                if existingStatus == nil || existingStatus == GameDetailFetchStatus.unknown.rawValue {
+                    try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+                }
+            }
+
+            try commit()
+            return snapshot.isComplete ? .complete : .partial
+        } catch {
+            original.restore(to: game)
+            restoreStates(stateSnapshots)
+            throw error
+        }
     }
 
     private func commit() throws {
-        do {
-            try saveChanges()
-        } catch {
-            // Discard the in-memory mutations from a failed snapshot save so callers
-            // cannot read an uncommitted "complete" status from the shared context.
-            context.rollback()
-            throw error
+        try saveChanges()
+    }
+
+    private struct StateSnapshot {
+        let key: String
+        let state: DBAppState?
+        let stringValue: String?
+        let dateValue: Date?
+        let dataValue: Data?
+        let updatedAt: Date?
+    }
+
+    private struct GameFieldsSnapshot {
+        let descriptionText: String?
+        let galleryURLs: [String]
+        let discoveryTagsData: Data?
+
+        init(game: DBGame) {
+            descriptionText = game.descriptionText
+            galleryURLs = game.galleryURLs
+            discoveryTagsData = game.discoveryTagsData
+        }
+
+        func restore(to game: DBGame) {
+            game.descriptionText = descriptionText
+            game.galleryURLs = galleryURLs
+            game.discoveryTagsData = discoveryTagsData
+        }
+    }
+
+    private func captureStates(for keys: [String]) throws -> [StateSnapshot] {
+        try keys.map { key in
+            let state = try database.state(for: key)
+            return StateSnapshot(
+                key: key,
+                state: state,
+                stringValue: state?.stringValue,
+                dateValue: state?.dateValue,
+                dataValue: state?.dataValue,
+                updatedAt: state?.updatedAt
+            )
+        }
+    }
+
+    /// Restores only the keys touched by this repository operation. Never roll back
+    /// the shared ModelContext, which may contain unrelated pending app changes.
+    private func restoreStates(_ snapshots: [StateSnapshot]) {
+        for snapshot in snapshots {
+            guard let original = snapshot.state else {
+                if let inserted = try? database.state(for: snapshot.key) {
+                    context.delete(inserted)
+                }
+                continue
+            }
+            original.stringValue = snapshot.stringValue
+            original.dateValue = snapshot.dateValue
+            original.dataValue = snapshot.dataValue
+            if let updatedAt = snapshot.updatedAt {
+                original.updatedAt = updatedAt
+            }
         }
     }
 
