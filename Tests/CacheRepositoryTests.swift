@@ -47,12 +47,12 @@ final class CacheRepositoryTests: XCTestCase {
 
         for index in 0..<1201 {
             context.insert(DBTranslation(
-                cacheKey: "existing-\\(index)",
+                cacheKey: "existing-\(index)",
                 scope: "description",
-                sourceHash: "hash-\\(index)",
-                sourceText: "source-\\(index)",
+                sourceHash: "hash-\(index)",
+                sourceText: "source-\(index)",
                 targetLanguage: "en",
-                translatedText: "translated-\\(index)",
+                translatedText: "translated-\(index)",
                 updatedAt: baseline.addingTimeInterval(TimeInterval(index))
             ))
         }
