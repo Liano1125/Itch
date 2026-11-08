@@ -96,12 +96,26 @@ final class DeveloperRepository {
     }
 
     nonisolated static func canonicalID(for rawURL: String) -> String {
-        guard var components = URLComponents(string: rawURL) else { return rawURL.lowercased() }
+        // Normalize the scheme before parsing so Foundation accepts mixed-case
+        // inputs such as HTTPS://... while preserving case-sensitive path data.
+        let normalizedInput: String
+        if let separator = rawURL.range(of: "://") {
+            normalizedInput = rawURL[..<separator.lowerBound].lowercased()
+                + rawURL[separator.lowerBound...]
+        } else {
+            normalizedInput = rawURL
+        }
+
+        guard var components = URLComponents(string: normalizedInput) else {
+            return rawURL.lowercased()
+        }
         components.scheme = components.scheme?.lowercased()
         components.host = components.host?.lowercased()
         components.query = nil
         components.fragment = nil
-        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        while components.path.count > 1 && components.path.hasSuffix("/") {
+            components.path.removeLast()
+        }
         return components.string ?? rawURL.lowercased()
     }
 
