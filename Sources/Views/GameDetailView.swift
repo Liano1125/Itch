@@ -723,11 +723,15 @@ struct GameDetailView: View {
         let existingGame = try? AppDatabase.shared.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
         let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) } ?? existingGame?.developerID
-        let cachedDeveloperName = developerID.flatMap { id in
-            (try? AppDatabase.shared.developer(id: id))?.name
-        }
+        let existingDeveloper = developerID.flatMap { id in
+            try? AppDatabase.shared.developer(id: id)
+        } ?? nil
         let database = AppDatabase.shared
-        let developerName = result.developer ?? game.developer ?? existingRecord?.developer ?? cachedDeveloperName
+        let developerName = GameDetailRepository.resolvedDeveloperName(
+            incoming: result.developer,
+            existing: existingDeveloper?.name,
+            library: game.developer ?? existingRecord?.developer
+        )
         try? database.upsertGame(
             id: game.id,
             title: game.title,
@@ -736,10 +740,10 @@ struct GameDetailView: View {
             engine: result.engine,
             developerID: developerID
         )
-        if let developerID {
+        if let developerID, let developerName {
             try? database.upsertDeveloper(
                 id: developerID,
-                name: developerName ?? "itch.io 开发者",
+                name: developerName,
                 profileURL: authorURL?.absoluteString,
                 patreonURL: result.patreonURL?.absoluteString,
                 discordURL: result.discordURL?.absoluteString
@@ -923,9 +927,20 @@ private enum GamePageScript {
                     }
                 };
 
-                const isCompleteSnapshot = Boolean(document.querySelector(
-                    '.game_page, .game_page_title, .game_page_content, .game_info_panel_widget, .game_author'
+                const pageURL = new URL(location.href);
+                const isItchHost = pageURL.hostname === "itch.io"
+                    || pageURL.hostname.endsWith(".itch.io");
+                const hasGameRoot = Boolean(document.querySelector(".game_page"));
+                const hasGameTitle = Boolean(document.querySelector(
+                    ".game_page_title, .game_page h1, h1.game_title"
                 ));
+                const pathParts = pageURL.pathname.split("/").filter(Boolean);
+                // A generic itch.io header or author widget is not enough: require
+                // an itch.io host, a game-page root, a title, and a non-root path.
+                const isCompleteSnapshot = isItchHost
+                    && hasGameRoot
+                    && hasGameTitle
+                    && pathParts.length > 0;
 
                 let description = null;
                 const descriptionSelectors = [
@@ -1224,13 +1239,20 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 developerID: developerID
             )
             if let developerID {
-                try database.upsertDeveloper(
-                    id: developerID,
-                    name: payload.developer ?? record.developer ?? "itch.io 开发者",
-                    profileURL: authorURL?.absoluteString,
-                    patreonURL: payload.patreonURL?.absoluteString,
-                    discordURL: payload.discordURL?.absoluteString
-                )
+                let existingName = try database.developer(id: developerID)?.name
+                if let developerName = GameDetailRepository.resolvedDeveloperName(
+                    incoming: payload.developer,
+                    existing: existingName,
+                    library: record.developer
+                ) {
+                    try database.upsertDeveloper(
+                        id: developerID,
+                        name: developerName,
+                        profileURL: authorURL?.absoluteString,
+                        patreonURL: payload.patreonURL?.absoluteString,
+                        discordURL: payload.discordURL?.absoluteString
+                    )
+                }
             }
             try GameDetailRepository.shared.replaceCompleteSnapshot(
                 GameDetailCompleteSnapshot(
