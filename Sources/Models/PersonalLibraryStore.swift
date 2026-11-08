@@ -122,11 +122,13 @@ final class PersonalLibraryStore: ObservableObject {
 
     private let database: AppDatabase
     private let libraryRepository: LibraryRepository
+    private let statusHistoryRepository: LibraryStatusHistoryRepository
 
     init() {
         let database = AppDatabase.shared
         self.database = database
         self.libraryRepository = LibraryRepository(database: database)
+        self.statusHistoryRepository = LibraryStatusHistoryRepository(database: database)
         load()
     }
 
@@ -277,11 +279,14 @@ final class PersonalLibraryStore: ObservableObject {
             updatedAt: now
         )
         records.insert(record, at: 0)
-        statusEvents[game.id, default: []].append(
-            LibraryStatusEvent(fromStatus: nil, toStatus: status, changedAt: now)
-        )
+        let event = LibraryStatusEvent(fromStatus: nil, toStatus: status, changedAt: now)
+        statusEvents[game.id, default: []].append(event)
+        do {
+            try statusHistoryRepository.append(event, for: game.id, save: false)
+        } catch {
+            print("itchPocket status history save failed: \(error)")
+        }
         persist(record, save: false)
-        saveStatusEvents(save: false)
         try? database.save()
     }
 
@@ -291,10 +296,17 @@ final class PersonalLibraryStore: ObservableObject {
         var updated = record
         updated.updatedAt = Date()
         if previous.status != updated.status {
-            statusEvents[record.id, default: []].append(
-                LibraryStatusEvent(fromStatus: previous.status, toStatus: updated.status, changedAt: updated.updatedAt)
+            let event = LibraryStatusEvent(
+                fromStatus: previous.status,
+                toStatus: updated.status,
+                changedAt: updated.updatedAt
             )
-            saveStatusEvents(save: false)
+            statusEvents[record.id, default: []].append(event)
+            do {
+                try statusHistoryRepository.append(event, for: record.id, save: false)
+            } catch {
+                print("itchPocket status history save failed: \(error)")
+            }
         }
         records[index] = updated
         persist(updated, save: false)
@@ -429,16 +441,13 @@ final class PersonalLibraryStore: ObservableObject {
                 )
             }.sorted { $0.addedAt > $1.addedAt }
 
-            let statusRows = try context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
-            statusEvents = Dictionary(grouping: statusRows, by: \.gameID).mapValues { rows in
-                rows.map {
-                    LibraryStatusEvent(
-                        id: $0.id,
-                        fromStatus: $0.fromStatus.flatMap(LibraryStatus.init(rawValue:)),
-                        toStatus: LibraryStatus(rawValue: $0.toStatus) ?? .playing,
-                        changedAt: $0.changedAt
-                    )
-                }
+            do {
+                statusEvents = try statusHistoryRepository.loadEvents()
+            } catch {
+                // A status-history read failure must not hide otherwise valid
+                // game-library records from the user.
+                print("itchPocket status history load failed: \(error)")
+                statusEvents = [:]
             }
             do {
                 collections = try libraryRepository.collections()
@@ -559,35 +568,6 @@ final class PersonalLibraryStore: ObservableObject {
             if shouldSave { try database.save() }
         } catch {
             print("itchPocket library database write failed: \(error)")
-        }
-    }
-
-    private func saveStatusEvents(save shouldSave: Bool = true) {
-        let context = database.context
-        do {
-            let desired = statusEvents.flatMap { gameID, events in events.map { (gameID, $0) } }
-            let existing = try context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
-            let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
-            let desiredIDs = Set(desired.map { $0.1.id })
-            for item in existing where !desiredIDs.contains(item.id) { context.delete(item) }
-            for (gameID, event) in desired {
-                let item = existingByID[event.id] ?? DBLibraryStatusEvent(
-                    id: event.id,
-                    gameID: gameID,
-                    fromStatus: event.fromStatus?.rawValue,
-                    toStatus: event.toStatus.rawValue,
-                    changedAt: event.changedAt
-                )
-                if item.modelContext == nil { context.insert(item) }
-                if item.gameID != gameID { item.gameID = gameID }
-                let fromStatus = event.fromStatus?.rawValue
-                if item.fromStatus != fromStatus { item.fromStatus = fromStatus }
-                if item.toStatus != event.toStatus.rawValue { item.toStatus = event.toStatus.rawValue }
-                if item.changedAt != event.changedAt { item.changedAt = event.changedAt }
-            }
-            if shouldSave { try database.save() }
-        } catch {
-            print("itchPocket status history save failed: \(error)")
         }
     }
 
