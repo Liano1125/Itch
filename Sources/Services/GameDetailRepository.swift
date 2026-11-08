@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 /// The detail cache still uses DBGame's legacy columns in this phase.
 /// GameRepository owns those columns; this repository owns detail semantics
@@ -23,8 +22,7 @@ final class GameDetailRepository {
     }
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
-        guard let game = try gameRepository.game(id: gameID),
-              let legacy = try gameRepository.legacyDetail(for: gameID) else { return nil }
+        guard let legacy = try gameRepository.legacyDetail(for: gameID) else { return nil }
         let tags = Self.decodeTags(legacy.discoveryTagsData) ?? []
         let statusValue = try appStateRepository.state(for: fetchStatusPrefix + gameID)?.stringValue
         let currentFetchDate = try appStateRepository.state(for: fetchDatePrefix + gameID)?.dateValue
@@ -220,14 +218,6 @@ struct GameDetailPageSnapshot {
 }
 
 enum GameDetailSnapshotPolicy {
-    static func shouldMarkComplete(
-        descriptionResolved: Bool,
-        galleryResolved: Bool,
-        tagsResolved: Bool
-    ) -> Bool {
-        descriptionResolved && galleryResolved && tagsResolved
-    }
-
     static func shouldMarkComplete(
         descriptionResolved: Bool,
         galleryResolved: Bool,
