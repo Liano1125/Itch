@@ -14,10 +14,17 @@ enum LegacyStoreBootstrap {
     static let bootstrapMarkerFileName = "itchPocket-v2.bootstrap.json"
     private static let migrationReceiptSchemaVersion = "2.0.0"
 
+    private enum BootstrapState: String, Codable {
+        case pending
+        case committed
+    }
+
     private struct BootstrapMarker: Codable {
         let schemaVersion: String
+        let state: BootstrapState?
         let sourceWasLegacy: Bool
         let initializedAt: Date
+        let updatedAt: Date
     }
 
     enum BootstrapError: LocalizedError {
@@ -79,60 +86,116 @@ enum LegacyStoreBootstrap {
         let parentDirectory = finalDirectory.deletingLastPathComponent()
         let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreFileName)
         let markerURL = parentDirectory.appendingPathComponent(bootstrapMarkerFileName)
-        let hasBootstrapMarker = fileManager.fileExists(atPath: markerURL.path)
+        let hasMarkerFile = fileManager.fileExists(atPath: markerURL.path)
         let hasLegacyStore = fileManager.fileExists(atPath: legacyStoreURL.path)
+        let hasFinalDirectory = fileManager.fileExists(atPath: finalDirectory.path)
 
-        // Once V2 has been promoted, the legacy store is only a migration-time
-        // snapshot. Never silently recreate a missing V2 database from that
-        // stale snapshot. Recovery from the legacy snapshot requires an
-        // explicit user-confirmed action in the recovery UI.
-        if hasBootstrapMarker && !fileManager.fileExists(atPath: finalDirectory.path) {
+        var marker: BootstrapMarker?
+        if hasMarkerFile {
+            do {
+                let data = try Data(contentsOf: markerURL)
+                let decoded = try JSONDecoder().decode(BootstrapMarker.self, from: data)
+                guard decoded.schemaVersion == migrationReceiptSchemaVersion else {
+                    throw BootstrapError.validationFailed("The V2 bootstrap marker uses an unsupported schema version.")
+                }
+                marker = decoded
+            } catch {
+                guard recoverInvalidExistingV2, hasLegacyStore else {
+                    throw BootstrapError.validationFailed(
+                        "The V2 bootstrap marker is unreadable. Automatic migration is blocked because the database history cannot be established: \\(error.localizedDescription)"
+                    )
+                }
+                try validateLegacyStore(at: legacyStoreURL)
+            }
+        }
+
+        // A marker written by the previous implementation had no state field.
+        // Treat it as committed (the conservative interpretation), never as a
+        // pending first launch. A pending marker is safe to retry because the
+        // V2 directory has not yet been committed.
+        let markerState = marker?.state ?? (hasMarkerFile ? .committed : nil)
+
+        if let marker, markerState == .committed, !hasFinalDirectory {
             guard recoverInvalidExistingV2 else {
                 throw BootstrapError.validationFailed(
-                    "The V2 database was previously initialized but is now missing. The preserved legacy database may be outdated; automatic rollback is blocked."
+                    "The V2 database was previously committed but is now missing. Automatic rollback to the legacy snapshot is blocked."
                 )
             }
-            guard hasLegacyStore else {
+            guard marker.sourceWasLegacy, hasLegacyStore else {
                 throw BootstrapError.validationFailed(
-                    "The V2 database is missing and no preserved legacy database is available. No new empty database was created."
+                    "The committed V2 database is missing and no recoverable legacy snapshot is available. No empty database was created."
                 )
             }
             try validateLegacyStore(at: legacyStoreURL)
         }
 
-        if fileManager.fileExists(atPath: finalDirectory.path) {
+        if hasFinalDirectory {
             do {
                 try validateV2Store(
                     at: finalStoreURL,
                     legacyStoreURL: hasLegacyStore ? legacyStoreURL : nil
                 )
-                // Adopt stores created by the previous bootstrap implementation.
-                // Write the marker only after the existing V2 store has passed
-                // schema, logical-reference and physical SQLite validation.
-                if !hasBootstrapMarker {
-                    try writeBootstrapMarker(at: markerURL, sourceWasLegacy: hasLegacyStore)
+                // A valid final directory is authoritative. Upgrade older
+                // markers and finish a pending promotion interrupted after
+                // the directory move but before the committed marker write.
+                if markerState != .committed || marker == nil {
+                    try writeBootstrapMarker(
+                        at: markerURL,
+                        state: .committed,
+                        sourceWasLegacy: marker?.sourceWasLegacy ?? hasLegacyStore
+                    )
                 }
                 return finalStoreURL
             } catch {
                 guard recoverInvalidExistingV2 else {
                     throw BootstrapError.validationFailed(
-                        "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
+                        "Existing V2 store was not reusable and has been left untouched: \\(error.localizedDescription)"
                     )
                 }
-                guard hasLegacyStore else {
+                guard hasLegacyStore, marker?.sourceWasLegacy != false else {
                     throw BootstrapError.validationFailed(
-                        "The V2 store is invalid and no preserved legacy database is available. No files were changed."
+                        "The V2 store is invalid and no recoverable legacy snapshot is available. No files were changed."
                     )
                 }
                 try validateLegacyStore(at: legacyStoreURL)
                 let quarantineDirectory = parentDirectory.appendingPathComponent(
-                    "itchPocket-v2.quarantine-\(UUID().uuidString)",
+                    "itchPocket-v2.quarantine-\\(UUID().uuidString)",
                     isDirectory: true
                 )
                 // Keep the entire previous V2 directory, including SQLite
                 // sidecars and receipt, for possible later data salvage.
                 try fileManager.moveItem(at: finalDirectory, to: quarantineDirectory)
             }
+        }
+
+        // If there is no final V2 directory, a committed marker means the
+        // authoritative database disappeared. Only explicit recovery may
+        // rebuild it, and only from a known legacy source.
+        if markerState == .committed {
+            guard recoverInvalidExistingV2,
+                  marker?.sourceWasLegacy == true,
+                  hasLegacyStore else {
+                throw BootstrapError.validationFailed(
+                    "The committed V2 database is missing. A legacy snapshot is not available for safe recovery."
+                )
+            }
+            try validateLegacyStore(at: legacyStoreURL)
+        } else if markerState == .pending {
+            // Pending + legacy source: migration never reached promotion, so
+            // retrying the copy is safe. Pending + fresh install: no user data
+            // was committed, so recreating the empty initial store is safe.
+            if marker?.sourceWasLegacy == true {
+                guard hasLegacyStore else {
+                    throw BootstrapError.validationFailed(
+                        "An interrupted legacy migration has no source database to resume from."
+                    )
+                }
+                try validateLegacyStore(at: legacyStoreURL)
+            }
+        } else if hasMarkerFile {
+            // A marker file existed but could not be interpreted. Do not treat
+            // it as a first install, even when the caller requested recovery.
+            throw BootstrapError.validationFailed("The bootstrap marker state is unknown.")
         }
 
         try fileManager.createDirectory(
@@ -150,15 +213,17 @@ enum LegacyStoreBootstrap {
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
 
         let stagingStoreURL = stagingDirectory.appendingPathComponent(v2StoreFileName)
+        let shouldCopyLegacy = hasLegacyStore && (markerState != .pending || marker?.sourceWasLegacy == true)
 
         do {
-            if hasLegacyStore {
+            if shouldCopyLegacy {
                 _ = try copyLegacyStore(from: legacyStoreURL, to: stagingStoreURL)
                 try beforePromotion?()
             }
 
-            // A fresh install has no legacy source. It still receives the same
-            // V2 schema, receipt and conservative bootstrap marker.
+            // A fresh install creates an empty V2 store. No user database is
+            // replaced; the pending marker makes a crash before promotion
+            // distinguishable from a previously committed V2 database.
             if !fileManager.fileExists(atPath: stagingStoreURL.path) {
                 let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
                 let configuration = ModelConfiguration(
@@ -173,16 +238,25 @@ enum LegacyStoreBootstrap {
 
             try validateV2Store(
                 at: stagingStoreURL,
-                legacyStoreURL: hasLegacyStore ? legacyStoreURL : nil
+                legacyStoreURL: shouldCopyLegacy ? legacyStoreURL : nil
             )
 
-            // Write the durable marker before promotion. If the process stops
-            // between this write and the directory move, next launch fails
-            // closed and requires explicit recovery instead of silently
-            // recreating a database from a possibly stale source.
-            try writeBootstrapMarker(at: markerURL, sourceWasLegacy: hasLegacyStore)
+            // Persist "pending" before promotion. A crash before the move can
+            // safely retry from the untouched legacy source (or recreate an
+            // empty fresh-install store). A crash after the move is completed
+            // by validating the final store and writing "committed" on launch.
+            try writeBootstrapMarker(
+                at: markerURL,
+                state: .pending,
+                sourceWasLegacy: shouldCopyLegacy
+            )
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
             try afterPromotion?()
+            try writeBootstrapMarker(
+                at: markerURL,
+                state: .committed,
+                sourceWasLegacy: shouldCopyLegacy
+            )
             return finalStoreURL
         } catch {
             try? fileManager.removeItem(at: stagingDirectory)
@@ -508,12 +582,18 @@ enum LegacyStoreBootstrap {
 
     private static func writeBootstrapMarker(
         at markerURL: URL,
+        state: BootstrapState,
         sourceWasLegacy: Bool
     ) throws {
+        let now = Date()
+        let existing = try? Data(contentsOf: markerURL)
+        let previous = existing.flatMap { try? JSONDecoder().decode(BootstrapMarker.self, from: $0) }
         let marker = BootstrapMarker(
             schemaVersion: migrationReceiptSchemaVersion,
+            state: state,
             sourceWasLegacy: sourceWasLegacy,
-            initializedAt: .now
+            initializedAt: previous?.initializedAt ?? now,
+            updatedAt: now
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
