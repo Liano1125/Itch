@@ -178,6 +178,42 @@ final class LibraryRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedLibraryRemovalDoesNotLeavePartialPendingDeletions() throws {
+        let database = try AppDatabase(inMemory: true)
+        let context = database.context
+        context.insert(DBGame(id: "game-a", title: "Game A"))
+        context.insert(DBLibraryEntry(gameID: "game-a", status: "在玩"))
+        context.insert(DBSparkMetadata(gameID: "game-a", runtimeSeconds: 60))
+        context.insert(DBLibraryStatusEvent(
+            id: "status-a",
+            gameID: "game-a",
+            fromStatus: nil,
+            toStatus: "在玩"
+        ))
+        context.insert(DBLibraryCollection(
+            id: "collection-a",
+            title: "Collection",
+            gameIDs: ["game-a"]
+        ))
+        context.insert(DBLibraryCollectionItem(
+            id: DBLibraryCollectionItem.stableID(collectionID: "collection-a", gameID: "game-b"),
+            collectionID: "collection-a",
+            gameID: "game-b",
+            sortOrder: 0
+        ))
+        try database.save()
+
+        let repository = LibraryRepository(database: database)
+        XCTAssertThrowsError(try repository.removeGameFromLibrary(gameID: "game-a"))
+
+        XCTAssertNotNil(try context.fetch(FetchDescriptor<DBLibraryEntry>()).first)
+        XCTAssertNotNil(try context.fetch(FetchDescriptor<DBSparkMetadata>()).first)
+        XCTAssertNotNil(try context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).first)
+        let collection = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryCollection>()).first)
+        XCTAssertEqual(collection.gameIDs, ["game-a"])
+    }
+
+    @MainActor
     func testDeletingCollectionDoesNotDeleteItsGames() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
