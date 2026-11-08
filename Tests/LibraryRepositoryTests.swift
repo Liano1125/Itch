@@ -37,6 +37,57 @@ final class LibraryRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testUpdatingCollectionPreservesExistingMembershipAddedAt() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
+        try database.save()
+
+        let repository = LibraryRepository(database: database)
+        let collection = try repository.createCollection(title: "Favorites")
+        let firstAddedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        var edited = collection
+        edited.gameIDs = ["game-a", "game-b"]
+        _ = try repository.updateCollection(edited, now: firstAddedAt)
+
+        var reordered = edited
+        reordered.gameIDs = ["game-b", "game-a"]
+        _ = try repository.updateCollection(reordered, now: firstAddedAt.addingTimeInterval(500))
+
+        let items = try database.context.fetch(
+            FetchDescriptor<DBLibraryCollectionItem>(predicate: #Predicate { $0.collectionID == collection.id })
+        )
+        XCTAssertTrue(items.allSatisfy { $0.addedAt == firstAddedAt })
+        XCTAssertEqual(items.sorted { $0.sortOrder < $1.sortOrder }.map(\\.gameID), ["game-b", "game-a"])
+    }
+
+    @MainActor
+    func testCollectionReadRejectsDisagreementBetweenLegacyAndNormalizedMembership() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
+        database.context.insert(DBLibraryCollection(
+            id: "collection",
+            title: "Collection",
+            gameIDs: ["game-a"]
+        ))
+        database.context.insert(DBLibraryCollectionItem(
+            id: DBLibraryCollectionItem.stableID(collectionID: "collection", gameID: "game-b"),
+            collectionID: "collection",
+            gameID: "game-b",
+            sortOrder: 0
+        ))
+        try database.save()
+
+        let repository = LibraryRepository(database: database)
+        XCTAssertThrowsError(try repository.collections()) { error in
+            guard case LibraryRepository.RepositoryError.membershipOutOfSync("collection") = error else {
+                return XCTFail("Expected membershipOutOfSync, got \\(error)")
+            }
+        }
+    }
+
+    @MainActor
     func testToggleCollectionMembershipAddsAndRemovesWithoutLosingOrder() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
