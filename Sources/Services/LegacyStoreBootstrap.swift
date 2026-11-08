@@ -48,7 +48,8 @@ enum LegacyStoreBootstrap {
     static func prepareStore(
         legacyStoreURL: URL,
         finalDirectory: URL,
-        beforePromotion: (() throws -> Void)? = nil
+        beforePromotion: (() throws -> Void)? = nil,
+        afterPromotion: (() throws -> Void)? = nil
     ) throws -> URL {
         let fileManager = FileManager.default
         let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreFileName)
@@ -57,7 +58,16 @@ enum LegacyStoreBootstrap {
             guard fileManager.fileExists(atPath: finalStoreURL.path) else {
                 throw BootstrapError.incompleteDestination(finalStoreURL)
             }
-            return finalStoreURL
+            do {
+                try validateV2Store(at: finalStoreURL)
+                return finalStoreURL
+            } catch {
+                // Never delete or silently rebuild a pre-existing destination.
+                // Keep both it and the legacy source intact for diagnosis/recovery.
+                throw BootstrapError.validationFailed(
+                    "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
+                )
+            }
         }
 
         try fileManager.createDirectory(
@@ -103,6 +113,9 @@ enum LegacyStoreBootstrap {
             // directory is renamed. Validate/opening is completed in helpers.
             try validateV2Store(at: stagingStoreURL)
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
+            // Simulates termination after promotion. A later launch must validate
+            // and reuse the promoted store rather than recopying legacy rows.
+            try afterPromotion?()
             return finalStoreURL
         } catch {
             try? fileManager.removeItem(at: stagingDirectory)
@@ -343,7 +356,12 @@ enum LegacyStoreBootstrap {
 
     private static func validateV2Store(at storeURL: URL) throws {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
-        let configuration = ModelConfiguration(v2ConfigurationName, schema: schema, url: storeURL)
+        let configuration = ModelConfiguration(
+            v2ConfigurationName,
+            schema: schema,
+            url: storeURL,
+            allowsSave: false
+        )
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = container.mainContext
 
