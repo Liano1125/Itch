@@ -722,20 +722,32 @@ struct GameDetailView: View {
         let cachedDeveloperName = developerID.flatMap { id in
             (try? AppDatabase.shared.developer(id: id))?.name
         }
-        try? AppDatabase.shared.upsertGameDetail(
+        let database = AppDatabase.shared
+        let developerName = result.developer ?? game.developer ?? existingRecord?.developer ?? cachedDeveloperName
+        try? database.upsertGame(
             id: game.id,
             title: game.title,
             gameURL: game.url?.absoluteString,
             coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
-            description: result.description,
-            galleryURLs: result.galleryURLs.map(\.absoluteString),
-            discoveryTags: result.discoveryTags,
             engine: result.engine,
-            developerID: developerID,
-            developerName: result.developer ?? game.developer ?? existingRecord?.developer ?? cachedDeveloperName,
-            developerProfileURL: authorURL?.absoluteString,
-            patreonURL: result.patreonURL?.absoluteString,
-            discordURL: result.discordURL?.absoluteString
+            developerID: developerID
+        )
+        if let developerID {
+            try? database.upsertDeveloper(
+                id: developerID,
+                name: developerName ?? "itch.io 开发者",
+                profileURL: authorURL?.absoluteString,
+                patreonURL: result.patreonURL?.absoluteString,
+                discordURL: result.discordURL?.absoluteString
+            )
+        }
+        try? GameDetailRepository.shared.replaceCompleteSnapshot(
+            GameDetailCompleteSnapshot(
+                description: result.description,
+                galleryURLs: result.galleryURLs.map(\.absoluteString),
+                discoveryTags: result.discoveryTags
+            ),
+            for: game.id
         )
         if !result.galleryURLs.isEmpty {
             cachedGalleryURLs = result.galleryURLs
@@ -777,7 +789,6 @@ struct GameDetailView: View {
             if changed { library.update(record) }
         }
         if let currentDescription = result.description {
-            try? AppDatabase.shared.setGameDescription(currentDescription, for: game.id)
             if cachedOriginalDescription != currentDescription {
                 translatedDescription = nil
             }
@@ -795,19 +806,17 @@ struct GameDetailView: View {
         let database = AppDatabase.shared
         if let savedGame = try? database.game(id: game.id) {
             let developer = savedGame.developerID.flatMap { try? database.developer(id: $0) }
-            let tags = savedGame.discoveryTagsData.flatMap {
-                try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
-            } ?? []
+            let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
             let cachedDetail = GameDetailPayload(
-                description: savedGame.descriptionText,
+                description: savedDetail?.description,
                 developer: developer?.name ?? game.developer,
                 coverURL: URL(string: savedGame.coverURL ?? game.coverURL?.absoluteString ?? ""),
-                galleryURLs: savedGame.galleryURLs.compactMap { URL(string: $0) },
+                galleryURLs: (savedDetail?.galleryURLs ?? []).compactMap { URL(string: $0) },
                 authorURL: URL(string: developer?.profileURL ?? game.developerProfileURL?.absoluteString ?? ""),
                 authorAvatarURL: URL(string: developer?.avatarURL ?? ""),
                 patreonURL: URL(string: developer?.patreonURL ?? ""),
                 discordURL: URL(string: developer?.discordURL ?? ""),
-                discoveryTags: tags,
+                discoveryTags: savedDetail?.discoveryTags ?? [],
                 engine: savedGame.engine
             )
             if cachedDetail.description != nil || cachedDetail.coverURL != nil || !cachedDetail.galleryURLs.isEmpty {
@@ -817,11 +826,6 @@ struct GameDetailView: View {
                 isLoading = false
             }
         }
-
-        let savedGallery = (try? database.galleryURLs(for: game.id)) ?? []
-        cachedGalleryURLs = savedGallery.compactMap { URL(string: $0) }.isEmpty
-            ? cachedGalleryURLs
-            : savedGallery.compactMap { URL(string: $0) }
 
         let target = AppPreferences.string(forKey: TranslationService.targetKey) ?? "zh-CN"
         for update in library.updates(for: game.id) {
@@ -1122,7 +1126,8 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         let sortedCandidates = records.compactMap { record -> (record: LibraryRecord, updatedAt: Date)? in
             guard let rawURL = record.gameURL, URL(string: rawURL) != nil else { return nil }
             let stored = try? database.game(id: record.id)
-            let isComplete = stored?.descriptionText?.isEmpty == false && !(stored?.galleryURLs.isEmpty ?? true)
+            let cachedDetail = try? GameDetailRepository.shared.detail(for: record.id)
+            let isComplete = cachedDetail?.fetchStatus == .complete
             let hasCachedAvatar: Bool = {
                 guard let developerID = stored?.developerID else {
                     return record.developerProfileURL == nil
@@ -1130,8 +1135,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 guard let developer = try? database.developer(id: developerID) else { return false }
                 return developer.avatarURL != nil
             }()
-            let lastPrefetch = try? database.state(for: "detailPrefetch.lastSuccess.\(record.id)")?.dateValue
-            let freshnessDate = lastPrefetch ?? stored?.updatedAt
+            let freshnessDate = cachedDetail?.fetchedAt
             let isFresh = freshnessDate.map { Date().timeIntervalSince($0) < 3 * 24 * 60 * 60 } ?? false
             guard !isComplete || !isFresh || !hasCachedAvatar else { return nil }
             return (record, freshnessDate ?? .distantPast)
@@ -1144,11 +1148,12 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
             await load(candidate.record, url: url)
             guard let stored = try? database.game(id: candidate.record.id) else { continue }
 
+            let cachedDetail = try? GameDetailRepository.shared.detail(for: candidate.record.id)
             var imageURLs = [stored.coverURL].compactMap { $0 }.compactMap { URL(string: $0) }
-            imageURLs += stored.galleryURLs.prefix(8).compactMap { URL(string: $0) }
+            imageURLs += (cachedDetail?.galleryURLs ?? []).prefix(8).compactMap { URL(string: $0) }
             await PersistentImageCache.shared.prefetch(imageURLs)
 
-            if let description = stored.descriptionText, !description.isEmpty, TranslationService.isConfigured {
+            if let description = cachedDetail?.description, !description.isEmpty, TranslationService.isConfigured {
                 _ = try? await TranslationService.translateCached(
                     description,
                     scope: "game-description:\(candidate.record.id)"
@@ -1203,25 +1208,34 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
         let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
         do {
-            try database.upsertGameDetail(
+            try database.upsertGame(
                 id: record.id,
                 title: record.title,
                 gameURL: record.gameURL,
                 coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
-                description: payload.description,
-                galleryURLs: (payload.galleryURLs ?? []).map(\.absoluteString),
-                discoveryTags: payload.discoveryTags ?? [],
                 engine: payload.engine,
-                developerID: developerID,
-                developerName: payload.developer ?? record.developer,
-                developerProfileURL: authorURL?.absoluteString,
-                patreonURL: payload.patreonURL?.absoluteString,
-                discordURL: payload.discordURL?.absoluteString
+                developerID: developerID
+            )
+            if let developerID {
+                try database.upsertDeveloper(
+                    id: developerID,
+                    name: payload.developer ?? record.developer ?? "itch.io 开发者",
+                    profileURL: authorURL?.absoluteString,
+                    patreonURL: payload.patreonURL?.absoluteString,
+                    discordURL: payload.discordURL?.absoluteString
+                )
+            }
+            try GameDetailRepository.shared.replaceCompleteSnapshot(
+                GameDetailCompleteSnapshot(
+                    description: payload.description,
+                    galleryURLs: (payload.galleryURLs ?? []).map(\.absoluteString),
+                    discoveryTags: payload.discoveryTags ?? []
+                ),
+                for: record.id
             )
         } catch {
             print("itchPocket detail prefetch persistence failed: \(error)")
         }
-        try? database.setState(Date(), for: "detailPrefetch.lastSuccess.\(record.id)")
         if let authorURL {
             Task {
                 _ = await PatreonAvatarService.shared.avatarURL(
