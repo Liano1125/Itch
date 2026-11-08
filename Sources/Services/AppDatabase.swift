@@ -12,17 +12,40 @@ final class AppDatabase {
 
     init(inMemory: Bool = false) {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
-        let configuration = ModelConfiguration(
-            "itchPocket",
-            schema: schema,
-            isStoredInMemoryOnly: inMemory
-        )
         do {
-            container = try ModelContainer(for: schema, migrationPlan: ItchPocketMigrationPlan.self, configurations: [configuration])
+            if inMemory {
+                let configuration = ModelConfiguration(
+                    "itchPocket",
+                    schema: schema,
+                    isStoredInMemoryOnly: true
+                )
+                container = try ModelContainer(for: schema, configurations: [configuration])
+            } else {
+                // Resolve the exact pre-versioning store location through the
+                // same configuration name used by released builds.
+                let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+                let legacyConfiguration = ModelConfiguration(
+                    LegacyStoreBootstrap.legacyConfigurationName,
+                    schema: legacySchema
+                )
+                let finalDirectory = legacyConfiguration.url
+                    .deletingLastPathComponent()
+                    .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+                let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
+                    legacyStoreURL: legacyConfiguration.url,
+                    finalDirectory: finalDirectory
+                )
+                let configuration = ModelConfiguration(
+                    LegacyStoreBootstrap.v2ConfigurationName,
+                    schema: schema,
+                    url: v2StoreURL
+                )
+                container = try ModelContainer(for: schema, configurations: [configuration])
+            }
         } catch {
-            // A failed database open must be surfaced rather than silently
-            // falling back to a second, divergent persistence mechanism.
-            fatalError("Unable to open itchPocket database: \(error.localizedDescription)")
+            // Never create an empty fallback store after a failed migration.
+            // The original itchPocket store remains available for recovery.
+            fatalError("Unable to open itchPocket database safely: \(error.localizedDescription)")
         }
     }
 
@@ -105,7 +128,7 @@ final class AppDatabase {
         var changed = item.modelContext == nil
         if item.modelContext == nil { context.insert(item) }
         if item.title != title { item.title = title; changed = true }
-        if let gameURL, item.gameURL != gameURL { item.gameURL = gameURL; changed = true }
+        if let gameURL, item.gameURL != gameURL { item.gameURL = coverURL; changed = true }
         if let coverURL, item.coverURL != coverURL { item.coverURL = coverURL; changed = true }
         if let engine, item.engine != engine { item.engine = engine; changed = true }
         if let developerID, item.developerID != developerID { item.developerID = developerID; changed = true }
