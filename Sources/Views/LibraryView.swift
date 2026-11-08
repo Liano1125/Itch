@@ -293,16 +293,34 @@ private struct PersonalGameCard: View {
             } label: {
                 VStack(alignment: .leading, spacing: 9) {
                     GameCover(url: URL(string: record.coverURL ?? ""))
-                    Text(record.title).font(.subheadline.weight(.semibold)).lineLimit(2).foregroundStyle(.primary)
-                    if let developer = record.developer {
-                        Text(developer).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                    Text(record.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                        .foregroundStyle(.primary)
+                        .frame(height: 40, alignment: .topLeading)
+                    Group {
+                        if let developer = record.developer, !developer.isEmpty {
+                            Text(developer)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else {
+                            Color.clear
+                        }
                     }
-                    if let latestUpdate = record.gameUpdates?.max(by: { ($0.publishedAt ?? $0.detectedAt) < ($1.publishedAt ?? $1.detectedAt) }) {
-                        Label("最近更新 · \((latestUpdate.publishedAt ?? latestUpdate.detectedAt).formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.orange)
-                            .lineLimit(1)
+                    .frame(height: 16, alignment: .leading)
+                    Group {
+                        if let latestUpdate = record.gameUpdates?.max(by: { ($0.publishedAt ?? $0.detectedAt) < ($1.publishedAt ?? $1.detectedAt) }) {
+                            Label("最近更新 · \((latestUpdate.publishedAt ?? latestUpdate.detectedAt).formatted(date: .abbreviated, time: .omitted))", systemImage: "arrow.down.circle.fill")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.orange)
+                                .lineLimit(1)
+                        } else {
+                            Color.clear
+                        }
                     }
+                    .frame(height: 15, alignment: .leading)
                 }
             }
             .buttonStyle(.plain)
@@ -342,9 +360,11 @@ private struct PersonalGameCard: View {
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
             }
             .buttonStyle(.plain)
-            if !record.notes.isEmpty {
-                Text(record.notes).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
+            Text(record.notes.isEmpty ? " " : record.notes)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .frame(height: 30, alignment: .topLeading)
         }
         .padding(10)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
