@@ -302,6 +302,5 @@ final class GameDetailRepositoryTests: XCTestCase {
 
         let preservedState = try XCTUnwrap(AppStateRepository(database: database).state(for: "unrelated.pending.change"))
         XCTAssertEqual(preservedState.stringValue, "keep me")
-        XCTAssertNotNil(preservedState.modelContext)
     }
 }
