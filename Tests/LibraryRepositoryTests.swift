@@ -58,7 +58,7 @@ final class LibraryRepositoryTests: XCTestCase {
             FetchDescriptor<DBLibraryCollectionItem>(predicate: #Predicate { $0.collectionID == collection.id })
         )
         XCTAssertTrue(items.allSatisfy { $0.addedAt == firstAddedAt })
-        XCTAssertEqual(items.sorted { $0.sortOrder < $1.sortOrder }.map(\\.gameID), ["game-b", "game-a"])
+        XCTAssertEqual(items.sorted { $0.sortOrder < $1.sortOrder }.map(\.gameID), ["game-b", "game-a"])
     }
 
     @MainActor
