@@ -349,6 +349,11 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         try createExactUnversionedLegacyStore(at: legacyURL)
 
         let firstURL = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
+
+        // Reopen the preserved source between launches. SQLite may alter WAL/SHM
+        // layout during ordinary reads, but that must not invalidate a completed V2.
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+
         let secondURL = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
         XCTAssertEqual(firstURL, secondURL)
 
