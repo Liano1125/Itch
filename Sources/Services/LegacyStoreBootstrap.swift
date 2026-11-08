@@ -116,7 +116,7 @@ enum LegacyStoreBootstrap {
             } catch {
                 guard recoverInvalidExistingV2 else {
                     throw BootstrapError.validationFailed(
-                        "Existing V2 store was not reusable and has been left untouched: \\(error.localizedDescription)"
+                        "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
                     )
                 }
                 guard hasLegacyStore else {
@@ -126,7 +126,7 @@ enum LegacyStoreBootstrap {
                 }
                 try validateLegacyStore(at: legacyStoreURL)
                 let quarantineDirectory = parentDirectory.appendingPathComponent(
-                    "itchPocket-v2.quarantine-\\(UUID().uuidString)",
+                    "itchPocket-v2.quarantine-\(UUID().uuidString)",
                     isDirectory: true
                 )
                 // Keep the entire previous V2 directory, including SQLite
@@ -450,8 +450,8 @@ enum LegacyStoreBootstrap {
         // SQLite may checkpoint or recreate WAL files without changing logical
         // rows, so byte hashes are not a stable identity for a preserved store.
         // Once a receipt exists, the V2 store is authoritative; validate its
-        // schema, recorded migration baseline, logical references and SQLite
-        // integrity instead of rejecting it because the legacy file layout moved.
+        // schema, logical references and SQLite integrity instead of rejecting
+        // it because mutable business-row counts or legacy file layout changed.
         _ = legacyStoreURL
 
         do {
@@ -459,8 +459,8 @@ enum LegacyStoreBootstrap {
             let context = container.mainContext
 
             // A completion receipt proves this store passed the full copy/validation
-        // path. Also reject a V2 store that has fewer games than the source
-        // snapshot recorded in that receipt (for example, an accidentally empty DB).
+            // path. Every model remains fetchable, but legitimate row deletions
+            // are allowed after migration.
         _ = try context.fetchCount(FetchDescriptor<DBDeveloper>())
         _ = try context.fetchCount(FetchDescriptor<DBGame>())
         _ = try context.fetchCount(FetchDescriptor<DBLibraryEntry>())
@@ -480,9 +480,6 @@ enum LegacyStoreBootstrap {
         // records. Re-check the V2 invariants every time an existing store is
         // reused, without comparing mutable business-row counts to old values.
         let currentGames = try context.fetch(FetchDescriptor<DBGame>())
-        guard currentGames.count >= receipt.counts.games else {
-            throw BootstrapError.validationFailed("The V2 store contains fewer games than its completed migration receipt records.")
-        }
         let gameIDs = Set(currentGames.map(\.id))
         let details = try context.fetch(FetchDescriptor<DBGameDetail>())
         guard details.allSatisfy({ gameIDs.contains($0.gameID) }) else {
