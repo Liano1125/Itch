@@ -72,61 +72,6 @@ final class AppDatabase {
         try context.save()
     }
 
-    static func canonicalDeveloperID(_ rawURL: String) -> String {
-        guard var components = URLComponents(string: rawURL) else { return rawURL.lowercased() }
-        components.scheme = components.scheme?.lowercased()
-        components.host = components.host?.lowercased()
-        components.query = nil
-        components.fragment = nil
-        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return components.string ?? rawURL.lowercased()
-    }
-
-    func developer(id: String) throws -> DBDeveloper? {
-        let descriptor = FetchDescriptor<DBDeveloper>(
-            predicate: #Predicate { $0.id == id }
-        )
-        return try context.fetch(descriptor).first
-    }
-
-    func upsertDeveloper(
-        id: String,
-        name: String,
-        profileURL: String? = nil,
-        patreonURL: String? = nil,
-        discordURL: String? = nil
-    ) throws {
-        let item = try developer(id: id) ?? DBDeveloper(id: id, name: name)
-        var changed = item.modelContext == nil
-        if item.modelContext == nil { context.insert(item) }
-        if !name.isEmpty && item.name != name { item.name = name; changed = true }
-        if let profileURL, item.profileURL != profileURL { item.profileURL = profileURL; changed = true }
-        if let patreonURL, item.patreonURL != patreonURL { item.patreonURL = patreonURL; changed = true }
-        if let discordURL, item.discordURL != discordURL { item.discordURL = discordURL; changed = true }
-        if changed { item.updatedAt = .now }
-        try save()
-    }
-
-    func setDeveloperAvatar(id: String, url: String?, source: String?) throws {
-        guard let item = try developer(id: id) else { return }
-        let changed = item.avatarURL != url || item.avatarSource != source
-        item.avatarURL = url
-        item.avatarSource = source
-        item.avatarResolvedAt = .now
-        if changed { item.updatedAt = .now }
-        try save()
-    }
-
-    func invalidateDeveloperAvatarCaches() throws {
-        let developers = try context.fetch(FetchDescriptor<DBDeveloper>())
-        for developer in developers {
-            developer.avatarURL = nil
-            developer.avatarSource = nil
-            developer.avatarResolvedAt = nil
-        }
-        try save()
-    }
-
     func game(id: String) throws -> DBGame? {
         let descriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == id }
