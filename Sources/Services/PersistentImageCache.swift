@@ -150,7 +150,7 @@ struct CachedRemoteImage<Placeholder: View>: View {
             if let image {
                 if (image.images?.count ?? 0) > 1 {
                     CachedAnimatedImageView(image: image, contentMode: contentMode)
-                        .aspectRatio(contentMode: contentMode)
+                        .clipped()
                 } else {
                     Image(uiImage: image)
                         .resizable()
@@ -177,7 +177,7 @@ private struct CachedAnimatedImageView: UIViewRepresentable {
     let contentMode: ContentMode
 
     func makeUIView(context: Context) -> UIImageView {
-        let view = UIImageView()
+        let view = FlexibleAnimatedImageView()
         view.clipsToBounds = true
         view.contentMode = contentMode == .fit ? .scaleAspectFit : .scaleAspectFill
         view.image = image
@@ -195,6 +195,15 @@ private struct CachedAnimatedImageView: UIViewRepresentable {
         } else {
             view.stopAnimating()
         }
+    }
+}
+
+/// UIImageView normally advertises the source image's pixel dimensions as its
+/// intrinsic size. That makes animated GIFs escape small SwiftUI avatar frames.
+/// Let SwiftUI's proposed container size control the view instead.
+private final class FlexibleAnimatedImageView: UIImageView {
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: UIView.noIntrinsicMetric)
     }
 }
 
