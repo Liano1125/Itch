@@ -184,3 +184,116 @@ final class PersistencePoliciesTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 }
+
+
+private enum GameDetailTestError: Error {
+    case simulatedSaveFailure
+}
+
+final class GameDetailRepositoryTests: XCTestCase {
+    @MainActor
+    func testUnresolvedPageSectionsPreserveStoredDetailsAndDoNotRefreshTimestamp() throws {
+        let database = AppDatabase(inMemory: true)
+        let game = DBGame(
+            id: "test-game",
+            title: "Test Game",
+            descriptionText: "Previously saved description",
+            galleryURLs: ["https://example.com/old.jpg"]
+        )
+        database.context.insert(game)
+        try database.save()
+
+        let repository = GameDetailRepository(database: database)
+        let status = try repository.applyPageSnapshot(
+            GameDetailPageSnapshot(
+                description: nil,
+                descriptionResolved: false,
+                galleryURLs: [],
+                galleryResolved: false,
+                discoveryTags: [],
+                tagsResolved: false
+            ),
+            for: "test-game"
+        )
+
+        let stored = try repository.detail(for: "test-game")
+        XCTAssertEqual(status, .partial)
+        XCTAssertEqual(stored?.description, "Previously saved description")
+        XCTAssertEqual(stored?.galleryURLs, ["https://example.com/old.jpg"])
+        XCTAssertEqual(stored?.fetchStatus, .partial)
+        XCTAssertNil(stored?.fetchedAt)
+    }
+
+    @MainActor
+    func testResolvedEmptySectionsCanClearStoredDetailsAndMarkComplete() throws {
+        let database = AppDatabase(inMemory: true)
+        let game = DBGame(
+            id: "test-game",
+            title: "Test Game",
+            descriptionText: "Previously saved description",
+            galleryURLs: ["https://example.com/old.jpg"]
+        )
+        database.context.insert(game)
+        try database.save()
+
+        let repository = GameDetailRepository(database: database)
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let status = try repository.applyPageSnapshot(
+            GameDetailPageSnapshot(
+                description: nil,
+                descriptionResolved: true,
+                galleryURLs: [],
+                galleryResolved: true,
+                discoveryTags: [],
+                tagsResolved: true
+            ),
+            for: "test-game",
+            fetchedAt: fetchedAt
+        )
+
+        let stored = try repository.detail(for: "test-game")
+        XCTAssertEqual(status, .complete)
+        XCTAssertNil(stored?.description)
+        XCTAssertEqual(stored?.galleryURLs, [])
+        XCTAssertEqual(stored?.fetchStatus, .complete)
+        XCTAssertEqual(stored?.fetchedAt, fetchedAt)
+    }
+
+    @MainActor
+    func testFailedSnapshotSaveRollsBackDataAndDoesNotMarkComplete() throws {
+        let database = AppDatabase(inMemory: true)
+        let game = DBGame(
+            id: "test-game",
+            title: "Test Game",
+            descriptionText: "Previously saved description",
+            galleryURLs: ["https://example.com/old.jpg"]
+        )
+        database.context.insert(game)
+        try database.save()
+
+        let repository = GameDetailRepository(
+            database: database,
+            saveChanges: { throw GameDetailTestError.simulatedSaveFailure }
+        )
+        XCTAssertThrowsError(
+            try repository.applyPageSnapshot(
+                GameDetailPageSnapshot(
+                    description: nil,
+                    descriptionResolved: true,
+                    galleryURLs: [],
+                    galleryResolved: true,
+                    discoveryTags: [],
+                    tagsResolved: true
+                ),
+                for: "test-game",
+                fetchedAt: Date(timeIntervalSince1970: 1_800_000_000)
+            )
+        )
+
+        let stored = try repository.detail(for: "test-game")
+        XCTAssertEqual(stored.description, "Previously saved description")
+        XCTAssertEqual(stored.galleryURLs, ["https://example.com/old.jpg"])
+        XCTAssertNotEqual(stored.fetchStatus, .complete)
+        XCTAssertNil(stored.fetchedAt)
+    }
+}
