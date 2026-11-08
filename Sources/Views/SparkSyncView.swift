@@ -108,7 +108,7 @@ struct SparkSyncView: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         }
         .padding(11)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .appGlassSurface(cornerRadius: 12)
     }
 
     private var summaryHeader: some View {
@@ -150,7 +150,7 @@ struct SparkSyncView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11))
+        .appGlassSurface(cornerRadius: 11)
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {
