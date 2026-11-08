@@ -228,22 +228,12 @@ enum GameDetailSnapshotPolicy {
         descriptionResolved && galleryResolved && tagsResolved
     }
 
-    static func resolvedValue<Value>(
-        existing: Value,
-        incoming: Value,
-        mode: GameDetailUpdateMode
-    ) -> Value {
-        mode == .partial && isMissing(incoming) ? existing : incoming
-    }
-
-    private static func isMissing<Value>(_ value: Value) -> Bool {
-        (value as? OptionalProtocol)?.isNil ?? false
+    static func shouldMarkComplete(
+        descriptionResolved: Bool,
+        galleryResolved: Bool,
+        tagsResolved: Bool
+    ) -> Bool {
+        descriptionResolved && galleryResolved && tagsResolved
     }
 }
 
-private protocol OptionalProtocol {
-    var isNil: Bool { get }
-}
-extension Optional: OptionalProtocol {
-    fileprivate var isNil: Bool { self == nil }
-}
