@@ -34,16 +34,18 @@ final class AppStateRepository {
         return try database.context.fetch(descriptor).first.map(StoredAppState.init)
     }
 
-    func setString(_ value: String?, for key: String, save shouldSave: Bool = true) throws {
+    func setString(_ value: String?, for key: String, clearOtherValues: Bool = false, save shouldSave: Bool = true) throws {
         let row = try existingOrInsert(key: key)
         row.stringValue = value
+        if clearOtherValues { row.dateValue = nil; row.dataValue = nil }
         row.updatedAt = .now
         if shouldSave { try database.save() }
     }
 
-    func setDate(_ value: Date?, for key: String, save shouldSave: Bool = true) throws {
+    func setDate(_ value: Date?, for key: String, clearOtherValues: Bool = false, save shouldSave: Bool = true) throws {
         let row = try existingOrInsert(key: key)
         row.dateValue = value
+        if clearOtherValues { row.stringValue = nil; row.dataValue = nil }
         row.updatedAt = .now
         if shouldSave { try database.save() }
     }
@@ -52,6 +54,28 @@ final class AppStateRepository {
         let row = try existingOrInsert(key: key)
         row.dataValue = value
         row.updatedAt = .now
+        if shouldSave { try database.save() }
+    }
+
+    /// Restores one previously captured key without saving or rolling back the shared context.
+    /// A nil snapshot means the key did not exist before the operation.
+    func restore(_ snapshot: StoredAppState?, for key: String, save shouldSave: Bool = false) throws {
+        let descriptor = FetchDescriptor<DBAppState>(
+            predicate: #Predicate { $0.key == key }
+        )
+        let existing = try database.context.fetch(descriptor).first
+        guard let snapshot else {
+            if let existing { database.context.delete(existing) }
+            if shouldSave { try database.save() }
+            return
+        }
+
+        let row = existing ?? DBAppState(key: key)
+        if row.modelContext == nil { database.context.insert(row) }
+        row.stringValue = snapshot.stringValue
+        row.dateValue = snapshot.dateValue
+        row.dataValue = snapshot.dataValue
+        row.updatedAt = snapshot.updatedAt
         if shouldSave { try database.save() }
     }
 
