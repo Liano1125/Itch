@@ -88,7 +88,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testV1ToV2MigrationCopiesDetailsCollectionsAndCalendarSnapshot() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v1-v2-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v1-v2-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -118,9 +118,9 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
             .filter { $0.collectionID == "legacy-collection" }
             .sorted { $0.sortOrder < $1.sortOrder }
-        XCTAssertEqual(items.map(\\.gameID), ["legacy-game-b", "legacy-game-a"])
-        XCTAssertEqual(items.map(\\.sortOrder), [0, 1])
-        XCTAssertEqual(items.map(\\.id), items.map {
+        XCTAssertEqual(items.map(\.gameID), ["legacy-game-b", "legacy-game-a"])
+        XCTAssertEqual(items.map(\.sortOrder), [0, 1])
+        XCTAssertEqual(items.map(\.id), items.map {
             DBLibraryCollectionItem.stableID(collectionID: $0.collectionID, gameID: $0.gameID)
         })
 
