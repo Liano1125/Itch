@@ -13,7 +13,7 @@ struct itchPocketApp: App {
     init() {
         do {
             let database = try AppDatabase()
-            AppDatabase.shared = database
+            AppDatabase.installShared(database)
             _database = State(initialValue: database)
             _databaseError = State(initialValue: nil)
         } catch {
@@ -46,7 +46,7 @@ struct itchPocketApp: App {
     private func retryDatabase() {
         do {
             let recoveredDatabase = try AppDatabase()
-            AppDatabase.shared = recoveredDatabase
+            AppDatabase.installShared(recoveredDatabase)
             database = recoveredDatabase
             databaseError = nil
         } catch {
