@@ -451,7 +451,11 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-    private func persist(_ record: LibraryRecord, save shouldSave: Bool = true) {
+    private func persist(
+        _ record: LibraryRecord,
+        save shouldSave: Bool = true,
+        updatesAreCompleteSnapshot: Bool = false
+    ) {
         let context = database.context
         do {
             let developerID: String?
@@ -519,10 +523,18 @@ final class PersonalLibraryStore: ObservableObject {
             if entry.addedAt != record.addedAt { entry.addedAt = record.addedAt }
             if entry.updatedAt != record.updatedAt { entry.updatedAt = record.updatedAt }
 
-            // LibraryRecord may contain a partial history (or nil when the
-            // caller did not load updates). Absence from this snapshot is not
-            // an explicit deletion request, so only upsert supplied rows here.
+            // A snapshot is partial by default. Deletion is allowed only when
+            // the caller explicitly confirms that it contains the full history.
+            let oldUpdates = try context.fetch(FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.gameID == gameID }))
             let updates = record.gameUpdates ?? []
+            let currentIDs = Set(updates.map(\\.id))
+            for old in oldUpdates where LibraryUpdatePersistencePolicy.shouldDeleteStoredUpdate(
+                storedID: old.id,
+                incomingIDs: currentIDs,
+                isCompleteSnapshot: updatesAreCompleteSnapshot
+            ) {
+                context.delete(old)
+            }
             for update in updates {
                 let updateID = update.id
                 let updateDescriptor = FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.id == updateID })
