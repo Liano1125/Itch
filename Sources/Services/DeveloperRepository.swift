@@ -95,7 +95,7 @@ final class DeveloperRepository {
         if save { try database.save() }
     }
 
-    static func canonicalID(for rawURL: String) -> String {
+    nonisolated static func canonicalID(for rawURL: String) -> String {
         guard var components = URLComponents(string: rawURL) else { return rawURL.lowercased() }
         components.scheme = components.scheme?.lowercased()
         components.host = components.host?.lowercased()
