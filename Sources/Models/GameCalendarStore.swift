@@ -54,9 +54,11 @@ final class GameCalendarStore: ObservableObject {
     @Published private(set) var events: [GameCalendarEvent] = []
     private let database = AppDatabase.shared
     private let gameUpdateRepository: GameUpdateRepository
+    private let calendarRepository: CalendarRepository
 
     init() {
         self.gameUpdateRepository = GameUpdateRepository(database: database)
+        self.calendarRepository = CalendarRepository(database: database)
         load()
     }
 
@@ -129,7 +131,6 @@ final class GameCalendarStore: ObservableObject {
 
     @discardableResult
     func addHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate]) -> Int {
-        let context = database.context
         var inserted = 0
         for update in updates {
             guard let sourceID = update.sourceID else { continue }
@@ -183,11 +184,7 @@ final class GameCalendarStore: ObservableObject {
     func delete(_ id: String) {
         events.removeAll { $0.id == id }
         do {
-            let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == id })
-            if let item = try database.context.fetch(descriptor).first {
-                database.context.delete(item)
-                try database.save()
-            }
+            try calendarRepository.delete(id: id)
         } catch {
             print("itchPocket calendar deletion failed: \(error)")
         }
@@ -201,7 +198,7 @@ final class GameCalendarStore: ObservableObject {
     private func load() {
         let context = database.context
         do {
-            let storedEvents = try context.fetch(FetchDescriptor<DBCalendarEvent>())
+            let storedEvents = try calendarRepository.loadEvents()
             let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
             let updatesByID = try gameUpdateRepository.loadUpdatesByID()
             events = storedEvents.compactMap { stored in
@@ -247,34 +244,24 @@ final class GameCalendarStore: ObservableObject {
         clearSourceUpdateLink: Bool = false,
         save shouldSave: Bool = true
     ) {
-        let context = database.context
         do {
-            let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == event.id })
-            let item = try context.fetch(descriptor).first ?? DBCalendarEvent(
-                id: event.id,
-                gameID: event.gameID,
-                kind: event.kind.rawValue
+            try calendarRepository.upsert(
+                StoredCalendarEvent(
+                    id: event.id,
+                    gameID: event.gameID,
+                    title: event.title,
+                    date: event.date,
+                    kind: event.kind.rawValue,
+                    reminderEnabled: event.reminderEnabled,
+                    reminderMinutes: event.reminderMinutes,
+                    notes: event.notes,
+                    sourceFingerprint: event.sourceFingerprint,
+                    gameTitleSnapshot: event.gameTitle
+                ),
+                sourceUpdateID: sourceUpdateID,
+                clearSourceUpdateLink: clearSourceUpdateLink,
+                save: shouldSave
             )
-            if item.modelContext == nil { context.insert(item) }
-            item.gameID = event.gameID
-            item.gameTitleSnapshot = event.gameTitle
-            item.kind = event.kind.rawValue
-            item.reminderEnabled = event.reminderEnabled
-            item.reminderMinutes = event.reminderMinutes
-            item.sourceFingerprint = event.sourceFingerprint
-            // Keep a complete event snapshot even when its linked update is later
-            // removed or migrated. The relation enriches the event; it is not its only source.
-            // A missing sourceUpdateID means "leave the existing link alone".
-            // Callers must opt in to clearing it explicitly.
-            item.sourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
-                existing: item.sourceUpdateID,
-                incoming: sourceUpdateID,
-                clear: clearSourceUpdateLink
-            )
-            item.title = event.title
-            item.date = event.date
-            item.notes = event.notes
-            if shouldSave { try database.save() }
         } catch {
             print("itchPocket calendar database write failed: \(error)")
         }
