@@ -141,7 +141,7 @@ enum LegacyStoreBootstrap {
                 // A valid final directory is authoritative. Upgrade older
                 // markers and finish a pending promotion interrupted after
                 // the directory move but before the committed marker write.
-                if markerState != .committed || marker == nil {
+                if marker?.state != .committed {
                     try writeBootstrapMarker(
                         at: markerURL,
                         state: .committed,
