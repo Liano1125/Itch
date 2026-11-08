@@ -126,6 +126,7 @@ final class PersonalLibraryStore: ObservableObject {
     private let gameUpdateRepository: GameUpdateRepository
     private let sparkRepository: SparkRepository
     private let developerRepository: DeveloperRepository
+    private let gameRepository: GameRepository
 
     init() {
         let database = AppDatabase.shared
@@ -135,6 +136,7 @@ final class PersonalLibraryStore: ObservableObject {
         self.gameUpdateRepository = GameUpdateRepository(database: database)
         self.sparkRepository = SparkRepository(database: database)
         self.developerRepository = DeveloperRepository(database: database)
+        self.gameRepository = GameRepository(database: database)
         load()
     }
 
@@ -397,14 +399,13 @@ final class PersonalLibraryStore: ObservableObject {
     private func load() {
         let context = database.context
         do {
-            let games = try context.fetch(FetchDescriptor<DBGame>())
+            let gamesByID = try gameRepository.loadByID()
             let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
             let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
-            let gameByID = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0) })
             records = entries.compactMap { entry in
-                guard let game = gameByID[entry.gameID] else { return nil }
+                guard let game = gamesByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
                 let spark = metadata[game.id]
                 let gameUpdates = updatesByGame[game.id] ?? []
@@ -423,7 +424,9 @@ final class PersonalLibraryStore: ObservableObject {
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
                     gameUpdates: gameUpdates,
-                    discoveryTags: GameDetailRepository.shared.discoveryTags(for: game),
+                    discoveryTags: game.discoveryTagsData.flatMap {
+                        try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
+                    },
                     engine: game.engine,
                     patreonURL: developer?.patreonURL,
                     discordURL: developer?.discordURL,
@@ -502,15 +505,15 @@ final class PersonalLibraryStore: ObservableObject {
             }
 
             let gameID = record.id
-            let gameDescriptor = FetchDescriptor<DBGame>(predicate: #Predicate { $0.id == gameID })
-            let game = try context.fetch(gameDescriptor).first ?? DBGame(id: gameID, title: record.title)
-            if game.modelContext == nil { context.insert(game) }
-            var gameChanged = false
-            if game.title != record.title { game.title = record.title; gameChanged = true }
-            if let gameURL = record.gameURL, game.gameURL != gameURL { game.gameURL = gameURL; gameChanged = true }
-            if let coverURL = record.coverURL, game.coverURL != coverURL { game.coverURL = coverURL; gameChanged = true }
-            if let engine = record.engine, game.engine != engine { game.engine = engine; gameChanged = true }
-            if let developerID, game.developerID != developerID { game.developerID = developerID; gameChanged = true }
+            try gameRepository.upsertMetadata(
+                id: gameID,
+                title: record.title,
+                gameURL: record.gameURL,
+                coverURL: record.coverURL,
+                engine: record.engine,
+                developerID: developerID,
+                save: false
+            )
             if let tags = record.discoveryTags {
                 try GameDetailRepository.shared.applyPartialUpdate(
                     GameDetailPartialUpdate(discoveryTags: tags),
@@ -518,7 +521,6 @@ final class PersonalLibraryStore: ObservableObject {
                     save: false
                 )
             }
-            if gameChanged { game.updatedAt = .now }
 
             let entryDescriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
             let entry = try context.fetch(entryDescriptor).first ?? DBLibraryEntry(gameID: gameID, status: record.status.rawValue)
