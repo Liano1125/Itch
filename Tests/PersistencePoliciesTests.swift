@@ -30,6 +30,39 @@ final class PersistencePoliciesTests: XCTestCase {
         )
     }
 
+    func testDeveloperNameResolutionPreservesExistingNameWhenPageOmitsIt() {
+        XCTAssertEqual(
+            GameDetailRepository.resolvedDeveloperName(
+                incoming: nil,
+                existing: "Saved developer",
+                library: nil
+            ),
+            "Saved developer"
+        )
+    }
+
+    func testDeveloperNameResolutionRejectsPlaceholderAndUsesLibraryFallback() {
+        XCTAssertEqual(
+            GameDetailRepository.resolvedDeveloperName(
+                incoming: "itch.io 开发者",
+                existing: nil,
+                library: "Library developer"
+            ),
+            "Library developer"
+        )
+    }
+
+    func testDeveloperNameResolutionPrefersFreshRealName() {
+        XCTAssertEqual(
+            GameDetailRepository.resolvedDeveloperName(
+                incoming: "New developer",
+                existing: "Saved developer",
+                library: nil
+            ),
+            "New developer"
+        )
+    }
+
     func testPartialLibrarySnapshotDoesNotDeleteOmittedHistory() {
         let shouldDelete = LibraryUpdatePersistencePolicy.shouldDeleteStoredUpdate(
             storedID: "older-update",
