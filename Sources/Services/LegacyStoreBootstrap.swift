@@ -426,11 +426,11 @@ enum LegacyStoreBootstrap {
 
         let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
         let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
-        let collectionIDs = Set(collections.map(\\.id))
+        let collectionIDs = Set(collections.map(\.id))
         guard items.allSatisfy({ collectionIDs.contains($0.collectionID) }) else {
             throw BootstrapError.validationFailed("A collection item references a missing collection.")
         }
-        let stableItemIDs = items.map(\\.id)
+        let stableItemIDs = items.map(\.id)
         guard Set(stableItemIDs).count == stableItemIDs.count else {
             throw BootstrapError.validationFailed("Duplicate collection item identifiers were found.")
         }
