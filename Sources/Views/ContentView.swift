@@ -56,6 +56,7 @@ struct ContentView: View {
                 .tag(AppTab.profile)
         }
         .tint(accent)
+        .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .preferredColorScheme(preferredScheme)
         .animation(.easeInOut(duration: 0.22), value: appearanceMode)

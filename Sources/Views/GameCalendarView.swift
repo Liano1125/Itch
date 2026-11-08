@@ -109,6 +109,7 @@ struct GameCalendarView: View {
                 CalendarEventEditor(event: editingEvent, initialDate: selectedDate, games: library.records) { event in
                     if editingEvent == nil { calendarStore.add(event) } else { calendarStore.update(event) }
                 }
+                .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
         }
     }
@@ -498,6 +499,8 @@ private struct CalendarEventEditor: View {
             }
             .navigationTitle(event == nil ? "添加日历事件" : "编辑事件")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

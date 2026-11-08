@@ -20,21 +20,7 @@ struct ContentPlaceholder: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(28)
-        .background {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.ultraThinMaterial)
-        }
-        .modifier(GlassCardFallback())
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 }
 
-private struct GlassCardFallback: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 28))
-        } else {
-            content
-        }
-    }
-}

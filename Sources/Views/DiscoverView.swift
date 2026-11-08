@@ -208,7 +208,7 @@ struct DiscoverView: View {
         .padding(.leading, 16)
         .padding(.trailing, 9)
         .padding(.vertical, 9)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -294,7 +294,7 @@ struct DiscoverView: View {
                     Text("正在加载作品…").font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
             } else if let curatedError {
                 VStack(alignment: .leading, spacing: 9) {
                     Text(curatedError)
@@ -530,7 +530,7 @@ struct DiscoverView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(recommendationError ?? "暂时没有获取到推荐作品。")
@@ -545,7 +545,7 @@ struct DiscoverView: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
             }
         }
     }
@@ -623,7 +623,7 @@ struct DiscoverView: View {
                                     .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                             }
                             .padding(11)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -659,6 +659,8 @@ struct ItchSearchResultsView: View {
         }
         .navigationTitle(query.isEmpty ? "浏览 itch.io" : query)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             if requiresWebLogin && webLoginCompleted {
                 ToolbarItem(placement: .topBarTrailing) {

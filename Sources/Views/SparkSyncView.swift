@@ -40,7 +40,7 @@ struct SparkSyncView: View {
                         }
                     }
                     .padding(15)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
                 }
                 privacyNote
             }
@@ -93,7 +93,7 @@ struct SparkSyncView: View {
             .disabled(spark.isScanning)
         }
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
     }
 
     private func folderPathRow(title: String, path: String, detail: String) -> some View {
@@ -140,7 +140,7 @@ struct SparkSyncView: View {
             infoRow("存档来源", game.saveSources.isEmpty ? "备份记录" : game.saveSources.joined(separator: "、"))
         }
         .padding(15)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
     private func metric(title: String, value: String, symbol: String) -> some View {
@@ -183,6 +183,6 @@ struct SparkSyncView: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
     }
 }

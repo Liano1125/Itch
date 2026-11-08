@@ -47,6 +47,8 @@ struct ProfileView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .task { await patreon.restore() }
         }
     }
@@ -144,7 +146,7 @@ struct ProfileView: View {
                 }
             }
             .padding(16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
@@ -197,7 +199,7 @@ struct ProfileView: View {
                 }
             }
             .padding(15)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             if !recentRecords.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -227,7 +229,7 @@ struct ProfileView: View {
                     }
                 }
                 .padding(15)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
     }
@@ -251,7 +253,7 @@ struct ProfileView: View {
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
     private func statusTint(for status: LibraryStatus) -> Color {
@@ -367,7 +369,7 @@ struct ProfileView: View {
             }
         }
         .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -497,7 +499,7 @@ struct ProfileView: View {
                 settingsRow("隐私与数据", subtitle: "了解 itchPocket 如何使用数据", symbol: "hand.raised")
             }
             .padding(.horizontal, 14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
@@ -523,7 +525,7 @@ struct ProfileView: View {
                 Spacer()
             }
             .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 

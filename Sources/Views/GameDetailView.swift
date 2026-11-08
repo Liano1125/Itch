@@ -124,6 +124,8 @@ struct GameDetailView: View {
         }
         .navigationTitle("游戏详情")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: reloadDetail) {
@@ -134,6 +136,7 @@ struct GameDetailView: View {
         }
         .sheet(isPresented: $showingGalleryViewer) {
             galleryViewer
+                .presentationBackground(Color.black)
         }
         .overlay {
             DetailPageReader(
@@ -277,6 +280,8 @@ struct GameDetailView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .background(Color.black.ignoresSafeArea())
+            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { showingGalleryViewer = false }
@@ -682,7 +687,7 @@ struct GameDetailView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            .thinMaterial,
+            Color(uiColor: .secondarySystemGroupedBackground),
             in: RoundedRectangle(cornerRadius: 14)
         )
     }

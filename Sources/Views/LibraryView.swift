@@ -138,7 +138,10 @@ struct LibraryView: View {
             }
             .sheet(item: $editingRecord) { record in
                 LibraryNoteEditor(record: record) { library.update($0) }
+                    .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
     }
 
@@ -258,7 +261,7 @@ struct LibraryView: View {
                         .disabled(library.contains(game.id))
                     }
                     .padding(10)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
                 }
             }
         }
@@ -370,7 +373,7 @@ private struct PersonalGameCard: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -418,6 +421,8 @@ private struct LibraryNoteEditor: View {
             }
             .navigationTitle(record.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -619,7 +624,7 @@ private struct LibraryGameActions: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 8)
-        .background(.regularMaterial)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .sheet(isPresented: $showingNotesEditor) {
             NavigationStack {
                 Form {
@@ -630,6 +635,8 @@ private struct LibraryGameActions: View {
                 }
                 .navigationTitle("编辑备注")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("取消") { showingNotesEditor = false }
@@ -644,6 +651,7 @@ private struct LibraryGameActions: View {
                         }
                     }
                 }
+                .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
         }
     }
@@ -672,6 +680,8 @@ private struct CollectionNameEditor: View {
             }
             .navigationTitle(existingTitle == nil ? "新建合集" : "编辑合集")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
