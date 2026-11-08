@@ -163,7 +163,7 @@ enum ItchPocketSchemaV1: VersionedSchema {
         var expiresAt: Date
         init() {
             self.key = ""
-            self.payload = nil
+            self.payload = Data()
             self.fetchedAt = Date.distantPast
             self.expiresAt = Date.distantPast
         }
