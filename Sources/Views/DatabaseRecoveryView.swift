@@ -3,6 +3,8 @@ import SwiftUI
 struct DatabaseRecoveryView: View {
     let errorMessage: String
     let onRetry: () -> Void
+    let onRecover: () -> Void
+    let canRecoverFromLegacy: Bool
 
     var body: some View {
         VStack(spacing: 20) {
@@ -34,6 +36,19 @@ struct DatabaseRecoveryView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+
+            if canRecoverFromLegacy {
+                Text("如果 V2 数据库损坏，可以将它完整隔离保留，再从原始数据库重新迁移。此操作不会删除原始数据库。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button(role: .destructive, action: onRecover) {
+                    Label("保留问题数据库并从旧库恢复", systemImage: "externaldrive.badge.arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .padding(24)
         .frame(maxWidth: 520)
