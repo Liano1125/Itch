@@ -28,20 +28,20 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         )
         let context = container.mainContext
 
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDeveloper>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 2)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBSparkMetadata>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBTranslation>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollection>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAppState>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBDeveloper>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGame>()), 2)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBLibraryEntry>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGameUpdate>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBCalendarEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBSparkMetadata>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBTranslation>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBDiscoverySnapshot>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBUpdateWatch>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBLibraryCollection>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBLibraryStatusEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBAppState>()), 1)
 
-        let games = try context.fetch(FetchDescriptor<DBGame>())
+        let games = try context.fetch(FetchDescriptor<ItchPocketSchemaV1.DBGame>())
         let primaryGame = try XCTUnwrap(games.first { $0.id == "legacy-game-a" })
         XCTAssertEqual(primaryGame.title, "Legacy Game A")
         XCTAssertEqual(primaryGame.descriptionText, "Saved legacy description")
@@ -49,7 +49,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertEqual(primaryGame.discoveryTagsData, Data("legacy-tags".utf8))
 
         let libraryEntry = try XCTUnwrap(
-            context.fetch(FetchDescriptor<DBLibraryEntry>()).first
+            context.fetch(FetchDescriptor<ItchPocketSchemaV1.DBLibraryEntry>()).first
         )
         XCTAssertEqual(libraryEntry.gameID, "legacy-game-a")
         XCTAssertEqual(libraryEntry.status, "playing")
@@ -57,25 +57,25 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertEqual(libraryEntry.notes, "Keep this note")
 
         let collection = try XCTUnwrap(
-            context.fetch(FetchDescriptor<DBLibraryCollection>()).first
+            context.fetch(FetchDescriptor<ItchPocketSchemaV1.DBLibraryCollection>()).first
         )
         // V1 must preserve the old array exactly. De-duplication/reordering,
         // if ever needed, belongs to a separately tested later migration.
         XCTAssertEqual(collection.gameIDs, ["legacy-game-b", "legacy-game-a", "legacy-game-b"])
 
         let calendarEvent = try XCTUnwrap(
-            context.fetch(FetchDescriptor<DBCalendarEvent>()).first
+            context.fetch(FetchDescriptor<ItchPocketSchemaV1.DBCalendarEvent>()).first
         )
         XCTAssertEqual(calendarEvent.gameID, "legacy-game-a")
         XCTAssertNil(calendarEvent.date)
         XCTAssertEqual(calendarEvent.sourceUpdateID, "legacy-update-a")
 
-        let update = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameUpdate>()).first)
+        let update = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV1.DBGameUpdate>()).first)
         XCTAssertEqual(update.id, "legacy-update-a")
         XCTAssertEqual(update.sourceID, "legacy-source-a")
         XCTAssertTrue(update.isHistorical)
 
-        let appState = try XCTUnwrap(context.fetch(FetchDescriptor<DBAppState>()).first)
+        let appState = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV1.DBAppState>()).first)
         XCTAssertEqual(appState.key, "legacy.test.state")
         XCTAssertEqual(appState.stringValue, "preserve-me")
         XCTAssertEqual(appState.dataValue, Data("opaque-state".utf8))
@@ -89,18 +89,18 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         // Keep this list in exact parity with the pre-migration AppDatabase
         // schema. This intentionally uses plain Schema([...]), not V1.
         let legacySchema = Schema([
-            DBDeveloper.self,
-            DBGame.self,
-            DBLibraryEntry.self,
-            DBGameUpdate.self,
-            DBCalendarEvent.self,
-            DBSparkMetadata.self,
-            DBTranslation.self,
-            DBDiscoverySnapshot.self,
-            DBUpdateWatch.self,
-            DBLibraryCollection.self,
-            DBLibraryStatusEvent.self,
-            DBAppState.self
+            ItchPocketSchemaV1.DBDeveloper.self,
+            ItchPocketSchemaV1.DBGame.self,
+            ItchPocketSchemaV1.DBLibraryEntry.self,
+            ItchPocketSchemaV1.DBGameUpdate.self,
+            ItchPocketSchemaV1.DBCalendarEvent.self,
+            ItchPocketSchemaV1.DBSparkMetadata.self,
+            ItchPocketSchemaV1.DBTranslation.self,
+            ItchPocketSchemaV1.DBDiscoverySnapshot.self,
+            ItchPocketSchemaV1.DBUpdateWatch.self,
+            ItchPocketSchemaV1.DBLibraryCollection.self,
+            ItchPocketSchemaV1.DBLibraryStatusEvent.self,
+            ItchPocketSchemaV1.DBAppState.self
         ])
         let configuration = ModelConfiguration(
             "itchPocket",
