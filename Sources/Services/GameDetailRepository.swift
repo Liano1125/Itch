@@ -25,8 +25,9 @@ final class GameDetailRepository {
             try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
         } ?? []
         let statusValue = try database.state(for: fetchStatusPrefix + gameID)?.stringValue
-        let fetchDate = try database.state(for: fetchDatePrefix + gameID)?.dateValue
-            ?? database.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
+        let currentFetchDate = try database.state(for: fetchDatePrefix + gameID)?.dateValue
+        let legacyFetchDate = try database.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
+        let fetchDate = currentFetchDate ?? legacyFetchDate
 
         return GameDetailRecord(
             description: game.descriptionText,
@@ -69,7 +70,8 @@ final class GameDetailRepository {
         }
         if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
             let statusKey = fetchStatusPrefix + gameID
-            if try database.state(for: statusKey)?.stringValue == nil {
+            let existingStatus = try database.state(for: statusKey)?.stringValue
+            if existingStatus == nil {
                 try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
             }
         }
