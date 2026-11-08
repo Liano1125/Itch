@@ -165,9 +165,8 @@ struct GameCalendarView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 34, height: 34)
-                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppGlassButtonStyle())
     }
 
     private func legendItem(color: Color, title: String) -> some View {
