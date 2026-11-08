@@ -325,7 +325,6 @@ final class PersonalLibraryStore: ObservableObject {
         guard !metadataByGameID.isEmpty else { return }
         var didChange = false
         var changedGameIDs = Set<String>()
-        let context = database.context
 
         for index in records.indices {
             guard let metadata = metadataByGameID[records[index].id] else { continue }
