@@ -260,7 +260,7 @@ final class GameDetailRepositoryTests: XCTestCase {
     }
 
     @MainActor
-    func testFailedSnapshotSaveRollsBackDataAndDoesNotMarkComplete() throws {
+    func testFailedSnapshotSaveRestoresOnlyDetailChangesAndPreservesUnrelatedPendingChanges() throws {
         let database = AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
@@ -270,6 +270,10 @@ final class GameDetailRepositoryTests: XCTestCase {
         )
         database.context.insert(game)
         try database.save()
+
+        // This unrelated edit shares the main context but is not part of this repository write.
+        let unrelatedState = DBAppState(key: "unrelated.pending.change", stringValue: "keep me")
+        database.context.insert(unrelatedState)
 
         let repository = GameDetailRepository(
             database: database,
@@ -295,5 +299,9 @@ final class GameDetailRepositoryTests: XCTestCase {
         XCTAssertEqual(stored.galleryURLs, ["https://example.com/old.jpg"])
         XCTAssertNotEqual(stored.fetchStatus, .complete)
         XCTAssertNil(stored.fetchedAt)
+
+        let preservedState = try XCTUnwrap(database.state(for: "unrelated.pending.change"))
+        XCTAssertEqual(preservedState.stringValue, "keep me")
+        XCTAssertNotNil(preservedState.modelContext)
     }
 }
