@@ -24,7 +24,8 @@ enum DevlogAutoSync {
         calendar: GameCalendarStore,
         force: Bool = false
     ) async {
-        let lastAttempt = try? AppDatabase.shared.state(for: lastSyncKey)?.dateValue
+        let stateRepository = AppStateRepository(database: AppDatabase.shared)
+        let lastAttempt = try? stateRepository.state(for: lastSyncKey)?.dateValue
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < interval {
             scheduleNext()
             return
@@ -39,7 +40,7 @@ enum DevlogAutoSync {
             calendarStore: calendar,
             libraryStore: library
         )
-        try? AppDatabase.shared.setState(Date(), for: lastSyncKey)
+        try? stateRepository.setDate(Date(), for: lastSyncKey)
         scheduleNext()
     }
 

@@ -33,9 +33,8 @@ enum AppCacheManager {
         // Game descriptions and galleries still live on DBGame in the legacy schema.
         // Keep them intact until DBGameDetail is introduced with a verified migration;
         // clearing them here would erase persisted detail data outside the cache tables.
-        for state in try context.fetch(FetchDescriptor<DBAppState>()) where state.key.hasPrefix("avatarFailure.") {
-            context.delete(state)
-        }
+        try AppStateRepository(database: AppDatabase.shared)
+            .removeAll(matchingKeyPrefix: "avatarFailure.", save: false)
         for developer in try context.fetch(FetchDescriptor<DBDeveloper>()) {
             developer.avatarURL = nil
             developer.avatarSource = nil

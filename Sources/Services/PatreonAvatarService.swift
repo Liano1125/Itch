@@ -7,6 +7,7 @@ final class PatreonAvatarService {
     private let failureCacheDuration: TimeInterval = 6 * 60 * 60
     private let avatarCacheDuration: TimeInterval = 7 * 24 * 60 * 60
     private let database = AppDatabase.shared
+    private lazy var appStateRepository = AppStateRepository(database: database)
     private var inFlight: [String: Task<URL?, Never>] = [:]
     private var didInvalidateLegacyCache = false
 
@@ -112,11 +113,11 @@ final class PatreonAvatarService {
                 try database.upsertDeveloper(id: key, name: "itch.io 开发者", profileURL: identity.absoluteString)
             }
             guard let avatar else {
-                try database.setState(Date(), for: "avatarFailure.\(key)")
+                try appStateRepository.setDate(Date(), for: "avatarFailure.\(key)")
                 return cachedAvatar(for: identity)
             }
             try database.setDeveloperAvatar(id: key, url: avatar.absoluteString, source: avatarSource)
-            try database.setState(nil as Date?, for: "avatarFailure.\(key)")
+            try appStateRepository.setDate(nil, for: "avatarFailure.\(key)")
             return avatar
         } catch {
             print("itchPocket developer avatar persistence failed: \(error)")
@@ -215,11 +216,11 @@ final class PatreonAvatarService {
         guard !didInvalidateLegacyCache else { return }
         didInvalidateLegacyCache = true
         let key = "itchPocket.avatarResolver.version"
-        let current = try? database.state(for: key)?.stringValue
+        let current = try? appStateRepository.state(for: key)?.stringValue
         guard current != "2" else { return }
         do {
             try database.invalidateDeveloperAvatarCaches()
-            try database.setState("2", for: key)
+            try appStateRepository.setString("2", for: key)
         } catch {
             print("itchPocket legacy avatar cache invalidation failed: \(error)")
         }
@@ -227,7 +228,7 @@ final class PatreonAvatarService {
 
     private func isFailureCached(for url: URL) -> Bool {
         let key = canonicalKey(for: url)
-        guard let failedAt = try? database.state(for: "avatarFailure.\(key)")?.dateValue else { return false }
+        guard let failedAt = try? appStateRepository.state(for: "avatarFailure.\(key)")?.dateValue else { return false }
         return Date().timeIntervalSince(failedAt) < failureCacheDuration
     }
 
