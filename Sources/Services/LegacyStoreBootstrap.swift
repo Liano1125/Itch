@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftData
 
@@ -10,6 +11,8 @@ enum LegacyStoreBootstrap {
     static let v2DirectoryName = "itchPocket-v2"
     static let v2StoreFileName = "itchPocket-v2.store"
     static let stagingDirectoryName = "itchPocket-v2.staging"
+    static let migrationReceiptFileName = "itchPocket-v2.migration.json"
+    private static let migrationReceiptSchemaVersion = "2.0.0"
 
     enum BootstrapError: LocalizedError {
         case incompleteDestination(URL)
@@ -25,7 +28,7 @@ enum LegacyStoreBootstrap {
         }
     }
 
-    struct MigrationCounts: Equatable {
+    struct MigrationCounts: Codable, Equatable {
         let developers: Int
         let games: Int
         let libraryEntries: Int
@@ -40,6 +43,21 @@ enum LegacyStoreBootstrap {
         let appStates: Int
         let gameDetails: Int
         let collectionItems: Int
+
+        static let zero = MigrationCounts(
+            developers: 0, games: 0, libraryEntries: 0, updates: 0,
+            calendarEvents: 0, sparkMetadata: 0, translations: 0,
+            discoverySnapshots: 0, updateWatches: 0, collections: 0,
+            libraryStatusEvents: 0, appStates: 0, gameDetails: 0,
+            collectionItems: 0
+        )
+    }
+
+    private struct MigrationReceipt: Codable, Equatable {
+        let schemaVersion: String
+        let sourceFingerprint: String?
+        let counts: MigrationCounts
+        let completedAt: Date
     }
 
     /// Returns the V2 store URL. A completed V2 store always wins; an existing
@@ -59,7 +77,10 @@ enum LegacyStoreBootstrap {
                 throw BootstrapError.incompleteDestination(finalStoreURL)
             }
             do {
-                try validateV2Store(at: finalStoreURL)
+                try validateV2Store(
+                    at: finalStoreURL,
+                    legacyStoreURL: fileManager.fileExists(atPath: legacyStoreURL.path) ? legacyStoreURL : nil
+                )
                 return finalStoreURL
             } catch {
                 // Never delete or silently rebuild a pre-existing destination.
@@ -86,12 +107,15 @@ enum LegacyStoreBootstrap {
 
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
         let stagingStoreURL = stagingDirectory.appendingPathComponent(v2StoreFileName)
+        let hasLegacyStore = fileManager.fileExists(atPath: legacyStoreURL.path)
+        let sourceFingerprint = hasLegacyStore ? try fingerprint(of: legacyStoreURL) : nil
 
         do {
-            if fileManager.fileExists(atPath: legacyStoreURL.path) {
+            if hasLegacyStore {
                 _ = try copyLegacyStore(
                     from: legacyStoreURL,
-                    to: stagingStoreURL
+                    to: stagingStoreURL,
+                    sourceFingerprint: sourceFingerprint
                 )
                 try beforePromotion?()
             }
@@ -107,11 +131,19 @@ enum LegacyStoreBootstrap {
                 )
                 let container = try ModelContainer(for: schema, configurations: [configuration])
                 try container.mainContext.save()
+                try writeMigrationReceipt(
+                    at: stagingStoreURL,
+                    sourceFingerprint: nil,
+                    counts: .zero
+                )
             }
 
             // The store container must be released before the containing
             // directory is renamed. Validate/opening is completed in helpers.
-            try validateV2Store(at: stagingStoreURL)
+            try validateV2Store(
+                at: stagingStoreURL,
+                legacyStoreURL: hasLegacyStore ? legacyStoreURL : nil
+            )
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
             // Simulates termination after promotion. A later launch must validate
             // and reuse the promoted store rather than recopying legacy rows.
@@ -123,7 +155,11 @@ enum LegacyStoreBootstrap {
         }
     }
 
-    private static func copyLegacyStore(from sourceURL: URL, to destinationURL: URL) throws -> MigrationCounts {
+    private static func copyLegacyStore(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        sourceFingerprint: String?
+    ) throws -> MigrationCounts {
         let sourceSchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let sourceConfiguration = ModelConfiguration(
             legacyConfigurationName,
@@ -351,10 +387,18 @@ enum LegacyStoreBootstrap {
             collectionItems: collectionItemCount
         )
         try validate(context: destinationContext, expected: expected)
+        try writeMigrationReceipt(
+            at: destinationURL,
+            sourceFingerprint: sourceFingerprint,
+            counts: expected
+        )
         return expected
     }
 
-    private static func validateV2Store(at storeURL: URL) throws {
+    private static func validateV2Store(
+        at storeURL: URL,
+        legacyStoreURL: URL?
+    ) throws {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration(
             v2ConfigurationName,
@@ -362,10 +406,26 @@ enum LegacyStoreBootstrap {
             url: storeURL,
             allowsSave: false
         )
+        let receiptURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(migrationReceiptFileName)
+        guard let receiptData = try? Data(contentsOf: receiptURL),
+              let receipt = try? JSONDecoder().decode(MigrationReceipt.self, from: receiptData),
+              receipt.schemaVersion == migrationReceiptSchemaVersion else {
+            throw BootstrapError.validationFailed("The V2 migration-completion receipt is missing or invalid.")
+        }
+        if let legacyStoreURL {
+            let currentFingerprint = try fingerprint(of: legacyStoreURL)
+            guard receipt.sourceFingerprint == currentFingerprint else {
+                throw BootstrapError.validationFailed("The V2 migration receipt does not match the preserved legacy database.")
+            }
+        }
+
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = container.mainContext
 
-        // A fresh store is valid when all tables are readable, even when empty.
+        // A completion receipt proves this store passed the full copy/validation
+        // path. Also reject a V2 store that has fewer games than the source
+        // snapshot recorded in that receipt (for example, an accidentally empty DB).
         _ = try context.fetchCount(FetchDescriptor<DBDeveloper>())
         _ = try context.fetchCount(FetchDescriptor<DBGame>())
         _ = try context.fetchCount(FetchDescriptor<DBLibraryEntry>())
@@ -384,7 +444,11 @@ enum LegacyStoreBootstrap {
         // A readable SQLite store can still contain logically broken join
         // records. Re-check the V2 invariants every time an existing store is
         // reused, without comparing mutable business-row counts to old values.
-        let gameIDs = Set(try context.fetch(FetchDescriptor<DBGame>()).map(\.id))
+        let currentGames = try context.fetch(FetchDescriptor<DBGame>())
+        guard currentGames.count >= receipt.counts.games else {
+            throw BootstrapError.validationFailed("The V2 store contains fewer games than its completed migration receipt records.")
+        }
+        let gameIDs = Set(currentGames.map(\.id))
         let details = try context.fetch(FetchDescriptor<DBGameDetail>())
         guard details.allSatisfy({ gameIDs.contains($0.gameID) }) else {
             throw BootstrapError.validationFailed("A game-detail record references a missing game.")
@@ -404,6 +468,51 @@ enum LegacyStoreBootstrap {
                 throw BootstrapError.validationFailed("A collection contains duplicate membership for game \(item.gameID).")
             }
         }
+    }
+
+    private static func writeMigrationReceipt(
+        at storeURL: URL,
+        sourceFingerprint: String?,
+        counts: MigrationCounts
+    ) throws {
+        let receipt = MigrationReceipt(
+            schemaVersion: migrationReceiptSchemaVersion,
+            sourceFingerprint: sourceFingerprint,
+            counts: counts,
+            completedAt: .now
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(receipt)
+        let receiptURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(migrationReceiptFileName)
+        try data.write(to: receiptURL, options: .atomic)
+    }
+
+    /// Hash the stable SQLite store and WAL files. The transient SHM file is
+    /// intentionally excluded because SQLite may recreate/remove it at will.
+    private static func fingerprint(of storeURL: URL) throws -> String {
+        var hasher = SHA256()
+        let candidates = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal")
+        ]
+        for candidate in candidates {
+            hasher.update(data: Data(candidate.lastPathComponent.utf8))
+            guard FileManager.default.fileExists(atPath: candidate.path) else {
+                hasher.update(data: Data("<missing>".utf8))
+                continue
+            }
+            let handle = try FileHandle(forReadingFrom: candidate)
+            defer { try? handle.close() }
+            while true {
+                let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
+                if chunk.isEmpty { break }
+                hasher.update(data: chunk)
+            }
+            try handle.close()
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func validate(context: ModelContext, expected: MigrationCounts) throws {
