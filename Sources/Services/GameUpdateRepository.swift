@@ -19,6 +19,8 @@ final class GameUpdateRepository {
             switch self {
             case .updateIDConflict(let id):
                 return "Game-update ID \(id) is already associated with another game."
+            case .updateIDAlreadyExists(let id):
+                return "Historical game-update ID \(id) is already used by another stored entry."
             case .duplicateUpdateID(let id):
                 return "The update batch contains duplicate ID \(id)."
             }
