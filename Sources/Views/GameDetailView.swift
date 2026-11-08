@@ -1007,9 +1007,11 @@ private enum GamePageScript {
                 for (const selector of descriptionSelectors) {
                     const element = document.querySelector(selector);
                     const value = clean(element);
-                    if (value.length > 0) descriptionResolved = true;
-                    if (value.length > 20) {
+                    // Keep the resolved flag aligned with the value we actually save.
+                    // Short but valid descriptions must not resolve to nil and erase cache.
+                    if (value.length > 0) {
                         description = value;
+                        descriptionResolved = true;
                         break;
                     }
                 }
