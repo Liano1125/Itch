@@ -80,6 +80,11 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertEqual(appState.stringValue, "preserve-me")
         XCTAssertEqual(appState.dataValue, Data("opaque-state".utf8))
 
+        // Versioned nested model snapshots must retain the entity names of
+        // the original top-level model classes used by the shipped app.
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBGame.self), Schema.entityName(for: DBGame.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBCalendarEvent.self), Schema.entityName(for: DBCalendarEvent.self))
+
         // A read-only open must not mutate the store as a side effect.
         XCTAssertFalse(context.hasChanges)
     }
