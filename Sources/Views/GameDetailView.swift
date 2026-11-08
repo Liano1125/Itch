@@ -72,7 +72,8 @@ struct GameDetailView: View {
     }
 
     private var displayDescription: String? {
-        detail?.description ?? cachedOriginalDescription ?? game.description
+        if let detail { return detail.description }
+        return cachedOriginalDescription ?? game.description
     }
 
     var body: some View {
