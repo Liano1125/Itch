@@ -11,27 +11,14 @@ final class AppDatabase {
     var context: ModelContext { container.mainContext }
 
     init(inMemory: Bool = false) {
-        let schema = Schema([
-            DBDeveloper.self,
-            DBGame.self,
-            DBLibraryEntry.self,
-            DBGameUpdate.self,
-            DBCalendarEvent.self,
-            DBSparkMetadata.self,
-            DBTranslation.self,
-            DBDiscoverySnapshot.self,
-            DBUpdateWatch.self,
-            DBLibraryCollection.self,
-            DBLibraryStatusEvent.self,
-            DBAppState.self
-        ])
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration(
             "itchPocket",
             schema: schema,
             isStoredInMemoryOnly: inMemory
         )
         do {
-            container = try ModelContainer(for: schema, configurations: [configuration])
+            container = try ModelContainer(for: schema, migrationPlan: ItchPocketMigrationPlan.self, configurations: [configuration])
         } catch {
             // A failed database open must be surfaced rather than silently
             // falling back to a second, divergent persistence mechanism.
@@ -159,6 +146,8 @@ final class AppDatabase {
 
     func removeAllAppData() throws {
         try context.delete(model: DBAppState.self)
+        try context.delete(model: DBLibraryCollectionItem.self)
+        try context.delete(model: DBGameDetail.self)
         try context.delete(model: DBLibraryStatusEvent.self)
         try context.delete(model: DBLibraryCollection.self)
         try context.delete(model: DBUpdateWatch.self)
