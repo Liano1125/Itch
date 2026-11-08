@@ -152,7 +152,7 @@ struct GameCalendarView: View {
             .padding(.top, 2)
         }
         .padding(16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .appGlassSurface(cornerRadius: 22)
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
@@ -276,7 +276,7 @@ struct GameCalendarView: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
+                .appGlassSurface(cornerRadius: 17)
                 .overlay {
                     RoundedRectangle(cornerRadius: 17)
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -313,7 +313,7 @@ struct GameCalendarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
+        .appGlassSurface(cornerRadius: 15)
         .overlay {
             RoundedRectangle(cornerRadius: 15)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -403,7 +403,7 @@ struct GameCalendarView: View {
             }
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .appGlassSurface(cornerRadius: 17)
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.065), lineWidth: 1)
