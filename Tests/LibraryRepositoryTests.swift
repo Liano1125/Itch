@@ -81,8 +81,11 @@ final class LibraryRepositoryTests: XCTestCase {
 
         let repository = LibraryRepository(database: database)
         XCTAssertThrowsError(try repository.collections()) { error in
-            guard case LibraryRepository.RepositoryError.membershipOutOfSync("collection") = error else {
-                return XCTFail("Expected membershipOutOfSync, got \\(error)")
+            guard let repositoryError = error as? LibraryRepository.RepositoryError else {
+                return XCTFail("Expected RepositoryError, got \\(error)")
+            }
+            guard case .membershipOutOfSync("collection") = repositoryError else {
+                return XCTFail("Expected membershipOutOfSync, got \\(repositoryError)")
             }
         }
     }
