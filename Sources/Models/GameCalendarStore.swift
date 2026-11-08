@@ -55,10 +55,12 @@ final class GameCalendarStore: ObservableObject {
     private let database = AppDatabase.shared
     private let gameUpdateRepository: GameUpdateRepository
     private let calendarRepository: CalendarRepository
+    private let gameRepository: GameRepository
 
     init() {
         self.gameUpdateRepository = GameUpdateRepository(database: database)
         self.calendarRepository = CalendarRepository(database: database)
+        self.gameRepository = GameRepository(database: database)
         load()
     }
 
@@ -196,10 +198,9 @@ final class GameCalendarStore: ObservableObject {
     }
 
     private func load() {
-        let context = database.context
         do {
             let storedEvents = try calendarRepository.loadEvents()
-            let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
+            let games = try gameRepository.loadByID()
             let updatesByID = try gameUpdateRepository.loadUpdatesByID()
             events = storedEvents.compactMap { stored in
                 // A linked update is usable only when it belongs to this exact game.
