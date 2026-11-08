@@ -366,6 +366,83 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testMissingV2AfterBootstrapIsNotAutomaticallyRecreatedFromLegacySnapshot() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-missing-v2-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        _ = try LegacyStoreBootstrap.prepareStore(legacyStoreURL: legacyURL, finalDirectory: finalDirectory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+
+        try FileManager.default.removeItem(at: finalDirectory)
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+
+        // Rebuilding from the legacy snapshot is possible only through the
+        // explicit recovery path, which the UI now gates behind confirmation.
+        let recoveredURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            recoverInvalidExistingV2: true
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recoveredURL.path))
+        XCTAssertEqual(try v2GameCount(at: recoveredURL), 2)
+    }
+
+    @MainActor
+    func testLegitimatelyEmptyV2StoreIsAcceptedAfterUserDeletesAllData() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-empty-v2-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let storeURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+
+        do {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+            let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            try context.delete(model: DBAppState.self)
+            try context.delete(model: DBLibraryCollectionItem.self)
+            try context.delete(model: DBGameDetail.self)
+            try context.delete(model: DBLibraryStatusEvent.self)
+            try context.delete(model: DBLibraryCollection.self)
+            try context.delete(model: DBUpdateWatch.self)
+            try context.delete(model: DBDiscoverySnapshot.self)
+            try context.delete(model: DBTranslation.self)
+            try context.delete(model: DBSparkMetadata.self)
+            try context.delete(model: DBCalendarEvent.self)
+            try context.delete(model: DBGameUpdate.self)
+            try context.delete(model: DBLibraryEntry.self)
+            try context.delete(model: DBGame.self)
+            try context.delete(model: DBDeveloper.self)
+            try context.save()
+        }
+
+        let reopenedURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertEqual(try v2GameCount(at: reopenedURL), 0)
+    }
+
+    @MainActor
     func testExistingCorruptV2StoreIsRejectedWithoutTouchingEitherStore() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-bootstrap-corrupt-v2-\(UUID().uuidString)", isDirectory: true)
