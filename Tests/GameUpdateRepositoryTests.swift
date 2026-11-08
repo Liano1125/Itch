@@ -134,8 +134,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
             id: "existing",
             gameID: "game-a",
             summary: "Existing",
-            sourceID: "source-existing",
             url: "https://example.com/existing",
+            sourceID: "source-existing",
             isHistorical: true
         ))
         try database.save()
@@ -143,11 +143,11 @@ final class GameUpdateRepositoryTests: XCTestCase {
         let repository = GameUpdateRepository(database: database)
         let inserted = try repository.appendHistoricalUpdates([
             GameLibraryUpdate(id: "duplicate-source", summary: "Duplicate", sourceID: "source-existing"),
-            GameLibraryUpdate(id: "new-one", summary: "New", sourceID: "source-new", url: "https://example.com/new", isHistorical: true),
+            GameLibraryUpdate(id: "new-one", summary: "New", url: "https://example.com/new", sourceID: "source-new", isHistorical: true),
             GameLibraryUpdate(id: "duplicate-url", summary: "Duplicate URL", url: "https://example.com/new", isHistorical: true)
         ], for: "game-a")
 
-        XCTAssertEqual(inserted.map(\.id), ["new-one"])
+        XCTAssertEqual(inserted.map { $0.id }, ["new-one"])
         let rows = try database.context.fetch(FetchDescriptor<DBGameUpdate>())
         XCTAssertEqual(Set(rows.map(\.id)), ["existing", "new-one"])
     }
@@ -160,8 +160,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
             gameID: "game-a",
             title: "Original",
             summary: "Must remain unchanged",
-            sourceID: "original-source",
             url: "https://example.com/original",
+            sourceID: "original-source",
             isHistorical: true
         ))
         try database.save()
@@ -172,8 +172,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
                 id: "collision",
                 title: "Replacement",
                 summary: "Must not overwrite",
-                sourceID: "different-source",
                 url: "https://example.com/different",
+                sourceID: "different-source",
                 isHistorical: true
             )
         ], for: "game-a", save: false))
