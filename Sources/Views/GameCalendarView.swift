@@ -307,7 +307,7 @@ struct GameCalendarView: View {
                 } else {
                     Text(event.title).font(.subheadline.weight(.semibold))
                 }
-                Text("(event.kind.rawValue) · (chineseDate(event.date, format: "HH:mm"))")
+                Text("\(event.kind.rawValue) · \(chineseDate(event.date, format: "HH:mm"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
