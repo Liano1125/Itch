@@ -11,7 +11,14 @@ enum LegacyStoreBootstrap {
     static let v2StoreFileName = "itchPocket-v2.store"
     static let stagingDirectoryName = "itchPocket-v2.staging"
     static let migrationReceiptFileName = "itchPocket-v2.migration.json"
+    static let bootstrapMarkerFileName = "itchPocket-v2.bootstrap.json"
     private static let migrationReceiptSchemaVersion = "2.0.0"
+
+    private struct BootstrapMarker: Codable {
+        let schemaVersion: String
+        let sourceWasLegacy: Bool
+        let initializedAt: Date
+    }
 
     enum BootstrapError: LocalizedError {
         case incompleteDestination(URL)
@@ -69,68 +76,89 @@ enum LegacyStoreBootstrap {
         recoverInvalidExistingV2: Bool = false
     ) throws -> URL {
         let fileManager = FileManager.default
+        let parentDirectory = finalDirectory.deletingLastPathComponent()
         let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreFileName)
+        let markerURL = parentDirectory.appendingPathComponent(bootstrapMarkerFileName)
+        let hasBootstrapMarker = fileManager.fileExists(atPath: markerURL.path)
+        let hasLegacyStore = fileManager.fileExists(atPath: legacyStoreURL.path)
+
+        // Once V2 has been promoted, the legacy store is only a migration-time
+        // snapshot. Never silently recreate a missing V2 database from that
+        // stale snapshot. Recovery from the legacy snapshot requires an
+        // explicit user-confirmed action in the recovery UI.
+        if hasBootstrapMarker && !fileManager.fileExists(atPath: finalDirectory.path) {
+            guard recoverInvalidExistingV2 else {
+                throw BootstrapError.validationFailed(
+                    "The V2 database was previously initialized but is now missing. The preserved legacy database may be outdated; automatic rollback is blocked."
+                )
+            }
+            guard hasLegacyStore else {
+                throw BootstrapError.validationFailed(
+                    "The V2 database is missing and no preserved legacy database is available. No new empty database was created."
+                )
+            }
+            try validateLegacyStore(at: legacyStoreURL)
+        }
 
         if fileManager.fileExists(atPath: finalDirectory.path) {
             do {
                 try validateV2Store(
                     at: finalStoreURL,
-                    legacyStoreURL: fileManager.fileExists(atPath: legacyStoreURL.path) ? legacyStoreURL : nil
+                    legacyStoreURL: hasLegacyStore ? legacyStoreURL : nil
                 )
+                // Adopt stores created by the previous bootstrap implementation.
+                // Write the marker only after the existing V2 store has passed
+                // schema, logical-reference and physical SQLite validation.
+                if !hasBootstrapMarker {
+                    try writeBootstrapMarker(at: markerURL, sourceWasLegacy: hasLegacyStore)
+                }
                 return finalStoreURL
             } catch {
                 guard recoverInvalidExistingV2 else {
-                    // Default startup is deliberately non-destructive.
                     throw BootstrapError.validationFailed(
-                        "Existing V2 store was not reusable and has been left untouched: \(error.localizedDescription)"
+                        "Existing V2 store was not reusable and has been left untouched: \\(error.localizedDescription)"
                     )
                 }
-                guard fileManager.fileExists(atPath: legacyStoreURL.path) else {
+                guard hasLegacyStore else {
                     throw BootstrapError.validationFailed(
                         "The V2 store is invalid and no preserved legacy database is available. No files were changed."
                     )
                 }
                 try validateLegacyStore(at: legacyStoreURL)
-                let quarantineDirectory = finalDirectory.deletingLastPathComponent()
-                    .appendingPathComponent(
-                        "itchPocket-v2.quarantine-\(UUID().uuidString)",
-                        isDirectory: true
-                    )
-                // Same-volume move preserves the complete V2 directory, including
-                // SQLite sidecars and the migration receipt, for later inspection.
+                let quarantineDirectory = parentDirectory.appendingPathComponent(
+                    "itchPocket-v2.quarantine-\\(UUID().uuidString)",
+                    isDirectory: true
+                )
+                // Keep the entire previous V2 directory, including SQLite
+                // sidecars and receipt, for possible later data salvage.
                 try fileManager.moveItem(at: finalDirectory, to: quarantineDirectory)
             }
         }
 
         try fileManager.createDirectory(
-            at: finalDirectory.deletingLastPathComponent(),
+            at: parentDirectory,
             withIntermediateDirectories: true
         )
 
-        let stagingDirectory = finalDirectory.deletingLastPathComponent()
-            .appendingPathComponent(stagingDirectoryName, isDirectory: true)
-
-        // A previous process may have been terminated while building the
-        // staging copy. It is disposable because the source is authoritative.
+        let stagingDirectory = parentDirectory.appendingPathComponent(
+            stagingDirectoryName,
+            isDirectory: true
+        )
         if fileManager.fileExists(atPath: stagingDirectory.path) {
             try fileManager.removeItem(at: stagingDirectory)
         }
-
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+
         let stagingStoreURL = stagingDirectory.appendingPathComponent(v2StoreFileName)
-        let hasLegacyStore = fileManager.fileExists(atPath: legacyStoreURL.path)
 
         do {
             if hasLegacyStore {
-                _ = try copyLegacyStore(
-                    from: legacyStoreURL,
-                    to: stagingStoreURL
-                )
+                _ = try copyLegacyStore(from: legacyStoreURL, to: stagingStoreURL)
                 try beforePromotion?()
             }
 
-            // For a new install there is no legacy store. Create an empty V2
-            // store in staging and promote it through the same atomic path.
+            // A fresh install has no legacy source. It still receives the same
+            // V2 schema, receipt and conservative bootstrap marker.
             if !fileManager.fileExists(atPath: stagingStoreURL.path) {
                 let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
                 let configuration = ModelConfiguration(
@@ -140,21 +168,20 @@ enum LegacyStoreBootstrap {
                 )
                 let container = try ModelContainer(for: schema, configurations: [configuration])
                 try container.mainContext.save()
-                try writeMigrationReceipt(
-                    at: stagingStoreURL,
-                    counts: .zero
-                )
+                try writeMigrationReceipt(at: stagingStoreURL, counts: .zero)
             }
 
-            // The store container must be released before the containing
-            // directory is renamed. Validate/opening is completed in helpers.
             try validateV2Store(
                 at: stagingStoreURL,
                 legacyStoreURL: hasLegacyStore ? legacyStoreURL : nil
             )
+
+            // Write the durable marker before promotion. If the process stops
+            // between this write and the directory move, next launch fails
+            // closed and requires explicit recovery instead of silently
+            // recreating a database from a possibly stale source.
+            try writeBootstrapMarker(at: markerURL, sourceWasLegacy: hasLegacyStore)
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
-            // Simulates termination after promotion. A later launch must validate
-            // and reuse the promoted store rather than recopying legacy rows.
             try afterPromotion?()
             return finalStoreURL
         } catch {
@@ -480,6 +507,20 @@ enum LegacyStoreBootstrap {
 
         // SwiftData has released its container before SQLite is opened directly.
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+    }
+
+    private static func writeBootstrapMarker(
+        at markerURL: URL,
+        sourceWasLegacy: Bool
+    ) throws {
+        let marker = BootstrapMarker(
+            schemaVersion: migrationReceiptSchemaVersion,
+            sourceWasLegacy: sourceWasLegacy,
+            initializedAt: .now
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try encoder.encode(marker).write(to: markerURL, options: .atomic)
     }
 
     /// Validate the preserved source before moving a broken V2 directory aside.
