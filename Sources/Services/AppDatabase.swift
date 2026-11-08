@@ -10,7 +10,7 @@ final class AppDatabase {
     let container: ModelContainer
     var context: ModelContext { container.mainContext }
 
-    private init() {
+    init(inMemory: Bool = false) {
         let schema = Schema([
             DBDeveloper.self,
             DBGame.self,
@@ -28,7 +28,7 @@ final class AppDatabase {
         let configuration = ModelConfiguration(
             "itchPocket",
             schema: schema,
-            isStoredInMemoryOnly: false
+            isStoredInMemoryOnly: inMemory
         )
         do {
             container = try ModelContainer(for: schema, configurations: [configuration])
