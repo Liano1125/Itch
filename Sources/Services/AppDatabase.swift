@@ -24,7 +24,16 @@ final class AppDatabase {
     let container: ModelContainer
     var context: ModelContext { container.mainContext }
 
-    init(inMemory: Bool = false) throws {
+    static var hasLegacyStoreForRecovery: Bool {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        let configuration = ModelConfiguration(
+            LegacyStoreBootstrap.legacyConfigurationName,
+            schema: schema
+        )
+        return FileManager.default.fileExists(atPath: configuration.url.path)
+    }
+
+    init(inMemory: Bool = false, recoverCorruptV2: Bool = false) throws {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         if inMemory {
             let configuration = ModelConfiguration(
@@ -46,7 +55,8 @@ final class AppDatabase {
                 .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
             let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
                 legacyStoreURL: legacyConfiguration.url,
-                finalDirectory: finalDirectory
+                finalDirectory: finalDirectory,
+                recoverInvalidExistingV2: recoverCorruptV2
             )
             let configuration = ModelConfiguration(
                 LegacyStoreBootstrap.v2ConfigurationName,
