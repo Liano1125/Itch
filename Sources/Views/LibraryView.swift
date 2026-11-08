@@ -179,7 +179,8 @@ struct LibraryView: View {
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 13)
                 .padding(.vertical, 8)
-                .background(selected ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                .background(selected ? Color.accentColor.opacity(0.22) : .clear, in: Capsule())
+                .appGlassSurface(cornerRadius: 50)
                 .foregroundStyle(selected ? .white : .primary)
         }
         .buttonStyle(.plain)
@@ -352,7 +353,7 @@ private struct PersonalGameCard: View {
                 .font(.caption.weight(.medium))
                 .padding(.horizontal, 9)
                 .padding(.vertical, 6)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                .appGlassSurface(cornerRadius: 50)
             }
             .buttonStyle(.plain)
 
@@ -541,7 +542,7 @@ private struct LibraryGameActions: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                            .appGlassSurface(cornerRadius: 12)
                     }
                     .buttonStyle(.plain)
 
@@ -554,7 +555,7 @@ private struct LibraryGameActions: View {
                             .font(.headline)
                             .foregroundStyle(record.isFavorite ? .pink : .primary)
                             .frame(width: 44, height: 42)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                            .appGlassSurface(cornerRadius: 12)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(record.isFavorite ? "取消收藏" : "收藏游戏")
@@ -572,7 +573,7 @@ private struct LibraryGameActions: View {
                             .font(.headline)
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 42)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                            .appGlassSurface(cornerRadius: 12)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("管理所属合集")
@@ -585,7 +586,7 @@ private struct LibraryGameActions: View {
                             .font(.headline)
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 42)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                            .appGlassSurface(cornerRadius: 12)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("编辑游戏备注")
@@ -613,7 +614,7 @@ private struct LibraryGameActions: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 8)
-        .background(.regularMaterial)
+        .appGlassSurface(cornerRadius: 18)
         .sheet(isPresented: $showingNotesEditor) {
             NavigationStack {
                 Form {
