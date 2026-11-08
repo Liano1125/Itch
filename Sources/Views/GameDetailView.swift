@@ -55,7 +55,7 @@ struct GameDetailView: View {
     @State private var resolvedAuthorAvatarURL: URL?
 
     private var galleryImages: [URL] {
-        if let latest = detail?.galleryURLs, !latest.isEmpty { return latest }
+        if let detail { return detail.galleryURLs }
         return cachedGalleryURLs
     }
 
@@ -749,9 +749,7 @@ struct GameDetailView: View {
             ),
             for: game.id
         )
-        if !result.galleryURLs.isEmpty {
-            cachedGalleryURLs = result.galleryURLs
-        }
+        cachedGalleryURLs = result.galleryURLs
         Task {
             await PersistentImageCache.shared.prefetch(Array(result.galleryURLs.prefix(6)))
         }
@@ -767,8 +765,7 @@ struct GameDetailView: View {
                 record.developerAvatarURL = avatarURL.absoluteString
                 changed = true
             }
-            if !result.discoveryTags.isEmpty,
-               record.discoveryTags != result.discoveryTags {
+            if record.discoveryTags != result.discoveryTags {
                 record.discoveryTags = result.discoveryTags
                 changed = true
             }
@@ -788,12 +785,10 @@ struct GameDetailView: View {
             }
             if changed { library.update(record) }
         }
-        if let currentDescription = result.description {
-            if cachedOriginalDescription != currentDescription {
-                translatedDescription = nil
-            }
-            cachedOriginalDescription = currentDescription
+        if cachedOriginalDescription != result.description {
+            translatedDescription = nil
         }
+        cachedOriginalDescription = result.description
         translatedUpdates = [:]
         translationStatus = nil
         selectedGalleryIndex = 0
