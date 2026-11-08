@@ -43,7 +43,7 @@ final class GameDetailRepository {
 
     /// Resolves a usable developer name without ever persisting a placeholder.
     /// Fresh page data wins; otherwise preserve the existing database/library name.
-    static func resolvedDeveloperName(
+    nonisolated static func resolvedDeveloperName(
         incoming: String?,
         existing: String?,
         library: String?
