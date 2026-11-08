@@ -279,6 +279,65 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testExistingCorruptV2StoreIsRejectedWithoutTouchingEitherStore() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-corrupt-v2-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let corruptStoreURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+        let corruptBytes = Data("intentionally-corrupt-store".utf8)
+        try corruptBytes.write(to: corruptStoreURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+
+        XCTAssertEqual(try Data(contentsOf: corruptStoreURL), corruptBytes)
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+    }
+
+    @MainActor
+    func testRestartAfterPromotionReusesValidatedV2Store() throws {
+        enum SimulatedTermination: Error { case afterPromotion }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-post-promotion-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            afterPromotion: { throw SimulatedTermination.afterPromotion }
+        ))
+
+        let promotedURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: promotedURL.path))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+
+        let recoveredURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertEqual(recoveredURL, promotedURL)
+
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: recoveredURL, allowsSave: false)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+    }
+
+    @MainActor
     private func createUnversionedLegacyStore(at storeURL: URL) throws {
         // This is intentionally built from the original top-level model types,
         // not the V1 nested snapshots, so the test exercises the real legacy shape.
