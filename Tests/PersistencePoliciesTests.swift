@@ -193,7 +193,7 @@ private enum GameDetailTestError: Error {
 final class GameDetailRepositoryTests: XCTestCase {
     @MainActor
     func testUnresolvedPageSectionsPreserveStoredDetailsAndDoNotRefreshTimestamp() throws {
-        let database = AppDatabase(inMemory: true)
+        let database = try AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
             title: "Test Game",
@@ -226,7 +226,7 @@ final class GameDetailRepositoryTests: XCTestCase {
 
     @MainActor
     func testResolvedEmptySectionsCanClearStoredDetailsAndMarkComplete() throws {
-        let database = AppDatabase(inMemory: true)
+        let database = try AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
             title: "Test Game",
@@ -261,7 +261,7 @@ final class GameDetailRepositoryTests: XCTestCase {
 
     @MainActor
     func testFailedSnapshotSaveRestoresOnlyDetailChangesAndPreservesUnrelatedPendingChanges() throws {
-        let database = AppDatabase(inMemory: true)
+        let database = try AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
             title: "Test Game",
