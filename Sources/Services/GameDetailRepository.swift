@@ -45,14 +45,33 @@ final class GameDetailRepository {
         save shouldSave: Bool = true
     ) throws {
         guard let game = try database.game(id: gameID) else { return }
-        if let description = update.description {
-            game.descriptionText = description
-        }
-        if let galleryURLs = update.galleryURLs {
+        game.descriptionText = GameDetailPersistencePolicy.resolvedValue(
+            existing: game.descriptionText,
+            incoming: update.description,
+            mode: .partial
+        )
+        if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
+            existing: Optional(game.galleryURLs),
+            incoming: update.galleryURLs,
+            mode: .partial
+        ) {
             game.galleryURLs = galleryURLs
         }
-        if let discoveryTags = update.discoveryTags {
+        let existingTags = game.discoveryTagsData.flatMap {
+            try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
+        }
+        if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
+            existing: existingTags,
+            incoming: update.discoveryTags,
+            mode: .partial
+        ) {
             game.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
+        }
+        if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
+            let statusKey = fetchStatusPrefix + gameID
+            if try database.state(for: statusKey)?.stringValue == nil {
+                setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+            }
         }
         if shouldSave { try database.save() }
     }
@@ -65,9 +84,25 @@ final class GameDetailRepository {
         fetchedAt: Date = .now
     ) throws {
         guard let game = try database.game(id: gameID) else { return }
-        game.descriptionText = snapshot.description
-        game.galleryURLs = snapshot.galleryURLs
-        game.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+        game.descriptionText = GameDetailPersistencePolicy.resolvedValue(
+            existing: game.descriptionText,
+            incoming: snapshot.description,
+            mode: .complete
+        )
+        game.galleryURLs = GameDetailPersistencePolicy.resolvedValue(
+            existing: Optional(game.galleryURLs),
+            incoming: snapshot.galleryURLs,
+            mode: .complete
+        ) ?? []
+        let existingTags = game.discoveryTagsData.flatMap {
+            try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
+        }
+        let resolvedTags = GameDetailPersistencePolicy.resolvedValue(
+            existing: existingTags,
+            incoming: snapshot.discoveryTags,
+            mode: .complete
+        ) ?? []
+        game.discoveryTagsData = try JSONEncoder().encode(resolvedTags)
 
         setState(fetchedAt, for: fetchDatePrefix + gameID)
         setState(GameDetailFetchStatus.complete.rawValue, for: fetchStatusPrefix + gameID)
