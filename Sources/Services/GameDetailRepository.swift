@@ -8,7 +8,6 @@ final class GameDetailRepository {
     static let shared = GameDetailRepository(database: .shared)
 
     private let database: AppDatabase
-    private let context: ModelContext
     private let appStateRepository: AppStateRepository
     private let saveChanges: () throws -> Void
 
@@ -18,7 +17,6 @@ final class GameDetailRepository {
 
     init(database: AppDatabase, saveChanges: (() throws -> Void)? = nil) {
         self.database = database
-        self.context = database.context
         self.appStateRepository = AppStateRepository(database: database)
         self.saveChanges = saveChanges ?? { try database.save() }
     }
