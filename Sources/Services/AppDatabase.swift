@@ -128,7 +128,7 @@ final class AppDatabase {
         var changed = item.modelContext == nil
         if item.modelContext == nil { context.insert(item) }
         if item.title != title { item.title = title; changed = true }
-        if let gameURL, item.gameURL != gameURL { item.gameURL = coverURL; changed = true }
+        if let gameURL, item.gameURL != gameURL { item.gameURL = gameURL; changed = true }
         if let coverURL, item.coverURL != coverURL { item.coverURL = coverURL; changed = true }
         if let engine, item.engine != engine { item.engine = engine; changed = true }
         if let developerID, item.developerID != developerID { item.developerID = developerID; changed = true }
