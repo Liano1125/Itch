@@ -397,6 +397,9 @@ enum LegacyStoreBootstrap {
             guard collectionIDs.contains(item.collectionID) else {
                 throw BootstrapError.validationFailed("A collection item references a missing collection.")
             }
+            guard gameIDs.contains(item.gameID) else {
+                throw BootstrapError.validationFailed("A collection item references a missing game.")
+            }
             guard membershipsByCollection[item.collectionID, default: []].insert(item.gameID).inserted else {
                 throw BootstrapError.validationFailed("A collection contains duplicate membership for game \(item.gameID).")
             }
