@@ -12,6 +12,7 @@ struct StoredGameUpdate {
 final class GameUpdateRepository {
     enum RepositoryError: LocalizedError {
         case updateIDConflict(String)
+        case updateIDAlreadyExists(String)
         case duplicateUpdateID(String)
 
         var errorDescription: String? {
@@ -178,8 +179,12 @@ final class GameUpdateRepository {
             let descriptor = FetchDescriptor<DBGameUpdate>(
                 predicate: #Predicate { $0.id == updateID }
             )
-            if let existing = try context.fetch(descriptor).first, existing.gameID != gameID {
-                throw RepositoryError.updateIDConflict(updateID)
+            if let existing = try context.fetch(descriptor).first {
+                guard existing.gameID == gameID else {
+                    throw RepositoryError.updateIDConflict(updateID)
+                }
+                // A same-game ID collision is not a source/URL duplicate. Never overwrite it.
+                throw RepositoryError.updateIDAlreadyExists(updateID)
             }
         }
 
