@@ -256,7 +256,12 @@ final class GameCalendarStore: ObservableObject {
         }
     }
 
-    private func persist(_ event: GameCalendarEvent, sourceUpdateID: String? = nil, save shouldSave: Bool = true) {
+    private func persist(
+        _ event: GameCalendarEvent,
+        sourceUpdateID: String? = nil,
+        clearSourceUpdateLink: Bool = false,
+        save shouldSave: Bool = true
+    ) {
         let context = database.context
         do {
             let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == event.id })
@@ -273,7 +278,13 @@ final class GameCalendarStore: ObservableObject {
             item.sourceFingerprint = event.sourceFingerprint
             // Keep a complete event snapshot even when its linked update is later
             // removed or migrated. The relation enriches the event; it is not its only source.
-            item.sourceUpdateID = sourceUpdateID
+            // A missing sourceUpdateID means "leave the existing link alone".
+            // Callers must opt in to clearing it explicitly.
+            item.sourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
+                existing: item.sourceUpdateID,
+                incoming: sourceUpdateID,
+                clear: clearSourceUpdateLink
+            )
             item.title = event.title
             item.date = event.date
             item.notes = event.notes
