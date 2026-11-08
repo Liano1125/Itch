@@ -84,6 +84,11 @@ struct GameCalendarView: View {
             .task(id: translationTaskKey) {
                 await translateCalendarEvents()
             }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
             .navigationTitle("游戏日历")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -155,7 +160,7 @@ struct GameCalendarView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
         }
     }
 
@@ -282,10 +287,7 @@ struct GameCalendarView: View {
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 17)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-                }
+
             } else {
                 VStack(spacing: 9) {
                     ForEach(selectedEvents) { event in
@@ -322,10 +324,7 @@ struct GameCalendarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 15))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-        }
+
     }
 
     private var timelineSection: some View {
@@ -412,10 +411,7 @@ struct GameCalendarView: View {
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.065), lineWidth: 1)
-            }
+
         }
     }
 
