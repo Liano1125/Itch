@@ -224,7 +224,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let legacyURL = directory.appendingPathComponent("itchPocket.store")
         let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
         let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
-        let receiptURL = directory.appendingPathComponent(LegacyStoreBootstrap.migrationReceiptFileName)
+        let receiptURL = finalDirectory.appendingPathComponent(LegacyStoreBootstrap.migrationReceiptFileName)
         try createExactUnversionedLegacyStore(at: legacyURL)
         let storeURL = try LegacyStoreBootstrap.prepareStore(
             legacyStoreURL: legacyURL,
