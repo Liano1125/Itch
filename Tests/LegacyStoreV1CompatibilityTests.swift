@@ -368,7 +368,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testMissingV2AfterBootstrapIsNotAutomaticallyRecreatedFromLegacySnapshot() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-missing-v2-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-missing-v2-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -401,7 +401,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testLegitimatelyEmptyV2StoreIsAcceptedAfterUserDeletesAllData() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-empty-v2-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-empty-v2-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -863,6 +863,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         try context.save()
     }
 
+
+    @MainActor
+    private func v2GameCount(at storeURL: URL) throws -> Int {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL, allowsSave: false)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        return try container.mainContext.fetchCount(FetchDescriptor<DBGame>())
+    }
 
     @MainActor
     private func legacyGameCount(at storeURL: URL) throws -> Int {
