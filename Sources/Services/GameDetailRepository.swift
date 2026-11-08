@@ -106,37 +106,40 @@ final class GameDetailRepository {
         if shouldSave { try database.save() }
     }
 
-    /// A successful full page parse is authoritative, including nil description
-    /// and empty arrays. Fetch freshness is independent of DBGame.updatedAt.
-    func replaceCompleteSnapshot(
-        _ snapshot: GameDetailCompleteSnapshot,
+    /// Applies only fields the page parser positively identified.
+    /// A page is considered fresh/complete only when every detail section was resolved.
+    /// Missing DOM sections preserve cached values; an identified empty section may clear them.
+    @discardableResult
+    func applyPageSnapshot(
+        _ snapshot: GameDetailPageSnapshot,
         for gameID: String,
         fetchedAt: Date = .now
-    ) throws {
-        guard let game = try database.game(id: gameID) else { return }
-        game.descriptionText = GameDetailPersistencePolicy.resolvedValue(
-            existing: game.descriptionText,
-            incoming: snapshot.description,
-            mode: .complete
-        )
-        game.galleryURLs = GameDetailPersistencePolicy.resolvedValue(
-            existing: Optional(game.galleryURLs),
-            incoming: snapshot.galleryURLs,
-            mode: .complete
-        ) ?? []
-        let existingTags = game.discoveryTagsData.flatMap {
-            try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
-        }
-        let resolvedTags = GameDetailPersistencePolicy.resolvedValue(
-            existing: existingTags,
-            incoming: snapshot.discoveryTags,
-            mode: .complete
-        ) ?? []
-        game.discoveryTagsData = try JSONEncoder().encode(resolvedTags)
+    ) throws -> GameDetailFetchStatus {
+        guard let game = try database.game(id: gameID) else { return .unknown }
 
-        try setState(fetchedAt, for: fetchDatePrefix + gameID)
-        try setState(GameDetailFetchStatus.complete.rawValue, for: fetchStatusPrefix + gameID)
+        if snapshot.descriptionResolved {
+            game.descriptionText = snapshot.description
+        }
+        if snapshot.galleryResolved {
+            game.galleryURLs = snapshot.galleryURLs
+        }
+        if snapshot.tagsResolved {
+            game.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+        }
+
+        let statusKey = fetchStatusPrefix + gameID
+        if snapshot.isComplete {
+            try setState(fetchedAt, for: fetchDatePrefix + gameID)
+            try setState(GameDetailFetchStatus.complete.rawValue, for: statusKey)
+        } else {
+            let existingStatus = try database.state(for: statusKey)?.stringValue
+            if existingStatus == nil || existingStatus == GameDetailFetchStatus.unknown.rawValue {
+                try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
+            }
+        }
+
         try database.save()
+        return snapshot.isComplete ? .complete : .partial
     }
 
     private func setState(_ value: Date, for key: String) throws {
@@ -176,8 +179,37 @@ struct GameDetailPartialUpdate {
     var discoveryTags: [LibraryDiscoveryTag]? = nil
 }
 
-struct GameDetailCompleteSnapshot {
+struct GameDetailPageSnapshot {
     let description: String?
+    let descriptionResolved: Bool
     let galleryURLs: [String]
+    let galleryResolved: Bool
     let discoveryTags: [LibraryDiscoveryTag]
+    let tagsResolved: Bool
+
+    var isComplete: Bool {
+        GameDetailSnapshotPolicy.shouldMarkComplete(
+            descriptionResolved: descriptionResolved,
+            galleryResolved: galleryResolved,
+            tagsResolved: tagsResolved
+        )
+    }
+}
+
+enum GameDetailSnapshotPolicy {
+    static func shouldMarkComplete(
+        descriptionResolved: Bool,
+        galleryResolved: Bool,
+        tagsResolved: Bool
+    ) -> Bool {
+        descriptionResolved && galleryResolved && tagsResolved
+    }
+
+    static func resolvedValue<Value>(
+        existing: Value,
+        incoming: Value,
+        isResolved: Bool
+    ) -> Value {
+        isResolved ? incoming : existing
+    }
 }
