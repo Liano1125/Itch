@@ -1006,8 +1006,8 @@ private enum GamePageScript {
 
                 for (const selector of descriptionSelectors) {
                     const element = document.querySelector(selector);
-                    if (element) descriptionResolved = true;
                     const value = clean(element);
+                    if (value.length > 0) descriptionResolved = true;
                     if (value.length > 20) {
                         description = value;
                         break;
@@ -1016,9 +1016,10 @@ private enum GamePageScript {
 
                 if (!description) {
                     const descriptionMeta = document.querySelector('meta[name="description"]');
-                    if (descriptionMeta && descriptionMeta.hasAttribute("content")) {
+                    const metaDescription = (descriptionMeta?.getAttribute("content") || "").trim();
+                    if (metaDescription.length > 0) {
                         descriptionResolved = true;
-                        description = (descriptionMeta.getAttribute("content") || "").trim() || null;
+                        description = metaDescription;
                     }
                 }
 
@@ -1069,9 +1070,12 @@ private enum GamePageScript {
                 // itch.io screenshot images are linked to their original-size asset.
                 // Read the anchor href first (usually /original/...), then fall back to lazy-loaded img sources.
                 const galleryCandidates = [];
-                const galleryResolved = Boolean(document.querySelector(
+                const galleryContainer = document.querySelector(
                     ".screenshot_list, .screenshot_container, .game_page_screenshots, #game_screenshots, .screenshot"
-                ));
+                );
+                const galleryResolved = Boolean(
+                    galleryContainer && (galleryContainer.querySelector("img, a[href]") || clean(galleryContainer).length > 0)
+                );
                 const screenshotAnchors = Array.from(document.querySelectorAll(
                     '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox]'
                 ));
@@ -1101,7 +1105,7 @@ private enum GamePageScript {
                     .slice(0, 30);
 
                 const tagsResolved = Boolean(document.querySelector(
-                    ".game_tags, .game_page_tags, a.game_tag[href], .game_info_panel_widget a[href*=\"/games/tag-\"]"
+                    '.game_tags, .game_page_tags, a.game_tag[href], .game_info_panel_widget a[href*="/games/tag-"]'
                 ));
                 const discoveryTags = Array.from(document.querySelectorAll(
                     'a.game_tag[href], .game_tags a[href], .game_info_panel_widget a[href*="/games/tag-"]'
