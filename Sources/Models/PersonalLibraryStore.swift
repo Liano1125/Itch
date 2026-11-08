@@ -527,7 +527,7 @@ final class PersonalLibraryStore: ObservableObject {
             // the caller explicitly confirms that it contains the full history.
             let oldUpdates = try context.fetch(FetchDescriptor<DBGameUpdate>(predicate: #Predicate { $0.gameID == gameID }))
             let updates = record.gameUpdates ?? []
-            let currentIDs = Set(updates.map(\.id))
+            let currentIDs = Set(updates.map { $0.id })
             for old in oldUpdates where LibraryUpdatePersistencePolicy.shouldDeleteStoredUpdate(
                 storedID: old.id,
                 incomingIDs: currentIDs,
