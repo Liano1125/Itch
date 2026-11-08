@@ -28,7 +28,7 @@ struct LibraryView: View {
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
 
-    private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     init() {
         let cached = DiscoveryCacheStore.load([PublicCollectionGame].self, key: "public-collection:liano1125:v1") ?? []
@@ -304,12 +304,12 @@ private struct PersonalGameCard: View {
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
                         .foregroundStyle(.primary)
-                        .frame(height: 36, alignment: .topLeading)
+                        .frame(height: 34, alignment: .topLeading)
                     Text(record.developer?.isEmpty == false ? record.developer! : " ")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .frame(height: 14, alignment: .leading)
+                        .frame(height: 13, alignment: .leading)
                     Text(latestUpdateText ?? " ")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.orange)
@@ -360,7 +360,7 @@ private struct PersonalGameCard: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
-                .frame(height: 26, alignment: .topLeading)
+                .frame(height: 24, alignment: .topLeading)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .topLeading)
