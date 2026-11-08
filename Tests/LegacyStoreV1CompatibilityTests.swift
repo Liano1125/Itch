@@ -6,7 +6,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testSQLiteQuickCheckRejectsCorruptDatabaseBytes() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-sqlite-check-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-sqlite-check-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -18,7 +18,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
     func testExplicitRecoveryQuarantinesInvalidV2AndRebuildsFromLegacy() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-bootstrap-recovery-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-bootstrap-recovery-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -58,6 +58,31 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: recoveredURL, allowsSave: false)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+    }
+
+    @MainActor
+    func testRecoveryWithoutLegacyStoreLeavesInvalidV2Untouched() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-no-legacy-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+        let storeURL = finalDirectory.appendingPathComponent("itchPocket-v2.store")
+        let originalBytes = Data("corrupt-v2-without-legacy".utf8)
+        try originalBytes.write(to: storeURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: directory.appendingPathComponent("missing-legacy.store"),
+            finalDirectory: finalDirectory,
+            recoverInvalidExistingV2: true
+        ))
+        XCTAssertEqual(try Data(contentsOf: storeURL), originalBytes)
+        XCTAssertFalse(FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).contains { $0.lastPathComponent.hasPrefix("itchPocket-v2.quarantine-") })
     }
 
     @MainActor
