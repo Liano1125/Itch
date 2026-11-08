@@ -8,6 +8,7 @@ final class PatreonAvatarService {
     private let avatarCacheDuration: TimeInterval = 7 * 24 * 60 * 60
     private let database = AppDatabase.shared
     private lazy var appStateRepository = AppStateRepository(database: database)
+    private lazy var developerRepository = DeveloperRepository(database: database)
     private var inFlight: [String: Task<URL?, Never>] = [:]
     private var didInvalidateLegacyCache = false
 
@@ -80,7 +81,7 @@ final class PatreonAvatarService {
         var avatarSource: String?
         if let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
            let html = try? await fetchHTML(patreonURL) {
-            let expectedName = resolvedAuthorURL.flatMap { try? database.developer(id: canonicalKey(for: $0))?.name }
+            let expectedName = resolvedAuthorURL.flatMap { try? developerRepository.developer(id: canonicalKey(for: $0))?.name }
             avatar = extractPatreonProfileAvatar(from: html, baseURL: patreonURL, expectedName: expectedName)
             if avatar != nil { avatarSource = "patreon" }
         }
@@ -109,14 +110,14 @@ final class PatreonAvatarService {
         guard let identity = resolvedAuthorURL ?? authorURL else { return avatar }
         let key = canonicalKey(for: identity)
         do {
-            if try database.developer(id: key) == nil {
-                try database.upsertDeveloper(id: key, name: "itch.io 开发者", profileURL: identity.absoluteString)
+            if try developerRepository.developer(id: key) == nil {
+                try developerRepository.upsertIdentity(id: key, name: "itch.io 开发者", profileURL: identity.absoluteString)
             }
             guard let avatar else {
                 try appStateRepository.setDate(Date(), for: "avatarFailure.\(key)")
                 return cachedAvatar(for: identity)
             }
-            try database.setDeveloperAvatar(id: key, url: avatar.absoluteString, source: avatarSource)
+            try developerRepository.setAvatar(id: key, url: avatar.absoluteString, source: avatarSource, resolvedAt: .now)
             try appStateRepository.setDate(nil, for: "avatarFailure.\(key)")
             return avatar
         } catch {
@@ -127,13 +128,13 @@ final class PatreonAvatarService {
 
     private func cachedAvatar(for url: URL) -> URL? {
         let key = canonicalKey(for: url)
-        guard let value = try? database.developer(id: key)?.avatarURL else { return nil }
+        guard let value = try? developerRepository.developer(id: key)?.avatarURL else { return nil }
         return URL(string: value)
     }
 
     private func isAvatarFresh(for url: URL) -> Bool {
         let key = canonicalKey(for: url)
-        guard let resolvedAt = try? database.developer(id: key)?.avatarResolvedAt else { return false }
+        guard let resolvedAt = try? developerRepository.developer(id: key)?.avatarResolvedAt else { return false }
         return Date().timeIntervalSince(resolvedAt) < avatarCacheDuration
     }
 
@@ -219,7 +220,7 @@ final class PatreonAvatarService {
         let current = try? appStateRepository.state(for: key)?.stringValue
         guard current != "2" else { return }
         do {
-            try database.invalidateDeveloperAvatarCaches()
+            try developerRepository.invalidateAvatarCaches()
             try appStateRepository.setString("2", for: key)
         } catch {
             print("itchPocket legacy avatar cache invalidation failed: \(error)")

@@ -125,6 +125,7 @@ final class PersonalLibraryStore: ObservableObject {
     private let statusHistoryRepository: LibraryStatusHistoryRepository
     private let gameUpdateRepository: GameUpdateRepository
     private let sparkRepository: SparkRepository
+    private let developerRepository: DeveloperRepository
 
     init() {
         let database = AppDatabase.shared
@@ -133,6 +134,7 @@ final class PersonalLibraryStore: ObservableObject {
         self.statusHistoryRepository = LibraryStatusHistoryRepository(database: database)
         self.gameUpdateRepository = GameUpdateRepository(database: database)
         self.sparkRepository = SparkRepository(database: database)
+        self.developerRepository = DeveloperRepository(database: database)
         load()
     }
 
@@ -397,7 +399,7 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             let games = try context.fetch(FetchDescriptor<DBGame>())
             let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
-            let developers = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBDeveloper>()).map { ($0.id, $0) })
+            let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
             let gameByID = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0) })
@@ -471,34 +473,32 @@ final class PersonalLibraryStore: ObservableObject {
             }
 
             if let developerID, let name = record.developer {
-                let descriptor = FetchDescriptor<DBDeveloper>(predicate: #Predicate { $0.id == developerID })
-                let developer = try context.fetch(descriptor).first ?? DBDeveloper(id: developerID, name: name)
-                if developer.modelContext == nil { context.insert(developer) }
-                var changed = false
-                if developer.name != name { developer.name = name; changed = true }
-                if let profileURL = record.developerProfileURL, developer.profileURL != profileURL {
-                    developer.profileURL = profileURL
-                    changed = true
-                }
-                if let patreonURL = record.patreonURL, developer.patreonURL != patreonURL {
-                    developer.patreonURL = patreonURL
-                    changed = true
-                }
-                if let discordURL = record.discordURL, developer.discordURL != discordURL {
-                    developer.discordURL = discordURL
-                    changed = true
-                }
+                let existingDeveloper = try developerRepository.developer(id: developerID)
+                try developerRepository.upsertIdentity(
+                    id: developerID,
+                    name: name,
+                    profileURL: record.developerProfileURL,
+                    patreonURL: record.patreonURL,
+                    discordURL: record.discordURL,
+                    save: false
+                )
                 if let avatar = record.patreonAvatarURL,
-                   developer.avatarURL != avatar || developer.avatarSource != "patreon" {
-                    developer.avatarURL = avatar
-                    developer.avatarSource = "patreon"
-                    changed = true
-                } else if let avatar = record.developerAvatarURL, developer.avatarURL == nil {
-                    developer.avatarURL = avatar
-                    developer.avatarSource = "itch"
-                    changed = true
+                   existingDeveloper?.avatarURL != avatar || existingDeveloper?.avatarSource != "patreon" {
+                    try developerRepository.setAvatar(
+                        id: developerID,
+                        url: avatar,
+                        source: "patreon",
+                        save: false
+                    )
+                } else if let avatar = record.developerAvatarURL,
+                          existingDeveloper?.avatarURL == nil {
+                    try developerRepository.setAvatar(
+                        id: developerID,
+                        url: avatar,
+                        source: "itch",
+                        save: false
+                    )
                 }
-                if changed { developer.updatedAt = .now }
             }
 
             let gameID = record.id
@@ -544,6 +544,6 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private static func canonicalDeveloperID(_ rawURL: String) -> String {
-        AppDatabase.canonicalDeveloperID(rawURL)
+        DeveloperRepository.canonicalID(for: rawURL)
     }
 }

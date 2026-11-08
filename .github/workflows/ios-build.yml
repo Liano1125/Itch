@@ -15,6 +15,8 @@ on:
       - refactor/game-update-repository
       - refactor/calendar-repository
       - refactor/spark-repository
+      - refactor/app-state-repository
+      - refactor/developer-repository
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.

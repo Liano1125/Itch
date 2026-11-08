@@ -55,6 +55,10 @@ struct GameDetailView: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var library: PersonalLibraryStore
 
+    private var developerRepository: DeveloperRepository {
+        DeveloperRepository(database: .shared)
+    }
+
     @State private var detail: GameDetailPayload?
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -736,9 +740,9 @@ struct GameDetailView: View {
         let database = AppDatabase.shared
         let existingGame = try? database.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
-        let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) } ?? existingGame?.developerID
+        let developerID = authorURL.map { DeveloperRepository.canonicalID(for: $0.absoluteString) } ?? existingGame?.developerID
         let existingDeveloper = developerID.flatMap { id in
-            try? database.developer(id: id)
+            try? developerRepository.developer(id: id)
         } ?? nil
         let developerName = GameDetailRepository.resolvedDeveloperName(
             incoming: result.developer,
@@ -756,7 +760,7 @@ struct GameDetailView: View {
                 developerID: developerID
             )
             if let developerID, let developerName {
-                try database.upsertDeveloper(
+                try developerRepository.upsertIdentity(
                     id: developerID,
                     name: developerName,
                     profileURL: authorURL?.absoluteString,
@@ -857,7 +861,7 @@ struct GameDetailView: View {
     private func loadCachedDescription() async {
         let database = AppDatabase.shared
         if let savedGame = try? database.game(id: game.id) {
-            let developer = savedGame.developerID.flatMap { try? database.developer(id: $0) }
+            let developer = savedGame.developerID.flatMap { try? developerRepository.developer(id: $0) }
             let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
             hasLoadedCompleteDetailSnapshot = savedDetail?.fetchStatus == .complete
             let cachedIsComplete = savedDetail?.fetchStatus == .complete
@@ -1208,6 +1212,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
     static let shared = GameDetailPrefetchService()
 
     private let database = AppDatabase.shared
+    private lazy var developerRepository = DeveloperRepository(database: database)
     private var isRunning = false
     private var webView: WKWebView?
     private var currentRecord: LibraryRecord?
@@ -1229,7 +1234,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 guard let developerID = stored?.developerID else {
                     return record.developerProfileURL == nil
                 }
-                guard let developer = try? database.developer(id: developerID) else { return false }
+                guard let developer = try? developerRepository.developer(id: developerID) else { return false }
                 return developer.avatarURL != nil
             }()
             let freshnessDate = cachedDetail?.fetchedAt
@@ -1304,7 +1309,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         }
 
         let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
-        let developerID = authorURL.map { AppDatabase.canonicalDeveloperID($0.absoluteString) }
+        let developerID = authorURL.map { DeveloperRepository.canonicalID(for: $0.absoluteString) }
         do {
             try database.upsertGame(
                 id: record.id,
@@ -1315,13 +1320,13 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 developerID: developerID
             )
             if let developerID {
-                let existingName = try database.developer(id: developerID)?.name
+                let existingName = try developerRepository.developer(id: developerID)?.name
                 if let developerName = GameDetailRepository.resolvedDeveloperName(
                     incoming: payload.developer,
                     existing: existingName,
                     library: record.developer
                 ) {
-                    try database.upsertDeveloper(
+                    try developerRepository.upsertIdentity(
                         id: developerID,
                         name: developerName,
                         profileURL: authorURL?.absoluteString,
