@@ -113,8 +113,9 @@ final class DBCalendarEvent {
     var notes: String?
     var sourceFingerprint: String?
     var sourceUpdateID: String?
+    var gameTitleSnapshot: String?
 
-    init(id: String, gameID: String, title: String? = nil, date: Date? = nil, kind: String, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String? = nil, sourceFingerprint: String? = nil, sourceUpdateID: String? = nil) {
+    init(id: String, gameID: String, title: String? = nil, date: Date? = nil, kind: String, reminderEnabled: Bool = true, reminderMinutes: Int = 60, notes: String? = nil, sourceFingerprint: String? = nil, sourceUpdateID: String? = nil, gameTitleSnapshot: String? = nil) {
         self.id = id
         self.gameID = gameID
         self.title = title
@@ -125,6 +126,7 @@ final class DBCalendarEvent {
         self.notes = notes
         self.sourceFingerprint = sourceFingerprint
         self.sourceUpdateID = sourceUpdateID
+        self.gameTitleSnapshot = gameTitleSnapshot
     }
 }
 
