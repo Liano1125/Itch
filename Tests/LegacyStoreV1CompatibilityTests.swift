@@ -4,6 +4,121 @@ import SwiftData
 
 final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
+    func testPendingLegacyMigrationCanResumeAfterInterruptionBeforePromotion() throws {
+        enum SimulatedTermination: Error { case afterPendingMarker }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-pending-legacy-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            afterPendingMarker: { throw SimulatedTermination.afterPendingMarker }
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+        let pending = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        XCTAssertEqual(pending?["state"] as? String, "pending")
+        XCTAssertEqual(pending?["sourceWasLegacy"] as? Bool, true)
+
+        let resumedURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertEqual(try v2GameCount(at: resumedURL), 2)
+        let committed = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        XCTAssertEqual(committed?["state"] as? String, "committed")
+    }
+
+    @MainActor
+    func testPendingFreshInstallCanResumeAfterInterruptionBeforePromotion() throws {
+        enum SimulatedTermination: Error { case afterPendingMarker }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-pending-fresh-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let missingLegacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: missingLegacyURL,
+            finalDirectory: finalDirectory,
+            afterPendingMarker: { throw SimulatedTermination.afterPendingMarker }
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
+        let pending = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        XCTAssertEqual(pending?["state"] as? String, "pending")
+        XCTAssertEqual(pending?["sourceWasLegacy"] as? Bool, false)
+
+        let resumedURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: missingLegacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: resumedURL.path))
+        XCTAssertEqual(try v2GameCount(at: resumedURL), 0)
+        let committed = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        XCTAssertEqual(committed?["state"] as? String, "committed")
+    }
+
+    @MainActor
+    func testValidV2StoreCanRecreateMissingMarkerAsCommitted() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-marker-repair-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let originalURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        try FileManager.default.removeItem(at: markerURL)
+
+        let reopenedURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        XCTAssertEqual(reopenedURL, originalURL)
+        let adopted = try JSONSerialization.jsonObject(with: Data(contentsOf: markerURL)) as? [String: Any]
+        XCTAssertEqual(adopted?["state"] as? String, "committed")
+        XCTAssertEqual(adopted?["sourceWasLegacy"] as? Bool, true)
+    }
+
+    @MainActor
+    func testUnreadableMarkerDoesNotSilentlyRestartFromLegacySnapshot() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-corrupt-marker-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let markerURL = directory.appendingPathComponent(LegacyStoreBootstrap.bootstrapMarkerFileName)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        try Data("not-json".utf8).write(to: markerURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: finalDirectory.path))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+    }
+
+    @MainActor
     func testSQLiteQuickCheckRejectsCorruptDatabaseBytes() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-sqlite-check-\(UUID().uuidString)", isDirectory: true)
