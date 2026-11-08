@@ -418,7 +418,7 @@ final class PersonalLibraryStore: ObservableObject {
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
                     gameUpdates: gameUpdates,
-                    discoveryTags: game.discoveryTagsData.flatMap { try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0) },
+                    discoveryTags: (try? GameDetailRepository.shared.detail(for: game.id))?.discoveryTags,
                     engine: game.engine,
                     patreonURL: developer?.patreonURL,
                     discordURL: developer?.discordURL,
@@ -509,8 +509,11 @@ final class PersonalLibraryStore: ObservableObject {
             if let engine = record.engine, game.engine != engine { game.engine = engine; gameChanged = true }
             if let developerID, game.developerID != developerID { game.developerID = developerID; gameChanged = true }
             if let tags = record.discoveryTags {
-                let tagsData = try? JSONEncoder().encode(tags)
-                if game.discoveryTagsData != tagsData { game.discoveryTagsData = tagsData; gameChanged = true }
+                try GameDetailRepository.shared.applyPartialUpdate(
+                    GameDetailPartialUpdate(discoveryTags: tags),
+                    for: gameID,
+                    save: false
+                )
             }
             if gameChanged { game.updatedAt = .now }
 
