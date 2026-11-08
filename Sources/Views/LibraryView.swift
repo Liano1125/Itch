@@ -367,6 +367,9 @@ private struct PersonalGameCard: View {
                 .frame(height: 30, alignment: .topLeading)
         }
         .padding(10)
+        // Keep every library card the same height even when optional metadata
+        // (developer, update date, notes) is absent or unusually long.
+        .frame(maxWidth: .infinity, minHeight: 350, maxHeight: 350, alignment: .top)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
     }
 }
@@ -374,13 +377,15 @@ private struct PersonalGameCard: View {
 private struct GameCover: View {
     let url: URL?
     var body: some View {
-        CachedRemoteImage(url: url, contentMode: .fill) {
-            ZStack {
-                Color(uiColor: .tertiarySystemFill)
-                Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
+        ZStack {
+            Color(uiColor: .tertiarySystemFill)
+            CachedRemoteImage(url: url, contentMode: .fill) {
+                Image(systemName: "gamecontroller.fill")
+                    .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity)
+        // The image's intrinsic dimensions must never determine the card layout.
         .aspectRatio(1.25, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
