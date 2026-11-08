@@ -82,7 +82,6 @@ final class GameCalendarStore: ObservableObject {
 
     @discardableResult
     func addDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
-        let context = database.context
         var inserted = 0
         for update in updates {
             guard !events.contains(where: { $0.gameID == update.gameID && $0.sourceFingerprint == update.fingerprint }) else { continue }
@@ -218,7 +217,7 @@ final class GameCalendarStore: ObservableObject {
                     ?? .now
                 let notes: String
                 if let update, !update.summary.isEmpty {
-                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical ? "\n来源：itch.io Devlog（历史发布日期）" : "")
+                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical == true ? "\n来源：itch.io Devlog（历史发布日期）" : "")
                 } else {
                     notes = stored.notes ?? ""
                 }
