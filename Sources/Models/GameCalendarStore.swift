@@ -138,8 +138,29 @@ final class GameCalendarStore: ObservableObject {
             let descriptor = FetchDescriptor<DBGameUpdate>(
                 predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
             )
-            let storedUpdates = (try? context.fetch(descriptor)) ?? []
-            guard let storedUpdate = storedUpdates.first else { continue }
+            let storedUpdate: DBGameUpdate
+            if let existing = (try? context.fetch(descriptor))?.first {
+                storedUpdate = existing
+                // Refresh metadata without replacing the stable database identity.
+                storedUpdate.title = update.title
+                storedUpdate.summary = update.summary
+                storedUpdate.publishedAt = update.publishedAt
+                storedUpdate.url = update.url
+                storedUpdate.isHistorical = true
+            } else {
+                storedUpdate = DBGameUpdate(
+                    id: update.id,
+                    gameID: gameID,
+                    title: update.title,
+                    summary: update.summary,
+                    detectedAt: update.detectedAt,
+                    publishedAt: update.publishedAt,
+                    url: update.url,
+                    sourceID: sourceID,
+                    isHistorical: true
+                )
+                context.insert(storedUpdate)
+            }
             let event = GameCalendarEvent(
                 gameID: gameID,
                 gameTitle: gameTitle,
@@ -199,12 +220,18 @@ final class GameCalendarStore: ObservableObject {
             let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
             let updates = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGameUpdate>()).map { ($0.id, $0) })
             events = storedEvents.compactMap { stored in
-                let update = stored.sourceUpdateID.flatMap { updates[$0] }
+                // A linked update is usable only when it belongs to this exact game.
+                // Calendar rows also retain their own title/date/notes as a durable fallback.
+                let linkedUpdate = stored.sourceUpdateID.flatMap { updates[$0] }
+                let update = linkedUpdate.flatMap { $0.gameID == stored.gameID ? $0 : nil }
                 let game = games[stored.gameID]
                 let title = update?.title.map { "更新：\($0)" } ?? stored.title ?? "日历事件"
-                let date = update?.publishedAt ?? update?.detectedAt ?? stored.date ?? .now
+                let date = update?.publishedAt
+                    ?? (update?.isHistorical == true ? stored.date : update?.detectedAt)
+                    ?? stored.date
+                    ?? .now
                 let notes: String
-                if let update {
+                if let update, !update.summary.isEmpty {
                     notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical ? "\n来源：itch.io Devlog（历史发布日期）" : "")
                 } else {
                     notes = stored.notes ?? ""
@@ -244,18 +271,12 @@ final class GameCalendarStore: ObservableObject {
             item.reminderEnabled = event.reminderEnabled
             item.reminderMinutes = event.reminderMinutes
             item.sourceFingerprint = event.sourceFingerprint
-            if let sourceUpdateID {
-                // Devlog title, summary and published date are read from DBGameUpdate.
-                item.sourceUpdateID = sourceUpdateID
-                item.title = event.title == "检测到游戏页面更新" ? event.title : nil
-                item.date = nil
-                item.notes = nil
-            } else {
-                item.sourceUpdateID = nil
-                item.title = event.title
-                item.date = event.date
-                item.notes = event.notes
-            }
+            // Keep a complete event snapshot even when its linked update is later
+            // removed or migrated. The relation enriches the event; it is not its only source.
+            item.sourceUpdateID = sourceUpdateID
+            item.title = event.title
+            item.date = event.date
+            item.notes = event.notes
             if shouldSave { try database.save() }
         } catch {
             print("itchPocket calendar database write failed: \(error)")
