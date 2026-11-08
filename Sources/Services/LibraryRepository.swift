@@ -26,9 +26,11 @@ final class LibraryRepository {
     }
 
     private let database: AppDatabase
+    private let gameRepository: GameRepository
 
     init(database: AppDatabase) {
         self.database = database
+        self.gameRepository = GameRepository(database: database)
     }
 
     func collections() throws -> [PersonalGameCollection] {
@@ -308,13 +310,9 @@ final class LibraryRepository {
     }
 
     private func validateGamesExist(_ gameIDs: [String]) throws {
-        for gameID in gameIDs {
-            let descriptor = FetchDescriptor<DBGame>(
-                predicate: #Predicate { $0.id == gameID }
-            )
-            guard try database.context.fetch(descriptor).first != nil else {
-                throw RepositoryError.gameNotFound(gameID)
-            }
+        let existingIDs = try gameRepository.existingGameIDs(in: gameIDs)
+        for gameID in gameIDs where !existingIDs.contains(gameID) {
+            throw RepositoryError.gameNotFound(gameID)
         }
     }
 
