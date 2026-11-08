@@ -860,16 +860,20 @@ struct GameDetailView: View {
             let developer = savedGame.developerID.flatMap { try? database.developer(id: $0) }
             let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
             hasLoadedCompleteDetailSnapshot = savedDetail?.fetchStatus == .complete
+            let cachedIsComplete = savedDetail?.fetchStatus == .complete
             let cachedDetail = GameDetailPayload(
                 description: savedDetail?.description,
+                descriptionResolved: cachedIsComplete,
                 developer: developer?.name ?? game.developer,
                 coverURL: URL(string: savedGame.coverURL ?? game.coverURL?.absoluteString ?? ""),
                 galleryURLs: (savedDetail?.galleryURLs ?? []).compactMap { URL(string: $0) },
+                galleryResolved: cachedIsComplete,
                 authorURL: URL(string: developer?.profileURL ?? game.developerProfileURL?.absoluteString ?? ""),
                 authorAvatarURL: URL(string: developer?.avatarURL ?? ""),
                 patreonURL: URL(string: developer?.patreonURL ?? ""),
                 discordURL: URL(string: developer?.discordURL ?? ""),
                 discoveryTags: savedDetail?.discoveryTags ?? [],
+                tagsResolved: cachedIsComplete,
                 engine: savedGame.engine
             )
             if cachedDetail.description != nil || cachedDetail.coverURL != nil || !cachedDetail.galleryURLs.isEmpty || hasLoadedCompleteDetailSnapshot {
