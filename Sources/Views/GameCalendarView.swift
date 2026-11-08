@@ -375,19 +375,15 @@ struct GameCalendarView: View {
                         .foregroundStyle(.tertiary)
                 }
 
+                Text(displayTitle(for: event))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 if event.kind == .update {
                     Text(calendarUpdateTitle(event))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(event.gameTitle)
-                        .font(.caption)
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text(event.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
