@@ -418,7 +418,7 @@ final class PersonalLibraryStore: ObservableObject {
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
                     gameUpdates: gameUpdates,
-                    discoveryTags: (try? GameDetailRepository.shared.detail(for: game.id))?.discoveryTags,
+                    discoveryTags: GameDetailRepository.shared.discoveryTags(for: game),
                     engine: game.engine,
                     patreonURL: developer?.patreonURL,
                     discordURL: developer?.discordURL,
