@@ -9,14 +9,16 @@ final class GameDetailRepository {
 
     private let database: AppDatabase
     private let context: ModelContext
+    private let saveChanges: () throws -> Void
 
     private let fetchDatePrefix = "gameDetail.lastSuccessfulFetch."
     private let fetchStatusPrefix = "gameDetail.fetchStatus."
     private let legacyPrefetchDatePrefix = "detailPrefetch.lastSuccess."
 
-    init(database: AppDatabase) {
+    init(database: AppDatabase, saveChanges: (() throws -> Void)? = nil) {
         self.database = database
         self.context = database.context
+        self.saveChanges = saveChanges ?? { try database.save() }
     }
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
@@ -103,7 +105,7 @@ final class GameDetailRepository {
                 try setState(GameDetailFetchStatus.partial.rawValue, for: statusKey)
             }
         }
-        if shouldSave { try database.save() }
+        if shouldSave { try commit() }
     }
 
     /// Applies only fields the page parser positively identified.
@@ -138,8 +140,19 @@ final class GameDetailRepository {
             }
         }
 
-        try database.save()
+        try commit()
         return snapshot.isComplete ? .complete : .partial
+    }
+
+    private func commit() throws {
+        do {
+            try saveChanges()
+        } catch {
+            // Discard the in-memory mutations from a failed snapshot save so callers
+            // cannot read an uncommitted "complete" status from the shared context.
+            context.rollback()
+            throw error
+        }
     }
 
     private func setState(_ value: Date, for key: String) throws {
