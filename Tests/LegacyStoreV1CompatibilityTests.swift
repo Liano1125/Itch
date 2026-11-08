@@ -79,7 +79,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             recoverInvalidExistingV2: true
         ))
         XCTAssertEqual(try Data(contentsOf: storeURL), originalBytes)
-        XCTAssertFalse(FileManager.default.contentsOfDirectory(
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         ).contains { $0.lastPathComponent.hasPrefix("itchPocket-v2.quarantine-") })
