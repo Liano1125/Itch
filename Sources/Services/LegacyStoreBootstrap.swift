@@ -504,13 +504,17 @@ enum LegacyStoreBootstrap {
                 continue
             }
             let handle = try FileHandle(forReadingFrom: candidate)
-            defer { try? handle.close() }
-            while true {
-                let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
-                if chunk.isEmpty { break }
-                hasher.update(data: chunk)
+            do {
+                while true {
+                    let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
+                    if chunk.isEmpty { break }
+                    hasher.update(data: chunk)
+                }
+                try handle.close()
+            } catch {
+                try? handle.close()
+                throw error
             }
-            try handle.close()
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
