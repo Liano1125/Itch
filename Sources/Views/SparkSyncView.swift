@@ -40,7 +40,7 @@ struct SparkSyncView: View {
                         }
                     }
                     .padding(15)
-                    .appGlassSurface(cornerRadius: 17)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
                 }
                 privacyNote
             }
@@ -93,7 +93,7 @@ struct SparkSyncView: View {
             .disabled(spark.isScanning)
         }
         .padding(16)
-        .appGlassSurface(cornerRadius: 19)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
     }
 
     private func folderPathRow(title: String, path: String, detail: String) -> some View {
@@ -108,7 +108,7 @@ struct SparkSyncView: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         }
         .padding(11)
-        .appGlassSurface(cornerRadius: 12)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var summaryHeader: some View {
@@ -140,7 +140,7 @@ struct SparkSyncView: View {
             infoRow("存档来源", game.saveSources.isEmpty ? "备份记录" : game.saveSources.joined(separator: "、"))
         }
         .padding(15)
-        .appGlassSurface(cornerRadius: 17)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
     private func metric(title: String, value: String, symbol: String) -> some View {
@@ -150,7 +150,7 @@ struct SparkSyncView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .appGlassSurface(cornerRadius: 11)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11))
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {
@@ -183,6 +183,6 @@ struct SparkSyncView: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
-        .appGlassSurface(cornerRadius: 15)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
     }
 }
