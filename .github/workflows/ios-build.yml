@@ -9,6 +9,7 @@ on:
       - main
       # Stacked persistence PRs may target the migration branch before it merges.
       - fix/legacy-v2-bootstrap
+      - refactor/library-repository-collections-v2
       # Run the next repository slice stacked on this branch.
       - refactor/library-status-history-repository
   workflow_dispatch:
