@@ -40,6 +40,41 @@ final class CacheRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testTranslationCacheEvictsOldestEntriesWhenCapacityIsExceeded() throws {
+        let database = try AppDatabase(inMemory: true)
+        let context = database.context
+        let baseline = Date(timeIntervalSince1970: 1_700_000_000)
+
+        for index in 0..<1201 {
+            context.insert(DBTranslation(
+                cacheKey: "existing-\\(index)",
+                scope: "description",
+                sourceHash: "hash-\\(index)",
+                sourceText: "source-\\(index)",
+                targetLanguage: "en",
+                translatedText: "translated-\\(index)",
+                updatedAt: baseline.addingTimeInterval(TimeInterval(index))
+            ))
+        }
+        try database.save()
+
+        let repository = CacheRepository(database: database)
+        try repository.storeTranslation(
+            "newest",
+            source: "new source",
+            sourceHash: "new-hash",
+            scope: "description",
+            target: "en",
+            for: "new-entry"
+        )
+
+        XCTAssertEqual(try repository.counts().translations, 1000)
+        XCTAssertNil(try repository.translation(for: "existing-0"))
+        XCTAssertNotNil(try repository.translation(for: "new-entry"))
+        XCTAssertNotNil(try repository.translation(for: "existing-1200"))
+    }
+
+    @MainActor
     func testDiscoverySnapshotExpiresAndIsRemovedOnRead() throws {
         let database = try AppDatabase(inMemory: true)
         let repository = CacheRepository(database: database)
