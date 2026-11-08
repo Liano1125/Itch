@@ -4,6 +4,63 @@ import SwiftData
 
 final class LegacyStoreV1CompatibilityTests: XCTestCase {
     @MainActor
+    func testSQLiteQuickCheckRejectsCorruptDatabaseBytes() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-sqlite-check-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let corruptURL = directory.appendingPathComponent("corrupt.store")
+        try Data("not-a-sqlite-database".utf8).write(to: corruptURL)
+        XCTAssertThrowsError(try SQLiteStoreIntegrityChecker.quickCheck(at: corruptURL))
+    }
+
+    @MainActor
+    func testExplicitRecoveryQuarantinesInvalidV2AndRebuildsFromLegacy() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-recovery-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let originalStoreURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+        let damagedBytes = Data("damaged-v2-store".utf8)
+        try damagedBytes.write(to: originalStoreURL)
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+
+        let recoveredURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory,
+            recoverInvalidExistingV2: true
+        )
+        XCTAssertEqual(recoveredURL, finalDirectory.appendingPathComponent("itchPocket-v2.store"))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+
+        let quarantines = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ).filter { $0.lastPathComponent.hasPrefix("itchPocket-v2.quarantine-") }
+        XCTAssertEqual(quarantines.count, 1)
+        let quarantinedStore = quarantines[0].appendingPathComponent("itchPocket-v2.store")
+        XCTAssertEqual(try Data(contentsOf: quarantinedStore), damagedBytes)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: recoveredURL, allowsSave: false)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+    }
+
+    @MainActor
     func testUnversionedDiskStoreReopensWithV1SchemaWithoutLosingRecords() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-legacy-v1-\(UUID().uuidString)", isDirectory: true)
