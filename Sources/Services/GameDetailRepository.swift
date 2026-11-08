@@ -41,6 +41,25 @@ final class GameDetailRepository {
         )
     }
 
+    /// Resolves a usable developer name without ever persisting a placeholder.
+    /// Fresh page data wins; otherwise preserve the existing database/library name.
+    static func resolvedDeveloperName(
+        incoming: String?,
+        existing: String?,
+        library: String?
+    ) -> String? {
+        func usable(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  trimmed.caseInsensitiveCompare("itch.io 开发者") != .orderedSame else {
+                return nil
+            }
+            return trimmed
+        }
+        return usable(incoming) ?? usable(existing) ?? usable(library)
+    }
+
     /// Reads the legacy tag column without another database fetch; nil means no stored value.
     func discoveryTags(for game: DBGame) -> [LibraryDiscoveryTag]? {
         guard let data = game.discoveryTagsData else { return nil }
