@@ -413,6 +413,40 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testExistingV2StoreEmptiedAfterMigrationIsRejected() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-bootstrap-emptied-v2-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyURL = directory.appendingPathComponent("itchPocket.store")
+        let finalDirectory = directory.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try createExactUnversionedLegacyStore(at: legacyURL)
+        let finalStoreURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        )
+
+        // Preserve the valid completion receipt but remove all migrated games.
+        // Reuse must compare the current database against the recorded baseline.
+        do {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+            let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            try container.mainContext.delete(model: DBGame.self)
+            try container.mainContext.save()
+        }
+
+        XCTAssertThrowsError(try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyURL,
+            finalDirectory: finalDirectory
+        ))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: finalStoreURL.path))
+        XCTAssertEqual(try legacyGameCount(at: legacyURL), 2)
+    }
+
+    @MainActor
     func testRestartAfterPromotionReusesValidatedV2Store() throws {
         enum SimulatedTermination: Error { case afterPromotion }
 
