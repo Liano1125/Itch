@@ -4,6 +4,35 @@ import SwiftData
 
 final class DatabaseV3MigrationTests: XCTestCase {
     @MainActor
+    func testValidatedV3StoreStartsWithoutV1OrV2Backups() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-without-backups-\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+        let expectedV3URL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+
+        // Simulate loss of both older recovery snapshots after a successful
+        // V3 cutover. A valid V3 store must remain the authoritative startup source.
+        try FileManager.default.removeItem(at: v2Directory)
+        let missingLegacyStoreURL = root.appendingPathComponent("itchPocket.store")
+        let selectedURL = try AppDatabase.prepareDurableStore(legacyStoreURL: missingLegacyStoreURL)
+
+        XCTAssertEqual(selectedURL, expectedV3URL)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-no-backup-verify", schema: schema, url: selectedURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+            XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
+            XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 2)
+        }
+    }
+
+    @MainActor
     func testUnversionedV1StoreMigratesThroughV2IntoV3AndRestartsIdempotently() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v1-to-v3-\(UUID().uuidString)", isDirectory: true)
