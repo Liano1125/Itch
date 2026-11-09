@@ -446,3 +446,35 @@ extension PersistencePoliciesTests {
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).isEmpty)
     }
 }
+
+
+extension PersistencePoliciesTests {
+    @MainActor
+    func testDiscoveryCacheRepositoryStoresExpiresAndRemovesSnapshots() throws {
+        let database = AppDatabase(inMemory: true)
+        let repository = DiscoveryCacheRepository(database: database)
+        let key = "discovery.repository.test"
+        let payload = Data("{\"items\":[1,2,3]}".utf8)
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try repository.save(
+            payload: payload,
+            for: key,
+            timeToLive: 60,
+            fetchedAt: fetchedAt
+        )
+        XCTAssertEqual(try repository.payload(for: key, now: fetchedAt.addingTimeInterval(30)), payload)
+
+        XCTAssertNil(try repository.payload(for: key, now: fetchedAt.addingTimeInterval(61)))
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBDiscoverySnapshot>()).isEmpty)
+
+        try repository.save(
+            payload: payload,
+            for: key,
+            timeToLive: 60,
+            fetchedAt: fetchedAt
+        )
+        try repository.remove(key: key)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBDiscoverySnapshot>()).isEmpty)
+    }
+}
