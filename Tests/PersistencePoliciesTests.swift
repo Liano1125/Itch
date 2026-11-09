@@ -1,4 +1,6 @@
 import XCTest
+import SwiftData
+import CryptoKit
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
