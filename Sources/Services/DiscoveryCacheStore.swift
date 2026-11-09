@@ -1,6 +1,7 @@
 import Foundation
 
-/// Codable facade for rebuildable discovery and collection response snapshots.
+/// Shared TTL cache for rebuildable discovery and collection responses.
+/// Serialization stays here; persistence is delegated to DiscoveryCacheRepository.
 @MainActor
 enum DiscoveryCacheStore {
     static func load<Value: Decodable>(
@@ -9,7 +10,7 @@ enum DiscoveryCacheStore {
         now: Date = .now
     ) -> Value? {
         do {
-            guard let payload = try CacheRepository.shared.discoverySnapshot(for: key, now: now) else {
+            guard let payload = try DiscoveryCacheRepository.shared.payload(for: key, now: now) else {
                 return nil
             }
             return try JSONDecoder().decode(type, from: payload)
@@ -26,9 +27,9 @@ enum DiscoveryCacheStore {
     ) {
         do {
             let payload = try JSONEncoder().encode(value)
-            try CacheRepository.shared.storeDiscoverySnapshot(
-                payload,
-                key: key,
+            try DiscoveryCacheRepository.shared.save(
+                payload: payload,
+                for: key,
                 timeToLive: timeToLive
             )
         } catch {
@@ -38,7 +39,7 @@ enum DiscoveryCacheStore {
 
     static func remove(key: String) {
         do {
-            try CacheRepository.shared.removeDiscoverySnapshot(key: key)
+            try DiscoveryCacheRepository.shared.remove(key: key)
         } catch {
             print("itchPocket discovery cache removal failed: \(error)")
         }
