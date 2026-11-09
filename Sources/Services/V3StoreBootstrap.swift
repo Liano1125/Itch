@@ -27,19 +27,28 @@ enum V3StoreBootstrap {
     static let directoryName = "itchPocket-v3"
     static let stagingDirectoryName = "itchPocket-v3.staging"
 
-    static func prepareStore(v2StoreURL: URL) throws -> URL {
+    static func prepareStore(v2StoreURL: URL, recoverInvalidExistingV3: Bool = false) throws -> URL {
         let fileManager = FileManager.default
-        let parent = v2StoreURL.deletingLastPathComponent()
+        let parent = v2StoreURL.deletingLastPathComponent().deletingLastPathComponent()
         let finalDirectory = parent.appendingPathComponent(directoryName, isDirectory: true)
         let stagingDirectory = parent.appendingPathComponent(stagingDirectoryName, isDirectory: true)
         let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreURL.lastPathComponent)
 
         if fileManager.fileExists(atPath: finalDirectory.path) {
-            guard fileManager.fileExists(atPath: finalStoreURL.path) else {
-                throw BootstrapError.incompleteDestination(finalStoreURL)
+            do {
+                guard fileManager.fileExists(atPath: finalStoreURL.path) else {
+                    throw BootstrapError.incompleteDestination(finalStoreURL)
+                }
+                try validateV3Store(at: finalStoreURL)
+                return finalStoreURL
+            } catch {
+                guard recoverInvalidExistingV3 else { throw error }
+                let quarantine = parent.appendingPathComponent(
+                    "itchPocket-v3.quarantine-\\(UUID().uuidString)",
+                    isDirectory: true
+                )
+                try fileManager.moveItem(at: finalDirectory, to: quarantine)
             }
-            try validateV3Store(at: finalStoreURL)
-            return finalStoreURL
         }
 
         guard fileManager.fileExists(atPath: v2StoreURL.path) else {
