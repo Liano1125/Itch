@@ -51,6 +51,8 @@ final class DatabaseV3MigrationTests: XCTestCase {
         let oldGame = try XCTUnwrap(v2Context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first { $0.id == "game-a" })
         XCTAssertEqual(oldGame.descriptionText, "Legacy description")
         XCTAssertEqual(oldGame.galleryURLs, ["https://cdn.example/a.png"])
+        let staleDetail = try XCTUnwrap(v2Context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()).first)
+        XCTAssertEqual(staleDetail.descriptionText, "Stale normalized description")
         let oldCollection = try XCTUnwrap(v2Context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
         XCTAssertEqual(oldCollection.gameIDs, ["game-b", "game-a", "game-b"])
     }
@@ -87,7 +89,12 @@ final class DatabaseV3MigrationTests: XCTestCase {
                 discoveryTagsData: Data("[]".utf8)
             ))
             context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
-            context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(gameID: "game-a"))
+            context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
+            gameID: "game-a",
+            descriptionText: "Stale normalized description",
+            galleryURLs: ["https://cdn.example/stale.png"],
+            discoveryTagsData: Data("stale".utf8)
+        ))
             context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
                 id: "favorites",
                 title: "Favorites",
