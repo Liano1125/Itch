@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// The detail cache still uses DBGame's legacy columns in this phase.
 /// GameRepository owns those columns; this repository owns detail semantics
