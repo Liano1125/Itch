@@ -393,17 +393,17 @@ extension PersistencePoliciesTests {
         store.createCollection(title: "Attempted while unavailable")
         let collectionsAfterBlockedWrite = try database.context.fetch(FetchDescriptor<DBLibraryCollection>())
         let eventsAfterBlockedWrite = try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
-        XCTAssertEqual(collectionsAfterBlockedWrite.map(\\.id), ["saved-collection"])
-        XCTAssertEqual(eventsAfterBlockedWrite.map(\\.id), ["saved-event"])
+        XCTAssertEqual(collectionsAfterBlockedWrite.map(\.id), ["saved-collection"])
+        XCTAssertEqual(eventsAfterBlockedWrite.map(\.id), ["saved-event"])
 
         shouldFailLoad = false
         store.reload()
-        XCTAssertEqual(store.collections.map(\\.id), ["saved-collection"])
+        XCTAssertEqual(store.collections.map(\.id), ["saved-collection"])
         store.createCollection(title: "Created after recovery")
 
         let recoveredCollections = try database.context.fetch(FetchDescriptor<DBLibraryCollection>())
-        XCTAssertEqual(Set(recoveredCollections.map(\\.title)), Set(["Saved", "Created after recovery"]))
-        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).map(\\.id), ["saved-event"])
+        XCTAssertEqual(Set(recoveredCollections.map(\.title)), Set(["Saved", "Created after recovery"]))
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).map(\.id), ["saved-event"])
     }
 
     @MainActor
@@ -435,7 +435,7 @@ extension PersistencePoliciesTests {
         store.setEnabled(false, for: record)
 
         let watchesAfterBlockedWrite = try database.context.fetch(FetchDescriptor<DBUpdateWatch>())
-        XCTAssertEqual(watchesAfterBlockedWrite.map(\\.gameID), ["watched-game"])
+        XCTAssertEqual(watchesAfterBlockedWrite.map(\.gameID), ["watched-game"])
         XCTAssertEqual(watchesAfterBlockedWrite.first?.entityTag, "etag-v1")
 
         shouldFailLoad = false
