@@ -148,10 +148,10 @@ final class PersonalLibraryStore: ObservableObject {
     private var didLoadLibrarySnapshots = false
 
     init(
-        database: AppDatabase = .shared,
+        database: AppDatabase? = nil,
         shouldSimulateSnapshotLoadFailure: @escaping () -> Bool = { false }
     ) {
-        self.database = database
+        self.database = database ?? .shared
         self.shouldSimulateSnapshotLoadFailure = shouldSimulateSnapshotLoadFailure
         load()
     }
