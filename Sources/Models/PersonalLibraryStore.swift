@@ -2,6 +2,13 @@ import Foundation
 import SwiftUI
 import SwiftData
 
+/// Full-snapshot persistence is safe only after its source snapshot loaded completely.
+enum SnapshotPersistencePolicy {
+    static func canReplacePersistedSnapshot(didLoadSuccessfully: Bool) -> Bool {
+        didLoadSuccessfully
+    }
+}
+
 enum LibraryStatus: String, CaseIterable, Codable, Identifiable {
     case wishlist = "想玩"
     case playing = "在玩"
@@ -564,7 +571,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func saveStatusEvents(save shouldSave: Bool = true) {
-        guard didLoadLibrarySnapshots else {
+        guard SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: didLoadLibrarySnapshots) else {
             print("itchPocket status history save skipped: initial database load did not complete")
             return
         }
@@ -597,7 +604,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func saveCollections(save shouldSave: Bool = true) {
-        guard didLoadLibrarySnapshots else {
+        guard SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: didLoadLibrarySnapshots) else {
             print("itchPocket collections save skipped: initial database load did not complete")
             return
         }
