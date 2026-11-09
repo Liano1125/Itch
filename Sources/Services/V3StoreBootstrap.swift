@@ -89,7 +89,7 @@ enum V3StoreBootstrap {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
             let configuration = ModelConfiguration(
-                "itchPocket-v3-staging",
+                directoryName,
                 schema: schema,
                 url: storeURL
             )
