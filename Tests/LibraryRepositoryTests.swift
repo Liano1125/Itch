@@ -231,4 +231,68 @@ final class LibraryRepositoryTests: XCTestCase {
         XCTAssertNotNil(try GameRepository(database: database).game(id: "game-a"))
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryCollectionItem>()).isEmpty)
     }
+
+    @MainActor
+    func testLibraryEntryLoadReturnsImmutableSnapshots() throws {
+        let database = try AppDatabase(inMemory: true)
+        let addedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let updatedAt = addedAt.addingTimeInterval(300)
+        database.context.insert(DBLibraryEntry(
+            gameID: "game-a", status: "在玩", isFavorite: true,
+            notes: "keep", addedAt: addedAt, updatedAt: updatedAt
+        ))
+        try database.save()
+
+        let entries = try LibraryRepository(database: database).loadEntries()
+        XCTAssertEqual(entries, [
+            StoredLibraryEntry(gameID: "game-a", status: "在玩", isFavorite: true,
+                               notes: "keep", addedAt: addedAt, updatedAt: updatedAt)
+        ])
+    }
+
+    @MainActor
+    func testLibraryEntryUpsertInsertsAndUpdatesOnlyRequestedGame() throws {
+        let database = try AppDatabase(inMemory: true)
+        let context = database.context
+        context.insert(DBLibraryEntry(gameID: "game-a", status: "在玩", notes: "old"))
+        context.insert(DBLibraryEntry(gameID: "game-b", status: "已完成", notes: "untouched"))
+        try database.save()
+
+        let repository = LibraryRepository(database: database)
+        let addedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        try repository.upsertEntry(StoredLibraryEntry(
+            gameID: "game-a", status: "已完成", isFavorite: true,
+            notes: "updated", addedAt: addedAt, updatedAt: addedAt
+        ), save: false)
+        try repository.upsertEntry(StoredLibraryEntry(
+            gameID: "game-c", status: "想玩", isFavorite: false,
+            notes: "", addedAt: addedAt, updatedAt: addedAt
+        ), save: false)
+        try database.save()
+
+        let entries = Dictionary(uniqueKeysWithValues: try repository.loadEntries().map { ($0.gameID, $0) })
+        XCTAssertEqual(entries.count, 3)
+        XCTAssertEqual(entries["game-a"]?.status, "已完成")
+        XCTAssertEqual(entries["game-a"]?.notes, "updated")
+        XCTAssertEqual(entries["game-b"]?.notes, "untouched")
+        XCTAssertEqual(entries["game-c"]?.status, "想玩")
+    }
+
+    @MainActor
+    func testLibraryEntryUpsertCanDeferSave() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = LibraryRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try repository.upsertEntry(StoredLibraryEntry(
+            gameID: "game-a", status: "在玩", isFavorite: false,
+            notes: "", addedAt: now, updatedAt: now
+        ), save: false)
+
+        XCTAssertTrue(database.context.hasChanges)
+        try database.save()
+        XCTAssertEqual(try repository.loadEntries().map(\.gameID), ["game-a"])
+    }
+
+
 }
