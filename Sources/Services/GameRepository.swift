@@ -80,11 +80,4 @@ final class GameRepository {
         return Set(rows.lazy.map(\.id).filter { wanted.contains($0) })
     }
 
-    private func fetchRow(id: String) throws -> DBGame? {
-        let gameID = id
-        let descriptor = FetchDescriptor<DBGame>(
-            predicate: #Predicate { $0.id == gameID }
-        )
-        return try database.repositoryContext.fetch(descriptor).first
-    }
 }
