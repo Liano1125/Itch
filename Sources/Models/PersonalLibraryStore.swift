@@ -248,7 +248,12 @@ final class PersonalLibraryStore: ObservableObject {
         }
 
         do {
-            let result = try shouldSave ? database.performTransaction(write) : write()
+            let result: (Int, LibraryRecord)
+            if shouldSave {
+                result = try database.performTransaction(write)
+            } else {
+                result = try write()
+            }
             if result.0 > 0 { records[index] = result.1 }
             return result.0
         } catch {
