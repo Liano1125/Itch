@@ -38,8 +38,9 @@ final class GameUpdateMonitorRepository {
 
     func save(_ watch: GameUpdateWatch, save shouldSave: Bool = true) throws {
         let context = database.context
+        let gameID = watch.gameID
         let descriptor = FetchDescriptor<DBUpdateWatch>(
-            predicate: #Predicate { $0.gameID == watch.gameID }
+            predicate: #Predicate { $0.gameID == gameID }
         )
         let item = try context.fetch(descriptor).first ?? DBUpdateWatch(gameID: watch.gameID)
         if item.modelContext == nil { context.insert(item) }
@@ -61,8 +62,9 @@ final class GameUpdateMonitorRepository {
 
     func remove(gameID: String, save shouldSave: Bool = true) throws {
         let context = database.context
+        let targetGameID = gameID
         let descriptor = FetchDescriptor<DBUpdateWatch>(
-            predicate: #Predicate { $0.gameID == gameID }
+            predicate: #Predicate { $0.gameID == targetGameID }
         )
         for item in try context.fetch(descriptor) {
             context.delete(item)
