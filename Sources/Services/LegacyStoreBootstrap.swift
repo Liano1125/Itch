@@ -659,8 +659,7 @@ enum LegacyStoreBootstrap {
     }
 
     private static func validateLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {
-
-    private static func validateLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let configuration = ModelConfiguration(
             legacyConfigurationName,
             schema: schema,
