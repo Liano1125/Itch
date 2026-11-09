@@ -13,6 +13,7 @@ on:
       - refactor/repository-integration-phase2
       - refactor/freeze-v2-schema-snapshot
       - refactor/v3-normalized-persistence-cutover
+      - fix/v3-detail-data-recovery
   pull_request:
     branches:
       - main
