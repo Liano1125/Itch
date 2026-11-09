@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
@@ -303,5 +304,96 @@ final class GameDetailRepositoryTests: XCTestCase {
         let preservedState = try XCTUnwrap(database.state(for: "unrelated.pending.change"))
         XCTAssertEqual(preservedState.stringValue, "keep me")
         XCTAssertNotNil(preservedState.modelContext)
+    }
+}
+
+
+final class GameUpdateMonitorRepositoryTests: XCTestCase {
+    @MainActor
+    func testRepositoryLoadsWatchWithCurrentGameMetadataAndPersistsBaseline() throws {
+        let database = AppDatabase(inMemory: true)
+        database.context.insert(DBGame(
+            id: "watch-game",
+            title: "Watch Game",
+            gameURL: "https://example.com/game"
+        ))
+        try database.save()
+
+        let repository = GameUpdateMonitorRepository(database: database)
+        let watch = GameUpdateWatch(
+            gameID: "watch-game",
+            gameTitle: "Watch Game",
+            gameURL: "https://example.com/game",
+            entityTag: "\"etag-1\"",
+            lastModified: "Wed, 01 Jan 2025 00:00:00 GMT",
+            contentHash: "content-hash",
+            lastCheckedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            hasBaseline: true,
+            isEnabled: true
+        )
+        try repository.save(watch)
+
+        let loaded = try XCTUnwrap(repository.watches().first)
+        XCTAssertEqual(loaded.gameID, "watch-game")
+        XCTAssertEqual(loaded.gameTitle, "Watch Game")
+        XCTAssertEqual(loaded.gameURL, "https://example.com/game")
+        XCTAssertEqual(loaded.entityTag, "\"etag-1\"")
+        XCTAssertEqual(loaded.lastModified, "Wed, 01 Jan 2025 00:00:00 GMT")
+        XCTAssertEqual(loaded.contentHash, "content-hash")
+        XCTAssertEqual(loaded.lastCheckedAt, watch.lastCheckedAt)
+        XCTAssertTrue(loaded.hasBaseline)
+        XCTAssertTrue(loaded.isEnabled)
+    }
+
+    @MainActor
+    func testRepositoryIncrementalSavePreservesOtherWatches() throws {
+        let database = AppDatabase(inMemory: true)
+        for id in ["game-a", "game-b"] {
+            database.context.insert(DBGame(id: id, title: id, gameURL: "https://example.com/\(id)"))
+        }
+        try database.save()
+
+        let repository = GameUpdateMonitorRepository(database: database)
+        let first = GameUpdateWatch(
+            gameID: "game-a", gameTitle: "game-a", gameURL: "https://example.com/game-a",
+            entityTag: nil, lastModified: nil, contentHash: "old", lastCheckedAt: nil,
+            hasBaseline: true, isEnabled: true
+        )
+        let second = GameUpdateWatch(
+            gameID: "game-b", gameTitle: "game-b", gameURL: "https://example.com/game-b",
+            entityTag: nil, lastModified: nil, contentHash: "keep", lastCheckedAt: nil,
+            hasBaseline: true, isEnabled: true
+        )
+        try repository.save([first, second])
+
+        var updatedFirst = first
+        updatedFirst.contentHash = "new"
+        try repository.save(updatedFirst)
+
+        let loaded = Dictionary(uniqueKeysWithValues: try repository.watches().map { ($0.gameID, $0) })
+        XCTAssertEqual(loaded["game-a"]?.contentHash, "new")
+        XCTAssertEqual(loaded["game-b"]?.contentHash, "keep")
+    }
+
+    @MainActor
+    func testRepositoryRemovesOnlyRequestedWatch() throws {
+        let database = AppDatabase(inMemory: true)
+        for id in ["game-a", "game-b"] {
+            database.context.insert(DBGame(id: id, title: id))
+        }
+        try database.save()
+
+        let repository = GameUpdateMonitorRepository(database: database)
+        let watches = ["game-a", "game-b"].map { id in
+            GameUpdateWatch(
+                gameID: id, gameTitle: id, gameURL: "",
+                entityTag: nil, lastModified: nil, contentHash: nil, lastCheckedAt: nil,
+                hasBaseline: false, isEnabled: true
+            )
+        }
+        try repository.save(watches)
+        try repository.remove(gameID: "game-a")
+
+        XCTAssertEqual(try repository.watches().map(\.gameID), ["game-b"])
     }
 }
