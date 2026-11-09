@@ -44,20 +44,24 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncMessage: String?
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
-    private let database = AppDatabase.shared
-    private let watchRepository: UpdateMonitorRepository
-    private lazy var appStateRepository = AppStateRepository(database: database)
+    private let database: AppDatabase
+    private let repository: GameUpdateMonitorRepository
+    private let appStateRepository: AppStateRepository
+    private var didLoadWatches = false
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
-    init() {
-        watchRepository = UpdateMonitorRepository(database: database)
+    init(database: AppDatabase? = nil, repository: GameUpdateMonitorRepository? = nil) {
+        let resolvedDatabase = database ?? .shared
+        self.database = resolvedDatabase
+        self.repository = repository ?? GameUpdateMonitorRepository(database: resolvedDatabase)
+        self.appStateRepository = AppStateRepository(database: resolvedDatabase)
         load()
         do {
-            lastHistoricalSyncAt = try appStateRepository.state(for: historicalSyncDateKey)?.dateValue
-            lastHistoricalSyncMessage = try appStateRepository.state(for: historicalSyncMessageKey)?.stringValue
-            if let data = try appStateRepository.state(for: historicalSyncResultsKey)?.dataValue {
+            lastHistoricalSyncAt = try self.appStateRepository.state(for: historicalSyncDateKey)?.dateValue
+            lastHistoricalSyncMessage = try self.appStateRepository.state(for: historicalSyncMessageKey)?.stringValue
+            if let data = try self.appStateRepository.state(for: historicalSyncResultsKey)?.dataValue {
                 lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
             }
         } catch {
@@ -81,11 +85,18 @@ final class GameUpdateMonitorStore: ObservableObject {
                 hasBaseline: existing?.hasBaseline ?? false,
                 isEnabled: true
             )
+            persistWatch(watches[record.id])
         } else {
             watches.removeValue(forKey: record.id)
+            do {
+                if didLoadWatches {
+                    try repository.remove(gameID: record.id)
+                }
+            } catch {
+                print("itchPocket update watch removal failed: \(error)")
+            }
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationID(record.id)])
         }
-        persistWatches()
     }
 
     func checkAll(calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async {
@@ -239,7 +250,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                     gameURL: record.gameURL,
                     updates: candidates
                 )
-                try? AppDatabase.shared.save()
+                try? database.save()
                 let addedForGame = max(libraryAdded, calendarAdded)
                 imported += addedForGame
                 if posts.isEmpty {
@@ -259,14 +270,9 @@ final class GameUpdateMonitorStore: ObservableObject {
         lastHistoricalSyncMessage = message
         lastHistoricalSyncResults = results
         do {
-            try appStateRepository.setDate(lastHistoricalSyncAt, for: historicalSyncDateKey, save: false)
-            try appStateRepository.setString(message, for: historicalSyncMessageKey, save: false)
-            try appStateRepository.setData(
-                try JSONEncoder().encode(results),
-                for: historicalSyncResultsKey,
-                save: false
-            )
-            try database.save()
+            try appStateRepository.setDate(lastHistoricalSyncAt, for: historicalSyncDateKey)
+            try appStateRepository.setString(message, for: historicalSyncMessageKey)
+            try appStateRepository.setData(try JSONEncoder().encode(results), for: historicalSyncResultsKey)
         } catch {
             print("itchPocket historical sync state save failed: \(error)")
         }
@@ -297,24 +303,40 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
+    func reload() {
+        didLoadWatches = false
+        load()
+    }
+
     private func load() {
         do {
-            watches = try watchRepository.loadWatches()
+            let loaded = try repository.watches()
+            watches = Dictionary(uniqueKeysWithValues: loaded.map { ($0.gameID, $0) })
+            didLoadWatches = true
         } catch {
-            print("itchPocket update watches load failed: \\(error)")
-            watches = [:]
+            print("itchPocket update watches load failed: \(error)")
+            didLoadWatches = false
+        }
+    }
+
+    private func persistWatch(_ watch: GameUpdateWatch?) {
+        guard didLoadWatches, let watch else { return }
+        do {
+            try repository.save(watch)
+        } catch {
+            print("itchPocket update watch save failed: \(error)")
         }
     }
 
     private func persistWatches(save shouldSave: Bool = true) {
+        guard didLoadWatches else { return }
         do {
-            try watchRepository.saveWatches(Array(watches.values), save: shouldSave)
+            try repository.save(Array(watches.values), save: shouldSave)
         } catch {
-            print("itchPocket update watches save failed: \\(error)")
+            print("itchPocket update watches save failed: \(error)")
         }
     }
 }
-
 
 private struct DevlogRSSPost {
     let title: String

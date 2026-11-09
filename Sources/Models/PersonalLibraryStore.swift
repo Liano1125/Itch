@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import SwiftData
 
 enum LibraryStatus: String, CaseIterable, Codable, Identifiable {
     case wishlist = "想玩"
@@ -127,9 +126,14 @@ final class PersonalLibraryStore: ObservableObject {
     private let sparkRepository: SparkRepository
     private let developerRepository: DeveloperRepository
     private let gameRepository: GameRepository
+    private let shouldSimulateLibraryLoadFailure: () -> Bool
+    private var didLoadLibrarySnapshots = false
 
-    init() {
-        let database = AppDatabase.shared
+    init(
+        database: AppDatabase? = nil,
+        shouldSimulateLibraryLoadFailure: @escaping () -> Bool = { false }
+    ) {
+        let database = database ?? AppDatabase.shared
         self.database = database
         self.libraryRepository = LibraryRepository(database: database)
         self.statusHistoryRepository = LibraryStatusHistoryRepository(database: database)
@@ -137,6 +141,12 @@ final class PersonalLibraryStore: ObservableObject {
         self.sparkRepository = SparkRepository(database: database)
         self.developerRepository = DeveloperRepository(database: database)
         self.gameRepository = GameRepository(database: database)
+        self.shouldSimulateLibraryLoadFailure = shouldSimulateLibraryLoadFailure
+        load()
+    }
+
+    /// Retries loading after a transient repository read failure.
+    func reload() {
         load()
     }
 
@@ -174,6 +184,7 @@ final class PersonalLibraryStore: ObservableObject {
 
     @discardableResult
     func recordDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+        guard didLoadLibrarySnapshots else { return 0 }
         var proposedRecords = records
         var changedIndices = Set<Int>()
         var inserted = 0
@@ -227,6 +238,7 @@ final class PersonalLibraryStore: ObservableObject {
 
     @discardableResult
     func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
+        guard didLoadLibrarySnapshots else { return 0 }
         guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
         let original = records[index]
 
@@ -263,6 +275,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func createCollection(title: String) {
+        guard didLoadLibrarySnapshots else { return }
         do {
             let collection = try libraryRepository.createCollection(title: title)
             collections.insert(collection, at: 0)
@@ -272,6 +285,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func updateCollection(_ collection: PersonalGameCollection) {
+        guard didLoadLibrarySnapshots else { return }
         guard let index = collections.firstIndex(where: { $0.id == collection.id }) else { return }
         do {
             collections[index] = try libraryRepository.updateCollection(collection)
@@ -281,6 +295,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func deleteCollection(_ id: String) {
+        guard didLoadLibrarySnapshots else { return }
         do {
             try libraryRepository.deleteCollection(id: id)
             collections.removeAll { $0.id == id }
@@ -294,6 +309,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func toggleGame(_ gameID: String, in collectionID: String) {
+        guard didLoadLibrarySnapshots else { return }
         do {
             let updated = try libraryRepository.toggleGame(gameID, in: collectionID)
             if let index = collections.firstIndex(where: { $0.id == collectionID }) {
@@ -305,6 +321,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func add(_ game: PublicCollectionGame, status: LibraryStatus = .playing) {
+        guard didLoadLibrarySnapshots else { return }
         guard !contains(game.id) else { return }
         let now = Date()
         let record = LibraryRecord(
@@ -335,6 +352,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func update(_ record: LibraryRecord) {
+        guard didLoadLibrarySnapshots else { return }
         guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
         let previous = records[index]
         var updated = record
@@ -362,6 +380,7 @@ final class PersonalLibraryStore: ObservableObject {
     /// Persists one complete scan in a single database transaction, and only writes
     /// Spark rows whose values actually changed.
     func updateSparkMetadata(_ metadataByGameID: [String: SparkPlayMetadata]) {
+        guard didLoadLibrarySnapshots else { return }
         guard !metadataByGameID.isEmpty else { return }
         var proposedRecords = records
         var changedGameIDs = Set<String>()
@@ -413,6 +432,7 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     func remove(_ id: String) {
+        guard didLoadLibrarySnapshots else { return }
         do {
             try libraryRepository.removeGameFromLibrary(gameID: id)
             records.removeAll { $0.id == id }
@@ -428,17 +448,21 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func load() {
+        didLoadLibrarySnapshots = false
         do {
+            if shouldSimulateLibraryLoadFailure() {
+                throw PersonalLibraryStoreLoadError.simulatedFailure
+            }
+
             let gamesByID = try gameRepository.loadByID()
             let entries = try libraryRepository.loadEntries()
             let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
-            records = entries.compactMap { entry in
+            let loadedRecords: [LibraryRecord] = entries.compactMap { entry -> LibraryRecord? in
                 guard let game = gamesByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
                 let spark = metadata[game.id]
-                let gameUpdates = updatesByGame[game.id] ?? []
                 return LibraryRecord(
                     id: game.id,
                     title: game.title,
@@ -453,7 +477,7 @@ final class PersonalLibraryStore: ObservableObject {
                     notes: entry.notes,
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
-                    gameUpdates: gameUpdates,
+                    gameUpdates: updatesByGame[game.id] ?? [],
                     discoveryTags: game.discoveryTagsData.flatMap {
                         try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
                     },
@@ -467,25 +491,32 @@ final class PersonalLibraryStore: ObservableObject {
                 )
             }.sorted { $0.addedAt > $1.addedAt }
 
+            var loadedStatusEvents = statusEvents
+            var statusHistoryLoaded = false
             do {
-                statusEvents = try statusHistoryRepository.loadEvents()
+                loadedStatusEvents = try statusHistoryRepository.loadEvents()
+                statusHistoryLoaded = true
             } catch {
-                // A status-history read failure must not hide otherwise valid
-                // game-library records from the user.
                 print("itchPocket status history load failed: \(error)")
-                statusEvents = [:]
             }
+
+            var loadedCollections = collections
+            var collectionsLoaded = false
             do {
-                collections = try libraryRepository.collections()
+                loadedCollections = try libraryRepository.collections()
+                collectionsLoaded = true
             } catch {
                 print("itchPocket collection load failed: \(error)")
-                collections = []
             }
+
+            records = loadedRecords
+            statusEvents = loadedStatusEvents
+            collections = loadedCollections
+            didLoadLibrarySnapshots = statusHistoryLoaded && collectionsLoaded
         } catch {
-            print("itchPocket database load failed: \(error)")
-            records = []
-            statusEvents = [:]
-            collections = []
+            // Keep the last known-good snapshot. On first launch the arrays
+            // are already empty, and reload() can retry without losing data.
+            print("itchPocket database load failed; retaining previous library snapshot: \(error)")
         }
     }
 
@@ -494,6 +525,9 @@ final class PersonalLibraryStore: ObservableObject {
         save shouldSave: Bool = true,
         updatesAreCompleteSnapshot: Bool = false
     ) throws {
+        guard didLoadLibrarySnapshots else {
+            throw PersonalLibraryStoreLoadError.persistenceBlocked
+        }
         let write = {
             let developerID: String?
             if let profileURL = record.developerProfileURL, !profileURL.isEmpty {
@@ -583,4 +617,10 @@ final class PersonalLibraryStore: ObservableObject {
     private static func canonicalDeveloperID(_ rawURL: String) -> String {
         DeveloperRepository.canonicalID(for: rawURL)
     }
+}
+
+
+private enum PersonalLibraryStoreLoadError: Error {
+    case simulatedFailure
+    case persistenceBlocked
 }
