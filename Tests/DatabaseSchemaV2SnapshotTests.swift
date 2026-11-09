@@ -5,16 +5,11 @@ import SwiftData
 final class DatabaseSchemaV2SnapshotTests: XCTestCase {
     @MainActor
     func testFrozenV2SchemaContainsAndPersistsAllFourteenModels() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v2-schema-snapshot-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-
         let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
         let configuration = ModelConfiguration(
             "itchPocket-v2-snapshot",
             schema: schema,
-            url: directory.appendingPathComponent("v2-snapshot.store")
+            isStoredInMemoryOnly: true
         )
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = container.mainContext
