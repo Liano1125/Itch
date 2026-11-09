@@ -100,6 +100,71 @@ final class DatabaseV3MigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testV3MigrationRejectsOrphanedGameReferencesWithoutChangingV2() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-orphaned-references-\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-orphan-fixture", schema: schema, url: v2StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryEntry(
+                gameID: "missing-game",
+                status: "playing"
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBGameUpdate(
+                id: "orphan-update",
+                gameID: "missing-game",
+                summary: "Orphan update"
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBCalendarEvent(
+                id: "orphan-event",
+                gameID: "missing-game",
+                kind: "release"
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBSparkMetadata(
+                gameID: "missing-game",
+                runtimeSeconds: 42
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBUpdateWatch(gameID: "missing-game"))
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent(
+                id: "orphan-status",
+                gameID: "missing-game",
+                fromStatus: nil,
+                toStatus: "playing"
+            ))
+            try context.save()
+        }
+
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: v3Directory.path))
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+
+        // The retained source still contains every orphaned row; migration
+        // fails closed rather than silently dropping or rewriting user data.
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-orphan-verify", schema: schema, url: v2StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>()), 1)
+        }
+    }
+
+    @MainActor
     func testV3MigrationRejectsConflictingMembershipWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-conflict-\(UUID().uuidString)", isDirectory: true)
