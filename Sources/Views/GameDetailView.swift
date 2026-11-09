@@ -59,6 +59,10 @@ struct GameDetailView: View {
         DeveloperRepository(database: .shared)
     }
 
+    private var gameRepository: GameRepository {
+        GameRepository(database: .shared)
+    }
+
     @State private var detail: GameDetailPayload?
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -737,8 +741,7 @@ struct GameDetailView: View {
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
         let existingRecord = library.record(for: game.id)
-        let database = AppDatabase.shared
-        let existingGame = try? database.game(id: game.id)
+        let existingGame = try? gameRepository.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
         let developerID = authorURL.map { DeveloperRepository.canonicalID(for: $0.absoluteString) } ?? existingGame?.developerID
         let existingDeveloper = developerID.flatMap { id in
@@ -751,7 +754,7 @@ struct GameDetailView: View {
         )
 
         do {
-            try database.upsertGame(
+            try gameRepository.upsertMetadata(
                 id: game.id,
                 title: game.title,
                 gameURL: game.url?.absoluteString,
@@ -860,7 +863,7 @@ struct GameDetailView: View {
 
     private func loadCachedDescription() async {
         let database = AppDatabase.shared
-        if let savedGame = try? database.game(id: game.id) {
+        if let savedGame = try? gameRepository.game(id: game.id) {
             let developer = savedGame.developerID.flatMap { try? developerRepository.developer(id: $0) }
             let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
             hasLoadedCompleteDetailSnapshot = savedDetail?.fetchStatus == .complete
@@ -1212,6 +1215,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
     static let shared = GameDetailPrefetchService()
 
     private let database = AppDatabase.shared
+    private lazy var gameRepository = GameRepository(database: database)
     private lazy var developerRepository = DeveloperRepository(database: database)
     private var isRunning = false
     private var webView: WKWebView?
@@ -1227,7 +1231,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
 
         let sortedCandidates = records.compactMap { record -> (record: LibraryRecord, updatedAt: Date)? in
             guard let rawURL = record.gameURL, URL(string: rawURL) != nil else { return nil }
-            let stored = try? database.game(id: record.id)
+            let stored = try? gameRepository.game(id: record.id)
             let cachedDetail = try? GameDetailRepository.shared.detail(for: record.id)
             let isComplete = cachedDetail?.fetchStatus == .complete
             let hasCachedAvatar: Bool = {
@@ -1248,7 +1252,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
             if Task.isCancelled { break }
             guard let url = URL(string: candidate.record.gameURL ?? "") else { continue }
             await load(candidate.record, url: url)
-            guard let stored = try? database.game(id: candidate.record.id) else { continue }
+            guard let stored = try? gameRepository.game(id: candidate.record.id) else { continue }
 
             let cachedDetail = try? GameDetailRepository.shared.detail(for: candidate.record.id)
             var imageURLs = [stored.coverURL].compactMap { $0 }.compactMap { URL(string: $0) }
@@ -1311,7 +1315,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
         let developerID = authorURL.map { DeveloperRepository.canonicalID(for: $0.absoluteString) }
         do {
-            try database.upsertGame(
+            try gameRepository.upsertMetadata(
                 id: record.id,
                 title: record.title,
                 gameURL: record.gameURL,
