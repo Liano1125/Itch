@@ -7,6 +7,7 @@ on:
       # Validate stacked repository hardening without publishing a nightly release.
       - refactor/repository-boundary-hardening
       - refactor/library-entry-repository
+      - refactor/library-write-transaction-hardening
   pull_request:
     branches:
       - main
@@ -23,6 +24,7 @@ on:
       - refactor/game-repository
       - refactor/cache-repository
       - refactor/library-entry-repository
+      - refactor/library-write-transaction-hardening
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
