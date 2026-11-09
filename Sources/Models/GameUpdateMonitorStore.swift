@@ -57,7 +57,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         self.repository = repository ?? GameUpdateMonitorRepository(database: resolvedDatabase)
         load()
         do {
-            lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
+            lastHistoricalSyncAt = try self.database.state(for: historicalSyncDateKey)?.dateValue
             lastHistoricalSyncMessage = try database.state(for: historicalSyncMessageKey)?.stringValue
             if let data = try database.state(for: historicalSyncResultsKey)?.dataValue {
                 lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
@@ -185,6 +185,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         libraryStore.recordDetectedUpdates(pendingUpdates, save: false)
         calendarStore.addDetectedUpdates(pendingUpdates, save: false)
         persistWatches(save: false)
+        try? database.save()
         for watch in notificationWatches {
             await sendUpdateNotification(for: watch)
         }
