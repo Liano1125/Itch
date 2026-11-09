@@ -397,10 +397,9 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func load() {
-        let context = database.context
         do {
             let gamesByID = try gameRepository.loadByID()
-            let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
+            let entries = try libraryRepository.loadEntries()
             let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
@@ -522,14 +521,17 @@ final class PersonalLibraryStore: ObservableObject {
                 )
             }
 
-            let entryDescriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
-            let entry = try context.fetch(entryDescriptor).first ?? DBLibraryEntry(gameID: gameID, status: record.status.rawValue)
-            if entry.modelContext == nil { context.insert(entry) }
-            if entry.status != record.status.rawValue { entry.status = record.status.rawValue }
-            if entry.isFavorite != record.isFavorite { entry.isFavorite = record.isFavorite }
-            if entry.notes != record.notes { entry.notes = record.notes }
-            if entry.addedAt != record.addedAt { entry.addedAt = record.addedAt }
-            if entry.updatedAt != record.updatedAt { entry.updatedAt = record.updatedAt }
+            try libraryRepository.upsertEntry(
+                StoredLibraryEntry(
+                    gameID: gameID,
+                    status: record.status.rawValue,
+                    isFavorite: record.isFavorite,
+                    notes: record.notes,
+                    addedAt: record.addedAt,
+                    updatedAt: record.updatedAt
+                ),
+                save: false
+            )
 
             // LibraryRecord history is a partial projection (historical entries are capped).
             // The repository preserves omitted rows unless a caller explicitly supplies a complete snapshot.
