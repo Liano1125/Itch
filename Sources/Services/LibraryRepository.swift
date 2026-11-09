@@ -1,7 +1,16 @@
 import Foundation
 import SwiftData
 
-/// Owns personal-library collection metadata and normalized membership rows.
+struct StoredLibraryEntry: Equatable {
+    let gameID: String
+    let status: String
+    let isFavorite: Bool
+    let notes: String
+    let addedAt: Date
+    let updatedAt: Date
+}
+
+/// Owns personal-library entries, collection metadata, and normalized membership rows.
 /// The legacy gameIDs array is kept in sync until a later schema cutover.
 @MainActor
 final class LibraryRepository {
@@ -10,6 +19,7 @@ final class LibraryRepository {
         case gameNotFound(String)
         case emptyCollectionTitle
         case membershipOutOfSync(String)
+        case duplicateLibraryEntry(String)
 
         var errorDescription: String? {
             switch self {
@@ -21,6 +31,8 @@ final class LibraryRepository {
                 return "A collection title cannot be empty."
             case .membershipOutOfSync(let id):
                 return "Normalized membership rows do not match the legacy collection snapshot for \(id)."
+            case .duplicateLibraryEntry(let id):
+                return "Multiple personal-library entries exist for game \(id)."
             }
         }
     }
@@ -31,6 +43,35 @@ final class LibraryRepository {
     init(database: AppDatabase) {
         self.database = database
         self.gameRepository = GameRepository(database: database)
+    }
+
+    func loadEntries() throws -> [StoredLibraryEntry] {
+        try database.context.fetch(FetchDescriptor<DBLibraryEntry>()).map { row in
+            StoredLibraryEntry(gameID: row.gameID, status: row.status, isFavorite: row.isFavorite,
+                               notes: row.notes, addedAt: row.addedAt, updatedAt: row.updatedAt)
+        }
+    }
+
+    /// Inserts or updates one membership row. Unmentioned games are untouched.
+    func upsertEntry(_ entry: StoredLibraryEntry, save: Bool = true) throws {
+        let gameID = entry.gameID
+        let descriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
+        let context = database.context
+        let matches = try context.fetch(descriptor)
+        guard matches.count <= 1 else { throw RepositoryError.duplicateLibraryEntry(gameID) }
+        let row: DBLibraryEntry
+        if let existing = matches.first {
+            row = existing
+        } else {
+            row = DBLibraryEntry(gameID: entry.gameID, status: entry.status)
+            context.insert(row)
+        }
+        row.status = entry.status
+        row.isFavorite = entry.isFavorite
+        row.notes = entry.notes
+        row.addedAt = entry.addedAt
+        row.updatedAt = entry.updatedAt
+        if save { try database.save() }
     }
 
     func collections() throws -> [PersonalGameCollection] {
