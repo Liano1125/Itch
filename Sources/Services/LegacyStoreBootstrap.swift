@@ -239,15 +239,7 @@ enum LegacyStoreBootstrap {
             // replaced; the pending marker makes a crash before promotion
             // distinguishable from a previously committed V2 database.
             if !fileManager.fileExists(atPath: stagingStoreURL.path) {
-                let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
-                let configuration = ModelConfiguration(
-                    v2ConfigurationName,
-                    schema: schema,
-                    url: stagingStoreURL
-                )
-                let container = try ModelContainer(for: schema, configurations: [configuration])
-                try container.mainContext.save()
-                try writeMigrationReceipt(at: stagingStoreURL, counts: .zero)
+                try createEmptyV2Store(at: stagingStoreURL)
             }
 
             try validateV2Store(
@@ -276,6 +268,22 @@ enum LegacyStoreBootstrap {
         } catch {
             try? fileManager.removeItem(at: stagingDirectory)
             throw error
+        }
+    }
+
+    /// Create a fresh empty store in a bounded lifetime so its SQLite handles
+    /// are released before the staging directory is promoted.
+    private static func createEmptyV2Store(at storeURL: URL) throws {
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+            let configuration = ModelConfiguration(
+                v2ConfigurationName,
+                schema: schema,
+                url: storeURL
+            )
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            try container.mainContext.save()
+            try writeMigrationReceipt(at: storeURL, counts: .zero)
         }
     }
 
