@@ -144,8 +144,12 @@ final class CacheRepository {
     /// keys are invalidated by their own repositories at the lifecycle layer.
     func clearRebuildableCaches(save shouldSave: Bool = true) throws {
         let context = database.context
-        try context.delete(model: DBTranslation.self)
-        try context.delete(model: DBDiscoverySnapshot.self)
+        // Delete tracked rows individually so save:false participates reliably
+        // in the caller's shared ModelContext transaction.
+        let translations = try context.fetch(FetchDescriptor<DBTranslation>())
+        let snapshots = try context.fetch(FetchDescriptor<DBDiscoverySnapshot>())
+        for translation in translations { context.delete(translation) }
+        for snapshot in snapshots { context.delete(snapshot) }
         if shouldSave { try database.save() }
     }
 
