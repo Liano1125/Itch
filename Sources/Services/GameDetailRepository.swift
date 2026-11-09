@@ -57,8 +57,8 @@ final class GameDetailRepository {
     }
 
     func discoveryTags(for gameID: String) throws -> [LibraryDiscoveryTag]? {
-        guard let detail = try detail(for: gameID) else { return nil }
-        return detail.discoveryTags
+        guard let row = try fetchDetailRow(gameID: gameID) else { return nil }
+        return Self.decodeTags(row.discoveryTagsData)
     }
 
     func applyPartialUpdate(
