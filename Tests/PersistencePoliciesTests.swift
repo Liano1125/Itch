@@ -403,6 +403,56 @@ final class GameCalendarRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testCalendarRepositoryOrdinaryEditPreservesExistingSourceUpdateLink() throws {
+        let database = AppDatabase(inMemory: true)
+        let game = DBGame(id: "calendar-edit-game", title: "Calendar Edit Game")
+        let update = DBGameUpdate(
+            id: "calendar-edit-update",
+            gameID: "calendar-edit-game",
+            title: "Linked Devlog",
+            summary: "Linked summary",
+            detectedAt: Date(timeIntervalSince1970: 1_799_000_000),
+            publishedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            sourceID: "calendar-edit-source",
+            isHistorical: true
+        )
+        database.context.insert(game)
+        database.context.insert(update)
+        try database.save()
+
+        let repository = GameCalendarRepository(database: database)
+        let original = GameCalendarEvent(
+            id: "calendar-edit-event",
+            gameID: "calendar-edit-game",
+            gameTitle: "Calendar Edit Game",
+            gameURL: nil,
+            title: "Original fallback",
+            date: Date(timeIntervalSince1970: 1_700_000_000),
+            kind: .update,
+            reminderEnabled: false,
+            notes: "Original fallback notes"
+        )
+        try repository.saveEvent(original, sourceUpdateID: update.id)
+
+        var edited = original
+        edited.title = "Edited fallback"
+        edited.date = Date(timeIntervalSince1970: 1_710_000_000)
+        edited.notes = "Edited fallback notes"
+        try repository.saveEvent(edited)
+
+        let stillLinked = try XCTUnwrap(repository.events().first)
+        XCTAssertEqual(stillLinked.title, "更新：Linked Devlog")
+        XCTAssertEqual(stillLinked.date, update.publishedAt)
+        XCTAssertTrue(stillLinked.notes.contains("Linked summary"))
+
+        try repository.saveEvent(edited, clearSourceUpdateLink: true)
+        let unlinked = try XCTUnwrap(repository.events().first)
+        XCTAssertEqual(unlinked.title, "Edited fallback")
+        XCTAssertEqual(unlinked.date, edited.date)
+        XCTAssertEqual(unlinked.notes, "Edited fallback notes")
+    }
+
+    @MainActor
     func testCalendarRepositoryDeletesOnlyRequestedEvent() throws {
         let database = AppDatabase(inMemory: true)
         let repository = GameCalendarRepository(database: database)
