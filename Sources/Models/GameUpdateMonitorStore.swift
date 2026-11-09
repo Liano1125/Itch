@@ -87,8 +87,9 @@ final class GameUpdateMonitorStore: ObservableObject {
         } else {
             watches.removeValue(forKey: record.id)
             do {
-                guard didLoadWatches else { return }
-                try repository.remove(gameID: record.id)
+                if didLoadWatches {
+                    try repository.remove(gameID: record.id)
+                }
             } catch {
                 print("itchPocket update watch removal failed: \(error)")
             }
