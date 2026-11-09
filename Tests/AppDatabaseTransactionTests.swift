@@ -33,9 +33,9 @@ final class AppDatabaseTransactionTests: XCTestCase {
 
         XCTAssertTrue(database.context.hasChanges)
         let pending = try database.context.fetch(FetchDescriptor<DBAppState>())
-        XCTAssertEqual(Set(pending.map(\\.key)), ["unrelated.pending"])
+        XCTAssertEqual(Set(pending.map(\.key)), ["unrelated.pending"])
         try database.save()
-        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBAppState>()).map(\\.key), ["unrelated.pending"])
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBAppState>()).map(\.key), ["unrelated.pending"])
     }
 
     @MainActor
@@ -49,7 +49,7 @@ final class AppDatabaseTransactionTests: XCTestCase {
 
         XCTAssertFalse(database.context.hasChanges)
         XCTAssertEqual(
-            Set(try database.context.fetch(FetchDescriptor<DBAppState>()).map(\\.key)),
+            Set(try database.context.fetch(FetchDescriptor<DBAppState>()).map(\.key)),
             ["transaction.first", "transaction.second"]
         )
     }
