@@ -1208,8 +1208,8 @@ private enum GamePageScript {
         """
 }
 
-/// Preloads missing/stale itch.io detail pages in a small sequential WebKit queue.
-/// Cached detail data is rendered immediately; this service refreshes it in the background.
+/// Preloads missing/stale itch.io detail pages in a bounded sequential WebKit queue.
+/// Cached detail data is rendered immediately; incomplete records are prioritized for recovery.
 @MainActor
 final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
     static let shared = GameDetailPrefetchService()
@@ -1224,7 +1224,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
 
     private override init() { super.init() }
 
-    func prefetch(records: [LibraryRecord], library: PersonalLibraryStore, limit: Int = 8) async {
+    func prefetch(records: [LibraryRecord], library: PersonalLibraryStore, limit: Int = 24) async {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
