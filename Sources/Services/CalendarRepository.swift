@@ -70,7 +70,7 @@ final class CalendarRepository {
     }
 
     func loadEvents() throws -> [StoredCalendarEvent] {
-        try database.context.fetch(FetchDescriptor<DBCalendarEvent>())
+        try database.repositoryContext.fetch(FetchDescriptor<DBCalendarEvent>())
             .map(StoredCalendarEvent.init)
     }
 
@@ -80,7 +80,7 @@ final class CalendarRepository {
         clearSourceUpdateLink: Bool = false,
         save shouldSave: Bool = true
     ) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let eventID = event.id
         let descriptor = FetchDescriptor<DBCalendarEvent>(
             predicate: #Predicate { $0.id == eventID }
@@ -114,8 +114,8 @@ final class CalendarRepository {
         let descriptor = FetchDescriptor<DBCalendarEvent>(
             predicate: #Predicate { $0.id == id }
         )
-        if let row = try database.context.fetch(descriptor).first {
-            database.context.delete(row)
+        if let row = try database.repositoryContext.fetch(descriptor).first {
+            database.repositoryContext.delete(row)
             if shouldSave { try database.save() }
         }
     }
