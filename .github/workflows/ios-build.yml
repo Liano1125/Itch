@@ -10,6 +10,7 @@ on:
       - refactor/library-write-transaction-hardening
       - refactor/repository-context-capability
       - refactor/app-database-cleanup-transaction
+      - refactor/repository-integration-phase2
   pull_request:
     branches:
       - main
