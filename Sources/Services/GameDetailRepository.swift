@@ -24,18 +24,18 @@ final class GameDetailRepository {
     }
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
-        guard let row = try fetchDetailRow(gameID: gameID) else { return nil }
-        let tags = Self.decodeTags(row.discoveryTagsData) ?? []
+        let row = try fetchDetailRow(gameID: gameID)
+        guard row != nil || (try gameRepository.game(id: gameID)) != nil else { return nil }
         let statusValue = try appStateRepository.state(for: fetchStatusPrefix + gameID)?.stringValue
         let currentFetchDate = try appStateRepository.state(for: fetchDatePrefix + gameID)?.dateValue
         let legacyFetchDate = try appStateRepository.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
 
         return GameDetailRecord(
-            description: row.descriptionText,
-            galleryURLs: row.galleryURLs,
-            discoveryTags: tags,
-            fetchedAt: row.fetchedAt ?? currentFetchDate ?? legacyFetchDate,
-            fetchStatus: GameDetailFetchStatus(rawValue: statusValue ?? "") ?? (row.isComplete ? .complete : .unknown)
+            description: row?.descriptionText,
+            galleryURLs: row?.galleryURLs ?? [],
+            discoveryTags: Self.decodeTags(row?.discoveryTagsData) ?? [],
+            fetchedAt: row?.fetchedAt ?? currentFetchDate ?? legacyFetchDate,
+            fetchStatus: GameDetailFetchStatus(rawValue: statusValue ?? "") ?? (row?.isComplete == true ? .complete : .unknown)
         )
     }
 
