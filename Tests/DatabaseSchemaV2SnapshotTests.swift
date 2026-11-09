@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 @testable import itchPocket
 
+// Confirms V2 storage can be read independently of future runtime model declarations.
 final class DatabaseSchemaV2SnapshotTests: XCTestCase {
     @MainActor
     func testFrozenV2SnapshotCanReadStoreCreatedByCurrentV2Models() throws {
