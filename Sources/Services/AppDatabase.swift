@@ -86,7 +86,7 @@ final class AppDatabase {
             )
             // Migrate a staging copy of V2. The authoritative V2 store is
             // retained untouched until V3 passes logical and SQLite checks.
-            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL, recoverInvalidExistingV3: recoverCorruptV2)
             let configuration = ModelConfiguration(
                 V3StoreBootstrap.directoryName,
                 schema: schema,
