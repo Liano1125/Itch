@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import CryptoKit
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
@@ -500,7 +501,7 @@ extension PersistencePoliciesTests {
         let entry = try XCTUnwrap(repository.translation(for: key))
         XCTAssertEqual(entry.translation, "你好")
         XCTAssertEqual(entry.sourceText, "Hello")
-        XCTAssertEqual(entry.sourceHash, TranslationCacheKey.make(scope: "", source: "Hello", target: ""))
+        XCTAssertEqual(entry.sourceHash, SHA256.hash(data: Data("Hello".utf8)).map { String(format: "%02x", $0) }.joined())
         XCTAssertEqual(entry.scope, "game:123")
         XCTAssertEqual(entry.target, "zh-Hans")
         XCTAssertEqual(entry.updatedAt, timestamp)
@@ -529,10 +530,10 @@ extension PersistencePoliciesTests {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
 
         for index in 0..<4 {
-            let key = "translation-retention-\\(index)"
+            let key = "translation-retention-\(index)"
             try repository.store(
-                "translated-\\(index)",
-                source: "source-\\(index)",
+                "translated-\(index)",
+                source: "source-\(index)",
                 scope: "retention-test",
                 target: "en",
                 for: key,
@@ -541,9 +542,9 @@ extension PersistencePoliciesTests {
         }
 
         let remaining = try database.context.fetch(FetchDescriptor<DBTranslation>(
-            sortBy: [SortDescriptor(\\.updatedAt, order: .forward)]
+            sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
         ))
         XCTAssertEqual(remaining.count, 2)
-        XCTAssertEqual(Set(remaining.map(\\.cacheKey)), ["translation-retention-2", "translation-retention-3"])
+        XCTAssertEqual(Set(remaining.map(\.cacheKey)), ["translation-retention-2", "translation-retention-3"])
     }
 }
