@@ -12,15 +12,26 @@ final class HistoricalV2StoreCompatibilityTests: XCTestCase {
             Bundle(for: Self.self).resourceURL,
             "The test bundle must expose its copied resources."
         )
-        let fixtureDirectory = resourcesURL
+        let bundledFixtureDirectory = resourcesURL
             .appendingPathComponent("Fixtures", isDirectory: true)
             .appendingPathComponent("HistoricalV2Store", isDirectory: true)
-        let v2StoreURL = fixtureDirectory.appendingPathComponent("itchPocket-v2.store")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
-        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        let bundledStoreURL = bundledFixtureDirectory.appendingPathComponent("itchPocket-v2.store")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundledStoreURL.path))
 
-        let root = v2StoreURL.deletingLastPathComponent().deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: root) }
+        // Bundle resources are read-only. Work on a private copy so SwiftData can
+        // open the V2 store and V3StoreBootstrap can create its sibling V3 store.
+        let workingRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HistoricalV2Compatibility-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: workingRoot,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: workingRoot) }
+
+        let fixtureDirectory = workingRoot.appendingPathComponent("HistoricalV2Store", isDirectory: true)
+        try FileManager.default.copyItem(at: bundledFixtureDirectory, to: fixtureDirectory)
+        let v2StoreURL = fixtureDirectory.appendingPathComponent("itchPocket-v2.store")
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
 
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
