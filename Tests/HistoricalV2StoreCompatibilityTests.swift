@@ -127,7 +127,7 @@ final class HistoricalV2StoreCompatibilityTests: XCTestCase {
             let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first)
             XCTAssertEqual(detail.gameID, game.id)
             XCTAssertEqual(detail.descriptionText, "Historical normalized detail")
-            XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/historical-v2.png")
+            XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/historical-v2.png"])
 
             XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDeveloper>()), 1)
             XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
