@@ -447,7 +447,7 @@ final class PersonalLibraryStore: ObservableObject {
             let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
-            let loadedRecords = entries.compactMap { entry in
+            let loadedRecords: [LibraryRecord] = entries.compactMap { entry -> LibraryRecord? in
                 guard let game = gamesByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
                 let spark = metadata[game.id]
