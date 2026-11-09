@@ -6,7 +6,7 @@ final class DatabaseV3MigrationTests: XCTestCase {
     @MainActor
     func testV3BootstrapMigratesNormalizedRecordsAndRetainsV2Backup() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v3-migration-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v3-migration-\(UUID().uuidString)", isDirectory: true)
         let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
         try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -38,8 +38,8 @@ final class DatabaseV3MigrationTests: XCTestCase {
 
         let items = try v3Context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
             .sorted { $0.sortOrder < $1.sortOrder }
-        XCTAssertEqual(items.map(\\.gameID), ["game-b", "game-a"])
-        XCTAssertEqual(items.map(\\.sortOrder), [0, 1])
+        XCTAssertEqual(items.map(\.gameID), ["game-b", "game-a"])
+        XCTAssertEqual(items.map(\.sortOrder), [0, 1])
         XCTAssertTrue(try v3Context.fetch(FetchDescriptor<DBLibraryCollection>()).contains { $0.id == "favorites" })
 
         // Reopen the untouched V2 source and verify its compatibility fields
@@ -58,7 +58,7 @@ final class DatabaseV3MigrationTests: XCTestCase {
     @MainActor
     func testV3MigrationRejectsConflictingMembershipWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v3-conflict-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v3-conflict-\(UUID().uuidString)", isDirectory: true)
         let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
         try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
