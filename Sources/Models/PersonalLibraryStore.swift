@@ -174,21 +174,41 @@ final class PersonalLibraryStore: ObservableObject {
 
     @discardableResult
     func recordDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+        var proposedRecords = records
+        var changedIndices = Set<Int>()
         var inserted = 0
+
         for update in updates {
-            guard let index = records.firstIndex(where: { $0.id == update.gameID }) else { continue }
-            var updated = records[index]
+            guard let index = proposedRecords.firstIndex(where: { $0.id == update.gameID }) else { continue }
+            var updated = proposedRecords[index]
             var history = updated.gameUpdates ?? []
             guard !history.contains(where: { $0.detectedAt == update.detectedAt && $0.summary == update.summary }) else { continue }
             history.insert(GameLibraryUpdate(summary: update.summary, detectedAt: update.detectedAt), at: 0)
             updated.gameUpdates = Array(history.prefix(30))
             updated.updatedAt = update.detectedAt
-            records[index] = updated
-            persist(updated, save: false)
+            proposedRecords[index] = updated
+            changedIndices.insert(index)
             inserted += 1
         }
-        if shouldSave && inserted > 0 { try? database.save() }
-        return inserted
+
+        guard inserted > 0 else { return 0 }
+        let write = {
+            for index in changedIndices.sorted() {
+                try self.persist(proposedRecords[index], save: false)
+            }
+        }
+        do {
+            if shouldSave {
+                try database.performTransaction(write)
+            } else {
+                try database.performUnitOfWork(write)
+            }
+            records = proposedRecords
+            return inserted
+        } catch {
+            print("itchPocket detected update transaction failed: \(error)")
+            return 0
+        }
     }
 
     @discardableResult
@@ -208,24 +228,36 @@ final class PersonalLibraryStore: ObservableObject {
     @discardableResult
     func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
         guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
-        var updated = records[index]
-        do {
-            let insertedUpdates = try gameUpdateRepository.appendHistoricalUpdates(
+        let original = records[index]
+
+        let write = { () throws -> (Int, LibraryRecord) in
+            let insertedUpdates = try self.gameUpdateRepository.appendHistoricalUpdates(
                 incoming,
                 for: gameID,
                 save: false
             )
-            guard !insertedUpdates.isEmpty else { return 0 }
+            guard !insertedUpdates.isEmpty else { return (0, original) }
+            var updated = original
             var history = updated.gameUpdates ?? []
             history.append(contentsOf: insertedUpdates)
             history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
             updated.gameUpdates = Array(history.prefix(200))
             updated.updatedAt = Date()
-            records[index] = updated
-            persist(updated, save: shouldSave)
-            return insertedUpdates.count
+            try self.persist(updated, save: false)
+            return (insertedUpdates.count, updated)
+        }
+
+        do {
+            let result: (Int, LibraryRecord)
+            if shouldSave {
+                result = try database.performTransaction(write)
+            } else {
+                result = try database.performUnitOfWork(write)
+            }
+            if result.0 > 0 { records[index] = result.1 }
+            return result.0
         } catch {
-            print("itchPocket historical update persistence failed: \(error)")
+            print("itchPocket historical update transaction failed: \(error)")
             return 0
         }
     }
@@ -288,16 +320,18 @@ final class PersonalLibraryStore: ObservableObject {
             addedAt: now,
             updatedAt: now
         )
-        records.insert(record, at: 0)
         let event = LibraryStatusEvent(fromStatus: nil, toStatus: status, changedAt: now)
-        statusEvents[game.id, default: []].append(event)
+
         do {
-            try statusHistoryRepository.append(event, for: game.id, save: false)
+            try database.performTransaction {
+                try statusHistoryRepository.append(event, for: game.id, save: false)
+                try persist(record, save: false)
+            }
+            records.insert(record, at: 0)
+            statusEvents[game.id, default: []].append(event)
         } catch {
-            print("itchPocket status history save failed: \(error)")
+            print("itchPocket library add transaction failed: \(error)")
         }
-        persist(record, save: false)
-        try? database.save()
     }
 
     func update(_ record: LibraryRecord) {
@@ -305,79 +339,76 @@ final class PersonalLibraryStore: ObservableObject {
         let previous = records[index]
         var updated = record
         updated.updatedAt = Date()
-        if previous.status != updated.status {
-            let event = LibraryStatusEvent(
-                fromStatus: previous.status,
-                toStatus: updated.status,
-                changedAt: updated.updatedAt
-            )
-            statusEvents[record.id, default: []].append(event)
-            do {
-                try statusHistoryRepository.append(event, for: record.id, save: false)
-            } catch {
-                print("itchPocket status history save failed: \(error)")
+        let event: LibraryStatusEvent? = previous.status == updated.status ? nil : LibraryStatusEvent(
+            fromStatus: previous.status,
+            toStatus: updated.status,
+            changedAt: updated.updatedAt
+        )
+
+        do {
+            try database.performTransaction {
+                if let event {
+                    try statusHistoryRepository.append(event, for: record.id, save: false)
+                }
+                try persist(updated, save: false)
             }
+            records[index] = updated
+            if let event { statusEvents[record.id, default: []].append(event) }
+        } catch {
+            print("itchPocket library update transaction failed: \(error)")
         }
-        records[index] = updated
-        persist(updated, save: false)
-        try? database.save()
     }
 
-    /// Persists one complete scan in a single database save, and only writes
+    /// Persists one complete scan in a single database transaction, and only writes
     /// Spark rows whose values actually changed.
     func updateSparkMetadata(_ metadataByGameID: [String: SparkPlayMetadata]) {
         guard !metadataByGameID.isEmpty else { return }
-        var didChange = false
+        var proposedRecords = records
         var changedGameIDs = Set<String>()
 
-        for index in records.indices {
-            guard let metadata = metadataByGameID[records[index].id] else { continue }
-            var updated = records[index]
-            var recordChanged = false
+        for index in proposedRecords.indices {
+            guard let metadata = metadataByGameID[proposedRecords[index].id] else { continue }
+            var updated = proposedRecords[index]
             let runtime = max(updated.sparkPlaytimeSeconds ?? 0, metadata.runtimeSeconds)
-            if updated.sparkPlaytimeSeconds != runtime {
-                updated.sparkPlaytimeSeconds = runtime
-                recordChanged = true
-            }
+            updated.sparkPlaytimeSeconds = runtime
             if let lastSaveAt = metadata.lastSaveAt,
                updated.sparkLastSaveAt == nil || lastSaveAt > updated.sparkLastSaveAt! {
                 updated.sparkLastSaveAt = lastSaveAt
-                recordChanged = true
             }
-            if let version = metadata.renpyVersion, updated.sparkRenpyVersion != version {
-                updated.sparkRenpyVersion = version
-                recordChanged = true
-            }
-            if let saveCount = metadata.saveCount, updated.sparkSaveCount != saveCount {
-                updated.sparkSaveCount = saveCount
-                recordChanged = true
-            }
-            if recordChanged {
-                records[index] = updated
+            if let version = metadata.renpyVersion { updated.sparkRenpyVersion = version }
+            if let saveCount = metadata.saveCount { updated.sparkSaveCount = saveCount }
+
+            if updated.sparkPlaytimeSeconds != proposedRecords[index].sparkPlaytimeSeconds
+                || updated.sparkLastSaveAt != proposedRecords[index].sparkLastSaveAt
+                || updated.sparkRenpyVersion != proposedRecords[index].sparkRenpyVersion
+                || updated.sparkSaveCount != proposedRecords[index].sparkSaveCount {
+                proposedRecords[index] = updated
                 changedGameIDs.insert(updated.id)
-                didChange = true
             }
         }
 
-        guard didChange else { return }
+        guard !changedGameIDs.isEmpty else { return }
+        let scannedAt = Date()
+        let snapshots = proposedRecords.compactMap { record -> StoredSparkMetadata? in
+            guard changedGameIDs.contains(record.id),
+                  let runtime = record.sparkPlaytimeSeconds else { return nil }
+            return StoredSparkMetadata(
+                gameID: record.id,
+                runtimeSeconds: runtime,
+                lastSaveAt: record.sparkLastSaveAt,
+                renpyVersion: record.sparkRenpyVersion,
+                saveCount: record.sparkSaveCount,
+                scannedAt: scannedAt
+            )
+        }
+
         do {
-            let scannedAt = Date()
-            let snapshots = records.compactMap { record -> StoredSparkMetadata? in
-                guard changedGameIDs.contains(record.id),
-                      let runtime = record.sparkPlaytimeSeconds else { return nil }
-                return StoredSparkMetadata(
-                    gameID: record.id,
-                    runtimeSeconds: runtime,
-                    lastSaveAt: record.sparkLastSaveAt,
-                    renpyVersion: record.sparkRenpyVersion,
-                    saveCount: record.sparkSaveCount,
-                    scannedAt: scannedAt
-                )
+            try database.performTransaction {
+                try sparkRepository.upsert(snapshots, save: false)
             }
-            try sparkRepository.upsert(snapshots, save: false)
-            try database.save()
+            records = proposedRecords
         } catch {
-            print("itchPocket Spark metadata save failed: \(error)")
+            print("itchPocket Spark metadata transaction failed: \(error)")
         }
     }
 
@@ -462,8 +493,8 @@ final class PersonalLibraryStore: ObservableObject {
         _ record: LibraryRecord,
         save shouldSave: Bool = true,
         updatesAreCompleteSnapshot: Bool = false
-    ) {
-        do {
+    ) throws {
+        let write = {
             let developerID: String?
             if let profileURL = record.developerProfileURL, !profileURL.isEmpty {
                 developerID = Self.canonicalDeveloperID(profileURL)
@@ -474,8 +505,8 @@ final class PersonalLibraryStore: ObservableObject {
             }
 
             if let developerID, let name = record.developer {
-                let existingDeveloper = try developerRepository.developer(id: developerID)
-                try developerRepository.upsertIdentity(
+                let existingDeveloper = try self.developerRepository.developer(id: developerID)
+                try self.developerRepository.upsertIdentity(
                     id: developerID,
                     name: name,
                     profileURL: record.developerProfileURL,
@@ -485,7 +516,7 @@ final class PersonalLibraryStore: ObservableObject {
                 )
                 if let avatar = record.patreonAvatarURL,
                    existingDeveloper?.avatarURL != avatar || existingDeveloper?.avatarSource != "patreon" {
-                    try developerRepository.setAvatar(
+                    try self.developerRepository.setAvatar(
                         id: developerID,
                         url: avatar,
                         source: "patreon",
@@ -493,7 +524,7 @@ final class PersonalLibraryStore: ObservableObject {
                     )
                 } else if let avatar = record.developerAvatarURL,
                           existingDeveloper?.avatarURL == nil {
-                    try developerRepository.setAvatar(
+                    try self.developerRepository.setAvatar(
                         id: developerID,
                         url: avatar,
                         source: "itch",
@@ -503,7 +534,7 @@ final class PersonalLibraryStore: ObservableObject {
             }
 
             let gameID = record.id
-            try gameRepository.upsertMetadata(
+            try self.gameRepository.upsertMetadata(
                 id: gameID,
                 title: record.title,
                 gameURL: record.gameURL,
@@ -520,7 +551,7 @@ final class PersonalLibraryStore: ObservableObject {
                 )
             }
 
-            try libraryRepository.upsertEntry(
+            try self.libraryRepository.upsertEntry(
                 StoredLibraryEntry(
                     gameID: gameID,
                     status: record.status.rawValue,
@@ -534,15 +565,18 @@ final class PersonalLibraryStore: ObservableObject {
 
             // LibraryRecord history is a partial projection (historical entries are capped).
             // The repository preserves omitted rows unless a caller explicitly supplies a complete snapshot.
-            try gameUpdateRepository.synchronize(
+            try self.gameUpdateRepository.synchronize(
                 record.gameUpdates ?? [],
                 for: gameID,
                 completeSnapshot: updatesAreCompleteSnapshot,
                 save: false
             )
-            if shouldSave { try database.save() }
-        } catch {
-            print("itchPocket library database write failed: \(error)")
+        }
+
+        if shouldSave {
+            try database.performTransaction(write)
+        } else {
+            try write()
         }
     }
 

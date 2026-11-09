@@ -72,6 +72,46 @@ final class AppDatabase {
         try context.save()
     }
 
+    enum TransactionError: LocalizedError {
+        case pendingChanges
+
+        var errorDescription: String? {
+            switch self {
+            case .pendingChanges:
+                return "A transaction cannot start while the shared context contains pending changes."
+            }
+        }
+    }
+
+    /// Runs a synchronous unit of work against a clean shared context.
+    /// A failed operation rolls back only because no unrelated pending changes
+    /// were present at entry. Successful save:false callers may leave changes
+    /// pending for a larger caller-owned batch.
+    func performUnitOfWork<Value>(_ operation: () throws -> Value) throws -> Value {
+        guard !context.hasChanges else {
+            throw TransactionError.pendingChanges
+        }
+
+        do {
+            return try operation()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    /// Runs a clean-context unit of work and commits it with one save.
+    func performTransaction<Value>(_ operation: () throws -> Value) throws -> Value {
+        let value = try performUnitOfWork(operation)
+        do {
+            try save()
+            return value
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
     func removeAllAppData() throws {
         try AppStateRepository(database: self).removeAll(save: false)
         try context.delete(model: DBLibraryCollectionItem.self)
