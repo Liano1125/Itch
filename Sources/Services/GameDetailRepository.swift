@@ -7,6 +7,7 @@ import Foundation
 final class GameDetailRepository {
     static let shared = GameDetailRepository(database: .shared)
 
+    private let database: AppDatabase
     private let gameRepository: GameRepository
     private let appStateRepository: AppStateRepository
     private let saveChanges: () throws -> Void
@@ -16,29 +17,28 @@ final class GameDetailRepository {
     private let legacyPrefetchDatePrefix = "detailPrefetch.lastSuccess."
 
     init(database: AppDatabase, saveChanges: (() throws -> Void)? = nil) {
+        self.database = database
         self.gameRepository = GameRepository(database: database)
         self.appStateRepository = AppStateRepository(database: database)
         self.saveChanges = saveChanges ?? { try database.save() }
     }
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
-        guard let legacy = try gameRepository.legacyDetail(for: gameID) else { return nil }
-        let tags = Self.decodeTags(legacy.discoveryTagsData) ?? []
+        guard let row = try fetchDetailRow(gameID: gameID) else { return nil }
+        let tags = Self.decodeTags(row.discoveryTagsData) ?? []
         let statusValue = try appStateRepository.state(for: fetchStatusPrefix + gameID)?.stringValue
         let currentFetchDate = try appStateRepository.state(for: fetchDatePrefix + gameID)?.dateValue
         let legacyFetchDate = try appStateRepository.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
 
         return GameDetailRecord(
-            description: legacy.descriptionText,
-            galleryURLs: legacy.galleryURLs,
+            description: row.descriptionText,
+            galleryURLs: row.galleryURLs,
             discoveryTags: tags,
-            fetchedAt: currentFetchDate ?? legacyFetchDate,
-            fetchStatus: GameDetailFetchStatus(rawValue: statusValue ?? "") ?? .unknown
+            fetchedAt: row.fetchedAt ?? currentFetchDate ?? legacyFetchDate,
+            fetchStatus: GameDetailFetchStatus(rawValue: statusValue ?? "") ?? (row.isComplete ? .complete : .unknown)
         )
     }
 
-    /// Resolves a usable developer name without ever persisting a placeholder.
-    /// Fresh page data wins; otherwise preserve the existing database/library name.
     nonisolated static func resolvedDeveloperName(
         incoming: String?,
         existing: String?,
@@ -57,44 +57,42 @@ final class GameDetailRepository {
     }
 
     func discoveryTags(for gameID: String) throws -> [LibraryDiscoveryTag]? {
-        guard let game = try gameRepository.game(id: gameID) else { return nil }
-        return Self.decodeTags(game.discoveryTagsData)
+        guard let detail = try detail(for: gameID) else { return nil }
+        return detail.discoveryTags
     }
 
-    /// Applies only fields explicitly present in a partial response.
-    /// An empty gallery/tag array is an explicit value and therefore clears it.
     func applyPartialUpdate(
         _ update: GameDetailPartialUpdate,
         for gameID: String,
         save shouldSave: Bool = true
     ) throws {
-        guard let original = try gameRepository.legacyDetail(for: gameID) else { return }
+        guard try gameRepository.game(id: gameID) != nil else { return }
         let statusKey = fetchStatusPrefix + gameID
         let stateSnapshots = try captureStates(for: [statusKey])
-        var next = original
-        next.descriptionText = GameDetailPersistencePolicy.resolvedValue(
-            existing: original.descriptionText,
+        let row = try getOrCreateDetailRow(gameID: gameID)
+        let original = DetailSnapshot(row)
+        row.descriptionText = GameDetailPersistencePolicy.resolvedValue(
+            existing: row.descriptionText,
             incoming: update.description,
             mode: .partial
         )
         if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
-            existing: Optional(original.galleryURLs),
+            existing: Optional(row.galleryURLs),
             incoming: update.galleryURLs,
             mode: .partial
         ) {
-            next.galleryURLs = galleryURLs
+            row.galleryURLs = galleryURLs
         }
-        let existingTags = Self.decodeTags(original.discoveryTagsData)
+        let existingTags = Self.decodeTags(row.discoveryTagsData)
         if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
             existing: existingTags,
             incoming: update.discoveryTags,
             mode: .partial
         ) {
-            next.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
+            row.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
         }
 
         do {
-            try gameRepository.setLegacyDetail(next, for: gameID, save: false)
             if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
                 let existingStatus = try appStateRepository.state(for: statusKey)?.stringValue
                 if existingStatus == nil {
@@ -103,35 +101,36 @@ final class GameDetailRepository {
             }
             if shouldSave { try commit() }
         } catch {
-            try? gameRepository.setLegacyDetail(original, for: gameID, save: false)
+            original.restore(to: row)
             restoreStates(stateSnapshots)
             throw error
         }
     }
 
-    /// Applies only fields the page parser positively identified.
-    /// A page is considered fresh/complete only when every detail section was resolved.
-    /// Missing DOM sections preserve cached values; an identified empty section may clear them.
     @discardableResult
     func applyPageSnapshot(
         _ snapshot: GameDetailPageSnapshot,
         for gameID: String,
         fetchedAt: Date = .now
     ) throws -> GameDetailFetchStatus {
-        guard let original = try gameRepository.legacyDetail(for: gameID) else { return .unknown }
+        guard try gameRepository.game(id: gameID) != nil else { return .unknown }
 
         let statusKey = fetchStatusPrefix + gameID
         let dateKey = fetchDatePrefix + gameID
         let stateSnapshots = try captureStates(for: [statusKey, dateKey])
-        var next = original
-        if snapshot.descriptionResolved { next.descriptionText = snapshot.description }
-        if snapshot.galleryResolved { next.galleryURLs = snapshot.galleryURLs }
+        let row = try getOrCreateDetailRow(gameID: gameID)
+        let original = DetailSnapshot(row)
+        if snapshot.descriptionResolved { row.descriptionText = snapshot.description }
+        if snapshot.galleryResolved { row.galleryURLs = snapshot.galleryURLs }
         if snapshot.tagsResolved {
-            next.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+            row.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+        }
+        if snapshot.isComplete {
+            row.fetchedAt = fetchedAt
+            row.isComplete = true
         }
 
         do {
-            try gameRepository.setLegacyDetail(next, for: gameID, save: false)
             if snapshot.isComplete {
                 try appStateRepository.setDate(fetchedAt, for: dateKey, clearOtherValues: true, save: false)
                 try appStateRepository.setString(GameDetailFetchStatus.complete.rawValue, for: statusKey, clearOtherValues: true, save: false)
@@ -145,10 +144,24 @@ final class GameDetailRepository {
             try commit()
             return snapshot.isComplete ? .complete : .partial
         } catch {
-            try? gameRepository.setLegacyDetail(original, for: gameID, save: false)
+            original.restore(to: row)
             restoreStates(stateSnapshots)
             throw error
         }
+    }
+
+    private func fetchDetailRow(gameID: String) throws -> DBGameDetail? {
+        let descriptor = FetchDescriptor<DBGameDetail>(
+            predicate: #Predicate { $0.gameID == gameID }
+        )
+        return try database.repositoryContext.fetch(descriptor).first
+    }
+
+    private func getOrCreateDetailRow(gameID: String) throws -> DBGameDetail {
+        if let existing = try fetchDetailRow(gameID: gameID) { return existing }
+        let row = DBGameDetail(gameID: gameID)
+        database.repositoryContext.insert(row)
+        return row
     }
 
     private static func decodeTags(_ data: Data?) -> [LibraryDiscoveryTag]? {
@@ -156,8 +169,30 @@ final class GameDetailRepository {
         return try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: data)
     }
 
-    private func commit() throws {
-        try saveChanges()
+    private func commit() throws { try saveChanges() }
+
+    private struct DetailSnapshot {
+        let descriptionText: String?
+        let galleryURLs: [String]
+        let discoveryTagsData: Data?
+        let fetchedAt: Date?
+        let isComplete: Bool
+
+        init(_ row: DBGameDetail) {
+            descriptionText = row.descriptionText
+            galleryURLs = row.galleryURLs
+            discoveryTagsData = row.discoveryTagsData
+            fetchedAt = row.fetchedAt
+            isComplete = row.isComplete
+        }
+
+        func restore(to row: DBGameDetail) {
+            row.descriptionText = descriptionText
+            row.galleryURLs = galleryURLs
+            row.discoveryTagsData = discoveryTagsData
+            row.fetchedAt = fetchedAt
+            row.isComplete = isComplete
+        }
     }
 
     private struct StateSnapshot {
@@ -171,15 +206,12 @@ final class GameDetailRepository {
         }
     }
 
-    /// Restores only the keys touched by this repository operation. Never roll back
-    /// the shared ModelContext, which may contain unrelated pending app changes.
     private func restoreStates(_ snapshots: [StateSnapshot]) {
         for snapshot in snapshots {
             try? appStateRepository.restore(snapshot.state, for: snapshot.key)
         }
     }
 }
-
 struct GameDetailRecord {
     let description: String?
     let galleryURLs: [String]
