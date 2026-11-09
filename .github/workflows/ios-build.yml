@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      # Validate the stacked library-entry slice without publishing a nightly release.
+      - refactor/library-entry-repository
   pull_request:
     branches:
       - main
@@ -165,7 +167,7 @@ jobs:
 
       # 9. 将原始 IPA 作为 GitHub Release 附件发布（不经过 ZIP artifact 包装）
       - name: Publish raw IPA release asset
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
