@@ -279,7 +279,19 @@ enum LegacyStoreBootstrap {
         }
     }
 
+    /// Drain SwiftData's autoreleased SQLite handles before staging directories
+    /// are moved or removed. SQLite sidecar files must never be unlinked while
+    /// a container still has them open.
     private static func copyLegacyStore(
+        from sourceURL: URL,
+        to destinationURL: URL
+    ) throws -> MigrationCounts {
+        try autoreleasepool {
+            try copyLegacyStoreWithinAutoreleasePool(from: sourceURL, to: destinationURL)
+        }
+    }
+
+    private static func copyLegacyStoreWithinAutoreleasePool(
         from sourceURL: URL,
         to destinationURL: URL
     ) throws -> MigrationCounts {
@@ -517,7 +529,19 @@ enum LegacyStoreBootstrap {
         return expected
     }
 
+    /// Keep the SwiftData validation container inside an autorelease pool so
+    /// its SQLite connections are closed before the caller quarantines or
+    /// promotes the containing directory.
     private static func validateV2Store(
+        at storeURL: URL,
+        legacyStoreURL: URL?
+    ) throws {
+        try autoreleasepool {
+            try validateV2StoreWithinAutoreleasePool(at: storeURL, legacyStoreURL: legacyStoreURL)
+        }
+    }
+
+    private static func validateV2StoreWithinAutoreleasePool(
         at storeURL: URL,
         legacyStoreURL: URL?
     ) throws {
@@ -626,8 +650,17 @@ enum LegacyStoreBootstrap {
 
     /// Validate the preserved source before moving a broken V2 directory aside.
     /// The legacy store is opened read-only and is never migrated in place.
+    /// Release the read-only V1 container before a subsequent copy opens the
+    /// same source database or recovery proceeds to move another store.
     private static func validateLegacyStore(at storeURL: URL) throws {
-        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        try autoreleasepool {
+            try validateLegacyStoreWithinAutoreleasePool(at: storeURL)
+        }
+    }
+
+    private static func validateLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {
+
+    private static func validateLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let configuration = ModelConfiguration(
             legacyConfigurationName,
             schema: schema,
