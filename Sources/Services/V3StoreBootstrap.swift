@@ -42,7 +42,7 @@ enum V3StoreBootstrap {
                     throw BootstrapError.incompleteDestination(finalStoreURL)
                 }
                 try validateV3Store(at: finalStoreURL)
-                try recoverMissingDataFromV2Backup(v2StoreURL: v2StoreURL, v3StoreURL: finalStoreURL, directory: finalDirectory)
+                try? recoverMissingDataFromV2Backup(v2StoreURL: v2StoreURL, v3StoreURL: finalStoreURL, directory: finalDirectory)
                 return finalStoreURL
             } catch {
                 guard recoverInvalidExistingV3 else { throw error }
