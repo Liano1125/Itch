@@ -75,6 +75,62 @@ final class AppDatabaseTransactionTests: XCTestCase {
     }
 
     @MainActor
+    func testRemoveAllAppDataDeletesPersistedRowsAcrossRepositories() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "cleanup-developer", name: "Developer"))
+        database.context.insert(DBGame(id: "cleanup-game", title: "Game"))
+        database.context.insert(DBAppState(key: "cleanup.state", stringValue: "value"))
+        try database.save()
+
+        try database.removeAllAppData()
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBDeveloper>()), 0)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGame>()), 0)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBAppState>()), 0)
+    }
+
+    @MainActor
+    func testRemoveAllAppDataRefusesPreexistingPendingChanges() throws {
+        let database = try AppDatabase(inMemory: true)
+        let durableGame = DBGame(id: "cleanup-durable-game", title: "Durable")
+        database.context.insert(durableGame)
+        try database.save()
+        database.context.insert(DBAppState(key: "cleanup.pending", stringValue: "preserve"))
+
+        XCTAssertThrowsError(try database.removeAllAppData()) { error in
+            XCTAssertTrue(error is AppDatabase.TransactionError)
+        }
+
+        XCTAssertTrue(database.context.hasChanges)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGame>()), 1)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBAppState>()), 1)
+        try database.save()
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGame>()), 1)
+    }
+
+    @MainActor
+    func testFailedCleanupTransactionRestoresDeletedRows() throws {
+        let database = try AppDatabase(inMemory: true)
+        let game = DBGame(id: "cleanup-rollback-game", title: "Keep")
+        let state = DBAppState(key: "cleanup.rollback", stringValue: "keep")
+        database.context.insert(game)
+        database.context.insert(state)
+        try database.save()
+
+        XCTAssertThrowsError(try database.performTransaction {
+            try AppStateRepository(database: database).removeAll(save: false)
+            database.context.delete(game)
+            throw TestError.simulatedFailure
+        })
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGame>()), 1)
+        let restored = try XCTUnwrap(AppStateRepository(database: database).state(for: "cleanup.rollback"))
+        XCTAssertEqual(restored.stringValue, "keep")
+    }
+
+    @MainActor
     func testRepositoryContextProvidesScopedPersistenceOperations() throws {
         let database = try AppDatabase(inMemory: true)
         let context = database.repositoryContext
