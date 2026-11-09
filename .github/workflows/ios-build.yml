@@ -13,6 +13,7 @@ on:
       - refactor/repository-integration-phase2
       - refactor/freeze-v2-schema-snapshot
       - refactor/v3-normalized-persistence-cutover
+      - fix/v3-detail-data-recovery
   pull_request:
     branches:
       - main
@@ -96,6 +97,7 @@ jobs:
             -scheme itchPocket \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -derivedDataPath "$RUNNER_TEMP/itchPocketTestDerivedData" \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
