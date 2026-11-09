@@ -24,7 +24,7 @@ final class TranslationCache {
             guard let entry = try repository.translation(for: key) else { return nil }
             return Self.entry(from: entry)
         } catch {
-            print("itchPocket translation cache read failed: \\(error)")
+            print("itchPocket translation cache read failed: \(error)")
             return nil
         }
     }
@@ -34,7 +34,7 @@ final class TranslationCache {
             guard let entry = try repository.latestTranslation(scope: scope, target: target) else { return nil }
             return Self.entry(from: entry)
         } catch {
-            print("itchPocket translation cache lookup failed: \\(error)")
+            print("itchPocket translation cache lookup failed: \(error)")
             return nil
         }
     }
@@ -50,7 +50,7 @@ final class TranslationCache {
                 for: key
             )
         } catch {
-            print("itchPocket translation cache write failed: \\(error)")
+            print("itchPocket translation cache write failed: \(error)")
         }
     }
 
@@ -72,7 +72,7 @@ final class TranslationCache {
 
 enum TranslationCacheKey {
     static func make(scope: String, source: String, target: String) -> String {
-        let input = "\\(scope)|\\(target)|\\(source)"
+        let input = "\(scope)|\(target)|\(source)"
         return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
