@@ -84,17 +84,12 @@ final class AppDatabase {
                 LegacyStoreBootstrap.legacyConfigurationName,
                 schema: legacySchema
             )
-            let finalDirectory = legacyConfiguration.url
-                .deletingLastPathComponent()
-                .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
-            let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
+            // A validated V3 store is authoritative. Do not make normal app
+            // startup depend on the older V2 backup still being present.
+            let v3StoreURL = try Self.prepareDurableStore(
                 legacyStoreURL: legacyConfiguration.url,
-                finalDirectory: finalDirectory,
-                recoverInvalidExistingV2: recoverCorruptV2
+                recoverCorruptV2: recoverCorruptV2
             )
-            // Migrate a staging copy of V2. The authoritative V2 store is
-            // retained untouched until V3 passes logical and SQLite checks.
-            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL, recoverInvalidExistingV3: recoverCorruptV2)
             let configuration = ModelConfiguration(
                 V3StoreBootstrap.directoryName,
                 schema: schema,
@@ -102,6 +97,41 @@ final class AppDatabase {
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
         }
+    }
+
+    /// Selects the newest valid durable store without ever rebuilding a
+    /// missing V2 backup from a stale V1 snapshot when a V3 store exists.
+    static func prepareDurableStore(
+        legacyStoreURL: URL,
+        recoverCorruptV2: Bool = false
+    ) throws -> URL {
+        let parent = legacyStoreURL.deletingLastPathComponent()
+        let v2Directory = parent.appendingPathComponent(
+            LegacyStoreBootstrap.v2DirectoryName,
+            isDirectory: true
+        )
+        let v2StoreURL = v2Directory.appendingPathComponent(LegacyStoreBootstrap.v2StoreFileName)
+        let v3StoreURL = parent
+            .appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+            .appendingPathComponent(V3StoreBootstrap.storeFileName)
+
+        if FileManager.default.fileExists(atPath: v3StoreURL.path) {
+            return try V3StoreBootstrap.prepareStore(
+                v2StoreURL: v2StoreURL,
+                recoverInvalidExistingV3: recoverCorruptV2
+            )
+        }
+
+        let preparedV2StoreURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyStoreURL,
+            finalDirectory: v2Directory,
+            recoverInvalidExistingV2: recoverCorruptV2
+        )
+        // Build V3 from a staging copy and retain the authoritative V2 source.
+        return try V3StoreBootstrap.prepareStore(
+            v2StoreURL: preparedV2StoreURL,
+            recoverInvalidExistingV3: recoverCorruptV2
+        )
     }
 
     func attachModelContainer<Content: View>(to content: Content) -> some View {
