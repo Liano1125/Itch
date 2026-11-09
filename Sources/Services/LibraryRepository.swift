@@ -11,7 +11,6 @@ struct StoredLibraryEntry: Equatable {
 }
 
 /// Owns personal-library entries, collection metadata, and normalized membership rows.
-/// The legacy gameIDs array is kept in sync until a later schema cutover.
 @MainActor
 final class LibraryRepository {
     enum RepositoryError: LocalizedError {
@@ -30,7 +29,7 @@ final class LibraryRepository {
             case .emptyCollectionTitle:
                 return "A collection title cannot be empty."
             case .membershipOutOfSync(let id):
-                return "Normalized membership rows do not match the legacy collection snapshot for \(id)."
+                return "Normalized membership rows are invalid for collection \(id)."
             case .duplicateLibraryEntry(let id):
                 return "Multiple personal-library entries exist for game \(id)."
             }
@@ -100,7 +99,6 @@ final class LibraryRepository {
                 return $0.id < $1.id
             }
             let normalizedIDs = normalizedItems.map(\.gameID)
-            let legacyIDs = Self.uniqueInOrder(row.gameIDs)
             guard Set(normalizedIDs).count == normalizedIDs.count,
                   normalizedItems.allSatisfy({
                       $0.id == DBLibraryCollectionItem.stableID(collectionID: row.id, gameID: $0.gameID)
@@ -108,18 +106,7 @@ final class LibraryRepository {
                 throw RepositoryError.membershipOutOfSync(row.id)
             }
 
-            // V2 migration creates both representations. A wholly absent join
-            // set can still be read from the legacy array for older/incomplete
-            // stores, but a partial disagreement is treated as corruption.
-            let gameIDs: [String]
-            if normalizedItems.isEmpty && !legacyIDs.isEmpty {
-                gameIDs = legacyIDs
-            } else {
-                guard normalizedIDs == legacyIDs else {
-                    throw RepositoryError.membershipOutOfSync(row.id)
-                }
-                gameIDs = normalizedIDs
-            }
+            let gameIDs = normalizedIDs
 
             return PersonalGameCollection(
                 id: row.id,
@@ -148,7 +135,6 @@ final class LibraryRepository {
         database.repositoryContext.insert(DBLibraryCollection(
             id: collection.id,
             title: collection.title,
-            gameIDs: [],
             createdAt: collection.createdAt,
             updatedAt: collection.updatedAt
         ))
@@ -176,7 +162,6 @@ final class LibraryRepository {
         let gameIDs = Self.uniqueInOrder(collection.gameIDs)
         try validateGamesExist(gameIDs)
         row.title = cleaned
-        row.gameIDs = gameIDs
         row.updatedAt = now
         try replaceMemberships(for: row, gameIDs: gameIDs, now: now)
         try database.save()
@@ -226,7 +211,6 @@ final class LibraryRepository {
             nextIDs.append(gameID)
         }
 
-        row.gameIDs = nextIDs
         row.updatedAt = now
         try replaceMemberships(for: row, gameIDs: nextIDs, now: now)
         try database.save()
@@ -279,25 +263,10 @@ final class LibraryRepository {
         }
 
         for (collection, remainingIDs, existingItems) in affectedCollections {
-            collection.gameIDs = remainingIDs
             collection.updatedAt = .now
 
-            if existingItems.isEmpty {
-                // Legacy-only collection: preserve the migration convention
-                // that pre-existing members inherit the collection creation date.
-                for (index, remainingID) in remainingIDs.enumerated() {
-                    context.insert(DBLibraryCollectionItem(
-                        id: DBLibraryCollectionItem.stableID(collectionID: collection.id, gameID: remainingID),
-                        collectionID: collection.id,
-                        gameID: remainingID,
-                        sortOrder: index,
-                        addedAt: collection.createdAt
-                    ))
-                }
-            } else {
-                for item in existingItems where item.gameID != gameID {
-                    item.sortOrder = remainingIDs.firstIndex(of: item.gameID) ?? item.sortOrder
-                }
+            for item in existingItems where item.gameID != gameID {
+                item.sortOrder = remainingIDs.firstIndex(of: item.gameID) ?? item.sortOrder
             }
         }
 
@@ -314,15 +283,10 @@ final class LibraryRepository {
             return $0.id < $1.id
         }
         let normalizedIDs = items.map(\.gameID)
-        let legacyIDs = Self.uniqueInOrder(collection.gameIDs)
         guard Set(normalizedIDs).count == normalizedIDs.count,
               items.allSatisfy({
                   $0.id == DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: $0.gameID)
               }) else {
-            throw RepositoryError.membershipOutOfSync(collectionID)
-        }
-        if items.isEmpty && !legacyIDs.isEmpty { return legacyIDs }
-        guard normalizedIDs == legacyIDs else {
             throw RepositoryError.membershipOutOfSync(collectionID)
         }
         return normalizedIDs
