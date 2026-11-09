@@ -14,7 +14,7 @@ enum DiscoveryCacheStore {
             }
             return try JSONDecoder().decode(type, from: payload)
         } catch {
-            print("itchPocket discovery cache read failed: \\(error)")
+            print("itchPocket discovery cache read failed: \(error)")
             return nil
         }
     }
@@ -32,7 +32,7 @@ enum DiscoveryCacheStore {
                 timeToLive: timeToLive
             )
         } catch {
-            print("itchPocket discovery cache write failed: \\(error)")
+            print("itchPocket discovery cache write failed: \(error)")
         }
     }
 
@@ -40,7 +40,7 @@ enum DiscoveryCacheStore {
         do {
             try CacheRepository.shared.removeDiscoverySnapshot(key: key)
         } catch {
-            print("itchPocket discovery cache removal failed: \\(error)")
+            print("itchPocket discovery cache removal failed: \(error)")
         }
     }
 }
