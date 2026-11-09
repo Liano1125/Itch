@@ -58,6 +58,48 @@ final class DatabaseV3MigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testExistingV3StoreBackfillsMissingDetailsFromRetainedV2Backup() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-backfill-\\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: v3Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+        let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+
+        // Simulate a previously-created V3 store whose detail payloads are empty.
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-incomplete-fixture", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            context.insert(DBGame(id: "game-a", title: "Game A"))
+            context.insert(DBGame(id: "game-b", title: "Game B"))
+            context.insert(DBGameDetail(gameID: "game-a"))
+            try context.save()
+        }
+
+        _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+
+        let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+        let configuration = ModelConfiguration("itchPocket-v3-backfill-verify", schema: schema, url: v3StoreURL)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first { $0.gameID == "game-a" })
+        XCTAssertEqual(detail.descriptionText, "Legacy description")
+        XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/a.png"])
+        XCTAssertEqual(detail.discoveryTagsData, Data("[]".utf8))
+
+        // Recovery must not modify or replace the V2 source.
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+    }
+
+    @MainActor
     func testV3MigrationRejectsConflictingMembershipWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-conflict-\(UUID().uuidString)", isDirectory: true)
