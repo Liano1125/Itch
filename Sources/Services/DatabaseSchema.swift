@@ -24,3 +24,15 @@ enum ItchPocketSchemaV1: VersionedSchema {
         ]
     }
 }
+
+/// Central migration registry. Future schema versions and explicit migration
+/// stages must be registered here; feature stores must never create containers.
+enum ItchPocketMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] {
+        [ItchPocketSchemaV1.self]
+    }
+
+    static var stages: [MigrationStage] {
+        []
+    }
+}
