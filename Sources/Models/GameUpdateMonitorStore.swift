@@ -58,8 +58,8 @@ final class GameUpdateMonitorStore: ObservableObject {
         load()
         do {
             lastHistoricalSyncAt = try self.database.state(for: historicalSyncDateKey)?.dateValue
-            lastHistoricalSyncMessage = try database.state(for: historicalSyncMessageKey)?.stringValue
-            if let data = try database.state(for: historicalSyncResultsKey)?.dataValue {
+            lastHistoricalSyncMessage = try self.database.state(for: historicalSyncMessageKey)?.stringValue
+            if let data = try self.database.state(for: historicalSyncResultsKey)?.dataValue {
                 lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
             }
         } catch {
@@ -90,7 +90,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                 guard didLoadWatches else { return }
                 try repository.remove(gameID: record.id)
             } catch {
-                print("itchPocket update watch removal failed: \\(error)")
+                print("itchPocket update watch removal failed: \(error)")
             }
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationID(record.id)])
         }
@@ -311,7 +311,7 @@ final class GameUpdateMonitorStore: ObservableObject {
             watches = Dictionary(uniqueKeysWithValues: loaded.map { ($0.gameID, $0) })
             didLoadWatches = true
         } catch {
-            print("itchPocket update watches load failed: \\(error)")
+            print("itchPocket update watches load failed: \(error)")
             didLoadWatches = false
         }
     }
@@ -321,7 +321,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         do {
             try repository.save(watch)
         } catch {
-            print("itchPocket update watch save failed: \\(error)")
+            print("itchPocket update watch save failed: \(error)")
         }
     }
 
@@ -330,7 +330,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         do {
             try repository.save(Array(watches.values), save: shouldSave)
         } catch {
-            print("itchPocket update watches save failed: \\(error)")
+            print("itchPocket update watches save failed: \(error)")
         }
     }
 }
