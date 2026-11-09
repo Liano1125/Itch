@@ -44,7 +44,7 @@ enum V3StoreBootstrap {
             } catch {
                 guard recoverInvalidExistingV3 else { throw error }
                 let quarantine = parent.appendingPathComponent(
-                    "itchPocket-v3.quarantine-\\(UUID().uuidString)",
+                    "itchPocket-v3.quarantine-\(UUID().uuidString)",
                     isDirectory: true
                 )
                 try fileManager.moveItem(at: finalDirectory, to: quarantine)
