@@ -56,11 +56,19 @@ final class AppDatabase {
             LegacyStoreBootstrap.legacyConfigurationName,
             schema: schema
         )
-        return FileManager.default.fileExists(atPath: configuration.url.path)
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: configuration.url.path) {
+            return true
+        }
+        let v2StoreURL = configuration.url
+            .deletingLastPathComponent()
+            .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+            .appendingPathComponent(LegacyStoreBootstrap.v2StoreFileName)
+        return fileManager.fileExists(atPath: v2StoreURL.path)
     }
 
     init(inMemory: Bool = false, recoverCorruptV2: Bool = false) throws {
-        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
         if inMemory {
             let configuration = ModelConfiguration(
                 "itchPocket",
@@ -84,10 +92,13 @@ final class AppDatabase {
                 finalDirectory: finalDirectory,
                 recoverInvalidExistingV2: recoverCorruptV2
             )
+            // Migrate a staging copy of V2. The authoritative V2 store is
+            // retained untouched until V3 passes logical and SQLite checks.
+            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL, recoverInvalidExistingV3: recoverCorruptV2)
             let configuration = ModelConfiguration(
-                LegacyStoreBootstrap.v2ConfigurationName,
+                V3StoreBootstrap.directoryName,
                 schema: schema,
-                url: v2StoreURL
+                url: v3StoreURL
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
         }

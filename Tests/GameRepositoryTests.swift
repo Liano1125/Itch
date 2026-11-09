@@ -12,9 +12,6 @@ final class GameRepositoryTests: XCTestCase {
             title: "Game A",
             gameURL: "https://author.itch.io/game-a",
             coverURL: "https://cdn.example/cover.png",
-            descriptionText: "Description",
-            galleryURLs: ["https://cdn.example/1.png"],
-            discoveryTagsData: Data("[{\"name\":\"Ren'Py\",\"url\":\"https://itch.io/tags/renpy\"}]".utf8),
             engine: "Ren'Py",
             developerID: "author-a",
             updatedAt: updatedAt
@@ -26,9 +23,6 @@ final class GameRepositoryTests: XCTestCase {
         XCTAssertEqual(game.title, "Game A")
         XCTAssertEqual(game.gameURL, "https://author.itch.io/game-a")
         XCTAssertEqual(game.coverURL, "https://cdn.example/cover.png")
-        XCTAssertEqual(game.descriptionText, "Description")
-        XCTAssertEqual(game.galleryURLs, ["https://cdn.example/1.png"])
-        XCTAssertNotNil(game.discoveryTagsData)
         XCTAssertEqual(game.engine, "Ren'Py")
         XCTAssertEqual(game.developerID, "author-a")
         XCTAssertEqual(game.updatedAt, updatedAt)
@@ -87,25 +81,25 @@ final class GameRepositoryTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacyDetailCanBeReadAndUpdatedWithoutExposingDBGame() throws {
+    func testGameDetailRepositoryPersistsNormalizedDetailRecords() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
         try database.save()
 
-        let repository = GameRepository(database: database)
-        let original = try XCTUnwrap(repository.legacyDetail(for: "game-a"))
-        XCTAssertNil(original.descriptionText)
-        XCTAssertEqual(original.galleryURLs, [])
-        XCTAssertNil(original.discoveryTagsData)
-
-        let updated = StoredLegacyGameDetail(
-            descriptionText: "Details",
-            galleryURLs: ["https://cdn.example/gallery.png"],
-            discoveryTagsData: Data("[]".utf8)
+        let repository = GameDetailRepository(database: database)
+        try repository.applyPartialUpdate(
+            GameDetailPartialUpdate(
+                description: "Details",
+                galleryURLs: ["https://cdn.example/gallery.png"]
+            ),
+            for: "game-a"
         )
-        try repository.setLegacyDetail(updated, for: "game-a", save: false)
-        XCTAssertTrue(database.context.hasChanges)
-        XCTAssertEqual(try repository.legacyDetail(for: "game-a"), updated)
+
+        let detail = try XCTUnwrap(repository.detail(for: "game-a"))
+        XCTAssertEqual(detail.description, "Details")
+        XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/gallery.png"])
+        XCTAssertTrue(detail.discoveryTags.isEmpty)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
     }
 
     @MainActor

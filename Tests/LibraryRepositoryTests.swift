@@ -20,11 +20,6 @@ final class LibraryRepositoryTests: XCTestCase {
         XCTAssertEqual(saved.title, "Favorites")
         XCTAssertEqual(saved.gameIDs, ["game-b", "game-a"])
 
-        let legacy = try XCTUnwrap(context.fetch(
-            FetchDescriptor<DBLibraryCollection>(predicate: #Predicate { $0.id == collection.id })
-        ).first)
-        XCTAssertEqual(legacy.gameIDs, ["game-b", "game-a"])
-
         let items = try context.fetch(
             FetchDescriptor<DBLibraryCollectionItem>(predicate: #Predicate { $0.collectionID == collection.id })
         ).sorted { $0.sortOrder < $1.sortOrder }
@@ -62,15 +57,11 @@ final class LibraryRepositoryTests: XCTestCase {
     }
 
     @MainActor
-    func testCollectionReadRejectsDisagreementBetweenLegacyAndNormalizedMembership() throws {
+    func testCollectionReadUsesNormalizedMembershipRowsOnly() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
         database.context.insert(DBGame(id: "game-b", title: "Game B"))
-        database.context.insert(DBLibraryCollection(
-            id: "collection",
-            title: "Collection",
-            gameIDs: ["game-a"]
-        ))
+        database.context.insert(DBLibraryCollection(id: "collection", title: "Collection"))
         database.context.insert(DBLibraryCollectionItem(
             id: DBLibraryCollectionItem.stableID(collectionID: "collection", gameID: "game-b"),
             collectionID: "collection",
@@ -80,14 +71,7 @@ final class LibraryRepositoryTests: XCTestCase {
         try database.save()
 
         let repository = LibraryRepository(database: database)
-        XCTAssertThrowsError(try repository.collections()) { error in
-            guard let repositoryError = error as? LibraryRepository.RepositoryError else {
-                return XCTFail("Expected RepositoryError, got \\(error)")
-            }
-            guard case .membershipOutOfSync("collection") = repositoryError else {
-                return XCTFail("Expected membershipOutOfSync, got \\(repositoryError)")
-            }
-        }
+        XCTAssertEqual(try repository.collections().first?.gameIDs, ["game-b"])
     }
 
     @MainActor
@@ -108,18 +92,12 @@ final class LibraryRepositoryTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacyCollectionArrayCanBeReadWhenJoinRowsAreAbsent() throws {
+    func testCollectionWithoutMembershipRowsLoadsAsEmpty() throws {
         let database = try AppDatabase(inMemory: true)
-        database.context.insert(DBGame(id: "game-a", title: "Game A"))
-        database.context.insert(DBLibraryCollection(
-            id: "legacy",
-            title: "Legacy",
-            gameIDs: ["game-a", "game-a"]
-        ))
+        database.context.insert(DBLibraryCollection(id: "empty", title: "Empty"))
         try database.save()
 
-        let repository = LibraryRepository(database: database)
-        XCTAssertEqual(try repository.collections().first?.gameIDs, ["game-a"])
+        XCTAssertEqual(try LibraryRepository(database: database).collections().first?.gameIDs, [])
     }
 
     @MainActor
@@ -151,7 +129,6 @@ final class LibraryRepositoryTests: XCTestCase {
         let collection = DBLibraryCollection(
             id: "collection-a",
             title: "Collection",
-            gameIDs: ["game-a"]
         )
         context.insert(collection)
         context.insert(DBLibraryCollectionItem(
@@ -174,7 +151,6 @@ final class LibraryRepositoryTests: XCTestCase {
         XCTAssertTrue(try context.fetch(FetchDescriptor<DBSparkMetadata>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<DBLibraryCollectionItem>()).isEmpty)
-        XCTAssertEqual(collection.gameIDs, [])
     }
 
     @MainActor
@@ -193,7 +169,6 @@ final class LibraryRepositoryTests: XCTestCase {
         context.insert(DBLibraryCollection(
             id: "collection-a",
             title: "Collection",
-            gameIDs: ["game-a"]
         ))
         context.insert(DBLibraryCollectionItem(
             id: DBLibraryCollectionItem.stableID(collectionID: "collection-a", gameID: "game-b"),
@@ -210,7 +185,6 @@ final class LibraryRepositoryTests: XCTestCase {
         XCTAssertNotNil(try context.fetch(FetchDescriptor<DBSparkMetadata>()).first)
         XCTAssertNotNil(try context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).first)
         let collection = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryCollection>()).first)
-        XCTAssertEqual(collection.gameIDs, ["game-a"])
     }
 
     @MainActor

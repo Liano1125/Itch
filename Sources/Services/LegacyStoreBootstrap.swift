@@ -336,7 +336,7 @@ enum LegacyStoreBootstrap {
         let destinationContext = destinationContainer.mainContext
 
         for item in developers {
-            destinationContext.insert(DBDeveloper(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBDeveloper(
                 id: item.id,
                 name: item.name,
                 profileURL: item.profileURL,
@@ -354,7 +354,7 @@ enum LegacyStoreBootstrap {
         var detailCount = 0
         for item in games {
             titlesByGameID[item.id] = item.title
-            destinationContext.insert(DBGame(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBGame(
                 id: item.id,
                 title: item.title,
                 gameURL: item.gameURL,
@@ -372,7 +372,7 @@ enum LegacyStoreBootstrap {
                 || item.discoveryTagsData != nil
             if hasDetails {
                 detailCount += 1
-                destinationContext.insert(DBGameDetail(
+                destinationContext.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
                     gameID: item.id,
                     descriptionText: item.descriptionText,
                     galleryURLs: item.galleryURLs,
@@ -384,7 +384,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in libraryEntries {
-            destinationContext.insert(DBLibraryEntry(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryEntry(
                 gameID: item.gameID,
                 status: item.status,
                 isFavorite: item.isFavorite,
@@ -395,7 +395,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in updates {
-            destinationContext.insert(DBGameUpdate(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBGameUpdate(
                 id: item.id,
                 gameID: item.gameID,
                 title: item.title,
@@ -409,7 +409,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in calendarEvents {
-            destinationContext.insert(DBCalendarEvent(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBCalendarEvent(
                 id: item.id,
                 gameID: item.gameID,
                 title: item.title,
@@ -425,7 +425,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in sparkMetadata {
-            destinationContext.insert(DBSparkMetadata(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBSparkMetadata(
                 gameID: item.gameID,
                 runtimeSeconds: item.runtimeSeconds,
                 lastSaveAt: item.lastSaveAt,
@@ -436,7 +436,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in translations {
-            destinationContext.insert(DBTranslation(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBTranslation(
                 cacheKey: item.cacheKey,
                 scope: item.scope,
                 sourceHash: item.sourceHash,
@@ -448,7 +448,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in discoverySnapshots {
-            destinationContext.insert(DBDiscoverySnapshot(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot(
                 key: item.key,
                 payload: item.payload,
                 fetchedAt: item.fetchedAt,
@@ -457,7 +457,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in updateWatches {
-            destinationContext.insert(DBUpdateWatch(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBUpdateWatch(
                 gameID: item.gameID,
                 entityTag: item.entityTag,
                 lastModified: item.lastModified,
@@ -470,7 +470,7 @@ enum LegacyStoreBootstrap {
 
         var collectionItemCount = 0
         for collection in collections {
-            destinationContext.insert(DBLibraryCollection(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
                 id: collection.id,
                 title: collection.title,
                 gameIDs: collection.gameIDs,
@@ -481,8 +481,8 @@ enum LegacyStoreBootstrap {
             var seen = Set<String>()
             for (index, gameID) in collection.gameIDs.enumerated() where seen.insert(gameID).inserted {
                 collectionItemCount += 1
-                destinationContext.insert(DBLibraryCollectionItem(
-                    id: DBLibraryCollectionItem.stableID(collectionID: collection.id, gameID: gameID),
+                destinationContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
+                    id: ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem.stableID(collectionID: collection.id, gameID: gameID),
                     collectionID: collection.id,
                     gameID: gameID,
                     sortOrder: index,
@@ -492,7 +492,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in statusEvents {
-            destinationContext.insert(DBLibraryStatusEvent(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent(
                 id: item.id,
                 gameID: item.gameID,
                 fromStatus: item.fromStatus,
@@ -502,7 +502,7 @@ enum LegacyStoreBootstrap {
         }
 
         for item in appStates {
-            destinationContext.insert(DBAppState(
+            destinationContext.insert(ItchPocketSchemaV2Snapshot.DBAppState(
                 key: item.key,
                 stringValue: item.stringValue,
                 dateValue: item.dateValue,
@@ -591,33 +591,33 @@ enum LegacyStoreBootstrap {
             // A completion receipt proves this store passed the full copy/validation
             // path. Every model remains fetchable, but legitimate row deletions
             // are allowed after migration.
-            _ = try context.fetchCount(FetchDescriptor<DBDeveloper>())
-            _ = try context.fetchCount(FetchDescriptor<DBGame>())
-            _ = try context.fetchCount(FetchDescriptor<DBLibraryEntry>())
-            _ = try context.fetchCount(FetchDescriptor<DBGameUpdate>())
-            _ = try context.fetchCount(FetchDescriptor<DBCalendarEvent>())
-            _ = try context.fetchCount(FetchDescriptor<DBSparkMetadata>())
-            _ = try context.fetchCount(FetchDescriptor<DBTranslation>())
-            _ = try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>())
-            _ = try context.fetchCount(FetchDescriptor<DBUpdateWatch>())
-            _ = try context.fetchCount(FetchDescriptor<DBLibraryCollection>())
-            _ = try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>())
-            _ = try context.fetchCount(FetchDescriptor<DBAppState>())
-            _ = try context.fetchCount(FetchDescriptor<DBGameDetail>())
-            _ = try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBTranslation>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBAppState>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>())
+            _ = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
 
             // A readable SQLite store can still contain logically broken join
         // records. Re-check the V2 invariants every time an existing store is
         // reused, without comparing mutable business-row counts to old values.
-        let currentGames = try context.fetch(FetchDescriptor<DBGame>())
+        let currentGames = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
         let gameIDs = Set(currentGames.map(\.id))
-        let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+        let details = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>())
         guard details.allSatisfy({ gameIDs.contains($0.gameID) }) else {
             throw BootstrapError.validationFailed("A game-detail record references a missing game.")
         }
 
-        let collectionIDs = Set(try context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\.id))
-            let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+        let collectionIDs = Set(try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).map(\.id))
+            let items = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
             var membershipsByCollection: [String: Set<String>] = [:]
             for item in items {
                 guard collectionIDs.contains(item.collectionID) else {
@@ -709,34 +709,34 @@ enum LegacyStoreBootstrap {
 
     private static func validate(context: ModelContext, expected: MigrationCounts) throws {
         let actual = MigrationCounts(
-            developers: try context.fetchCount(FetchDescriptor<DBDeveloper>()),
-            games: try context.fetchCount(FetchDescriptor<DBGame>()),
-            libraryEntries: try context.fetchCount(FetchDescriptor<DBLibraryEntry>()),
-            updates: try context.fetchCount(FetchDescriptor<DBGameUpdate>()),
-            calendarEvents: try context.fetchCount(FetchDescriptor<DBCalendarEvent>()),
-            sparkMetadata: try context.fetchCount(FetchDescriptor<DBSparkMetadata>()),
-            translations: try context.fetchCount(FetchDescriptor<DBTranslation>()),
-            discoverySnapshots: try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>()),
-            updateWatches: try context.fetchCount(FetchDescriptor<DBUpdateWatch>()),
-            collections: try context.fetchCount(FetchDescriptor<DBLibraryCollection>()),
-            libraryStatusEvents: try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>()),
-            appStates: try context.fetchCount(FetchDescriptor<DBAppState>()),
-            gameDetails: try context.fetchCount(FetchDescriptor<DBGameDetail>()),
-            collectionItems: try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>())
+            developers: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>()),
+            games: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()),
+            libraryEntries: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>()),
+            updates: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>()),
+            calendarEvents: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()),
+            sparkMetadata: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>()),
+            translations: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBTranslation>()),
+            discoverySnapshots: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot>()),
+            updateWatches: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>()),
+            collections: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()),
+            libraryStatusEvents: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>()),
+            appStates: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBAppState>()),
+            gameDetails: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()),
+            collectionItems: try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
         )
         guard actual == expected else {
             throw BootstrapError.validationFailed("Expected \(expected), received \(actual).")
         }
 
-        let games = try context.fetch(FetchDescriptor<DBGame>())
+        let games = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
         let titles = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0.title) })
-        for event in try context.fetch(FetchDescriptor<DBCalendarEvent>()) {
+        for event in try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()) {
             guard event.gameTitleSnapshot == titles[event.gameID] else {
                 throw BootstrapError.validationFailed("Calendar title snapshot mismatch for event \(event.id).")
             }
         }
 
-        let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+        let details = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>())
         let gamesByID = Dictionary(uniqueKeysWithValues: games.map { ($0.id, $0) })
         for detail in details {
             guard let game = gamesByID[detail.gameID],
@@ -749,8 +749,8 @@ enum LegacyStoreBootstrap {
             }
         }
 
-        let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
-        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+        let collections = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>())
+        let items = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
         let collectionIDs = Set(collections.map(\.id))
         guard items.allSatisfy({ collectionIDs.contains($0.collectionID) }) else {
             throw BootstrapError.validationFailed("A collection item references a missing collection.")
