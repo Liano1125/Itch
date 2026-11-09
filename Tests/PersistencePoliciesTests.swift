@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
@@ -193,7 +194,7 @@ private enum GameDetailTestError: Error {
 final class GameDetailRepositoryTests: XCTestCase {
     @MainActor
     func testUnresolvedPageSectionsPreserveStoredDetailsAndDoNotRefreshTimestamp() throws {
-        let database = AppDatabase(inMemory: true)
+        let database = try AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
             title: "Test Game",
@@ -226,7 +227,7 @@ final class GameDetailRepositoryTests: XCTestCase {
 
     @MainActor
     func testResolvedEmptySectionsCanClearStoredDetailsAndMarkComplete() throws {
-        let database = AppDatabase(inMemory: true)
+        let database = try AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
             title: "Test Game",
@@ -261,7 +262,7 @@ final class GameDetailRepositoryTests: XCTestCase {
 
     @MainActor
     func testFailedSnapshotSaveRestoresOnlyDetailChangesAndPreservesUnrelatedPendingChanges() throws {
-        let database = AppDatabase(inMemory: true)
+        let database = try AppDatabase(inMemory: true)
         let game = DBGame(
             id: "test-game",
             title: "Test Game",
@@ -300,8 +301,86 @@ final class GameDetailRepositoryTests: XCTestCase {
         XCTAssertNotEqual(stored.fetchStatus, .complete)
         XCTAssertNil(stored.fetchedAt)
 
-        let preservedState = try XCTUnwrap(database.state(for: "unrelated.pending.change"))
+        let preservedState = try XCTUnwrap(AppStateRepository(database: database).state(for: "unrelated.pending.change"))
         XCTAssertEqual(preservedState.stringValue, "keep me")
-        XCTAssertNotNil(preservedState.modelContext)
+    }
+}
+
+
+final class PersonalLibraryStoreReloadTests: XCTestCase {
+    @MainActor
+    func testInitialRepositoryLoadFailureCanRecoverOnRetry() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        database.context.insert(DBLibraryEntry(gameID: "game-1", status: LibraryStatus.playing.rawValue))
+        database.context.insert(DBLibraryStatusEvent(
+            id: "status-1",
+            gameID: "game-1",
+            fromStatus: nil,
+            toStatus: LibraryStatus.playing.rawValue
+        ))
+        database.context.insert(DBLibraryCollection(
+            id: "collection-1",
+            title: "Favorites",
+            gameIDs: []
+        ))
+        try database.save()
+
+        var shouldFail = true
+        let store = PersonalLibraryStore(
+            database: database,
+            shouldSimulateLibraryLoadFailure: { shouldFail }
+        )
+        XCTAssertTrue(store.records.isEmpty)
+        XCTAssertTrue(store.statusEvents.isEmpty)
+        XCTAssertTrue(store.collections.isEmpty)
+
+        shouldFail = false
+        store.reload()
+
+        XCTAssertEqual(store.records.map(\.id), ["game-1"])
+        XCTAssertEqual(store.statusEvents["game-1"]?.map(\.id), ["status-1"])
+        XCTAssertEqual(store.collections.map(\.id), ["collection-1"])
+    }
+
+    @MainActor
+    func testFailedReloadRetainsLastKnownGoodLibraryHistoryAndCollections() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        database.context.insert(DBLibraryEntry(gameID: "game-1", status: LibraryStatus.playing.rawValue))
+        database.context.insert(DBLibraryStatusEvent(
+            id: "status-1",
+            gameID: "game-1",
+            fromStatus: nil,
+            toStatus: LibraryStatus.playing.rawValue
+        ))
+        database.context.insert(DBLibraryCollection(
+            id: "collection-1",
+            title: "Favorites",
+            gameIDs: []
+        ))
+        try database.save()
+
+        var shouldFail = false
+        let store = PersonalLibraryStore(
+            database: database,
+            shouldSimulateLibraryLoadFailure: { shouldFail }
+        )
+        XCTAssertEqual(store.records.map(\.id), ["game-1"])
+
+        database.context.insert(DBGame(id: "game-2", title: "Game Two"))
+        database.context.insert(DBLibraryEntry(gameID: "game-2", status: LibraryStatus.wishlist.rawValue))
+        try database.save()
+
+        shouldFail = true
+        store.reload()
+
+        XCTAssertEqual(store.records.map(\.id), ["game-1"])
+        XCTAssertEqual(store.statusEvents["game-1"]?.map(\.id), ["status-1"])
+        XCTAssertEqual(store.collections.map(\.id), ["collection-1"])
+
+        shouldFail = false
+        store.reload()
+        XCTAssertEqual(Set(store.records.map(\.id)), Set(["game-1", "game-2"]))
     }
 }

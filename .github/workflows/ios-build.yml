@@ -4,9 +4,32 @@ on:
   push:
     branches:
       - main
+      # Validate stacked repository hardening without publishing a nightly release.
+      - refactor/repository-boundary-hardening
+      - refactor/library-entry-repository
+      - refactor/library-write-transaction-hardening
+      - refactor/repository-context-capability
+      - refactor/app-database-cleanup-transaction
+      - refactor/repository-integration-phase2
   pull_request:
     branches:
       - main
+      # Stacked persistence PRs may target the migration branch before it merges.
+      - fix/legacy-v2-bootstrap
+      - refactor/library-repository-collections-v2
+      # Run the next repository slice stacked on this branch.
+      - refactor/library-status-history-repository
+      - refactor/game-update-repository
+      - refactor/calendar-repository
+      - refactor/spark-repository
+      - refactor/app-state-repository
+      - refactor/developer-repository
+      - refactor/game-repository
+      - refactor/cache-repository
+      - refactor/library-entry-repository
+      - refactor/library-write-transaction-hardening
+      - refactor/repository-context-capability
+      - refactor/app-database-cleanup-transaction
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
@@ -152,7 +175,7 @@ jobs:
 
       # 9. 将原始 IPA 作为 GitHub Release 附件发布（不经过 ZIP artifact 包装）
       - name: Publish raw IPA release asset
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly

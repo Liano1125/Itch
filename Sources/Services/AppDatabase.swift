@@ -1,175 +1,166 @@
 import Foundation
 import SwiftData
+import SwiftUI
+
+/// Narrow persistence capability supplied to repositories. The underlying
+/// ModelContext never escapes this wrapper in Release builds.
+@MainActor
+final class RepositoryContext {
+    private let modelContext: ModelContext
+
+    fileprivate init(_ modelContext: ModelContext) { self.modelContext = modelContext }
+    var hasChanges: Bool { modelContext.hasChanges }
+
+    func fetch<Model>(_ descriptor: FetchDescriptor<Model>) throws -> [Model] where Model: PersistentModel {
+        try modelContext.fetch(descriptor)
+    }
+    func fetchCount<Model>(_ descriptor: FetchDescriptor<Model>) throws -> Int where Model: PersistentModel {
+        try modelContext.fetchCount(descriptor)
+    }
+    func insert<Model>(_ model: Model) where Model: PersistentModel { modelContext.insert(model) }
+    func delete<Model>(_ model: Model) where Model: PersistentModel { modelContext.delete(model) }
+}
 
 /// Owns the app's one durable database. Feature stores and views must use
 /// repositories backed by this container instead of creating their own files.
 @MainActor
 final class AppDatabase {
-    static let shared = AppDatabase()
+    /// Installed by the app entry point only after durable storage is verified.
+    private static var sharedInstance: AppDatabase?
 
-    let container: ModelContainer
-    var context: ModelContext { container.mainContext }
+    static var isInstalled: Bool { sharedInstance != nil }
 
-    init(inMemory: Bool = false) {
-        let schema = Schema([
-            DBDeveloper.self,
-            DBGame.self,
-            DBLibraryEntry.self,
-            DBGameUpdate.self,
-            DBCalendarEvent.self,
-            DBSparkMetadata.self,
-            DBTranslation.self,
-            DBDiscoverySnapshot.self,
-            DBUpdateWatch.self,
-            DBLibraryCollection.self,
-            DBLibraryStatusEvent.self,
-            DBAppState.self
-        ])
-        let configuration = ModelConfiguration(
-            "itchPocket",
-            schema: schema,
-            isStoredInMemoryOnly: inMemory
-        )
-        do {
-            container = try ModelContainer(for: schema, configurations: [configuration])
-        } catch {
-            // A failed database open must be surfaced rather than silently
-            // falling back to a second, divergent persistence mechanism.
-            fatalError("Unable to open itchPocket database: \(error.localizedDescription)")
+    static var shared: AppDatabase {
+        guard let sharedInstance else {
+            preconditionFailure("AppDatabase.shared accessed before successful database startup.")
         }
+        return sharedInstance
+    }
+
+    static func installShared(_ database: AppDatabase) {
+        sharedInstance = database
+    }
+
+    private let container: ModelContainer
+    private var modelContext: ModelContext { container.mainContext }
+    var repositoryContext: RepositoryContext { RepositoryContext(modelContext) }
+
+    #if DEBUG
+    /// Test-only escape hatch for persistence fixtures. Not present in Release.
+    var context: ModelContext { modelContext }
+    #endif
+
+    static var hasLegacyStoreForRecovery: Bool {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        let configuration = ModelConfiguration(
+            LegacyStoreBootstrap.legacyConfigurationName,
+            schema: schema
+        )
+        return FileManager.default.fileExists(atPath: configuration.url.path)
+    }
+
+    init(inMemory: Bool = false, recoverCorruptV2: Bool = false) throws {
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        if inMemory {
+            let configuration = ModelConfiguration(
+                "itchPocket",
+                schema: schema,
+                isStoredInMemoryOnly: true
+            )
+            container = try ModelContainer(for: schema, configurations: [configuration])
+        } else {
+            // Resolve the exact pre-versioning store location through the
+            // same configuration name used by released builds.
+            let legacySchema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+            let legacyConfiguration = ModelConfiguration(
+                LegacyStoreBootstrap.legacyConfigurationName,
+                schema: legacySchema
+            )
+            let finalDirectory = legacyConfiguration.url
+                .deletingLastPathComponent()
+                .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+            let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
+                legacyStoreURL: legacyConfiguration.url,
+                finalDirectory: finalDirectory,
+                recoverInvalidExistingV2: recoverCorruptV2
+            )
+            let configuration = ModelConfiguration(
+                LegacyStoreBootstrap.v2ConfigurationName,
+                schema: schema,
+                url: v2StoreURL
+            )
+            container = try ModelContainer(for: schema, configurations: [configuration])
+        }
+    }
+
+    func attachModelContainer<Content: View>(to content: Content) -> some View {
+        content.modelContainer(container)
     }
 
     func save() throws {
-        guard context.hasChanges else { return }
-        try context.save()
+        guard modelContext.hasChanges else { return }
+        try modelContext.save()
     }
 
-    static func canonicalDeveloperID(_ rawURL: String) -> String {
-        guard var components = URLComponents(string: rawURL) else { return rawURL.lowercased() }
-        components.scheme = components.scheme?.lowercased()
-        components.host = components.host?.lowercased()
-        components.query = nil
-        components.fragment = nil
-        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return components.string ?? rawURL.lowercased()
-    }
+    enum TransactionError: LocalizedError {
+        case pendingChanges
 
-    func developer(id: String) throws -> DBDeveloper? {
-        let descriptor = FetchDescriptor<DBDeveloper>(
-            predicate: #Predicate { $0.id == id }
-        )
-        return try context.fetch(descriptor).first
-    }
-
-    func upsertDeveloper(
-        id: String,
-        name: String,
-        profileURL: String? = nil,
-        patreonURL: String? = nil,
-        discordURL: String? = nil
-    ) throws {
-        let item = try developer(id: id) ?? DBDeveloper(id: id, name: name)
-        var changed = item.modelContext == nil
-        if item.modelContext == nil { context.insert(item) }
-        if !name.isEmpty && item.name != name { item.name = name; changed = true }
-        if let profileURL, item.profileURL != profileURL { item.profileURL = profileURL; changed = true }
-        if let patreonURL, item.patreonURL != patreonURL { item.patreonURL = patreonURL; changed = true }
-        if let discordURL, item.discordURL != discordURL { item.discordURL = discordURL; changed = true }
-        if changed { item.updatedAt = .now }
-        try save()
-    }
-
-    func setDeveloperAvatar(id: String, url: String?, source: String?) throws {
-        guard let item = try developer(id: id) else { return }
-        let changed = item.avatarURL != url || item.avatarSource != source
-        item.avatarURL = url
-        item.avatarSource = source
-        item.avatarResolvedAt = .now
-        if changed { item.updatedAt = .now }
-        try save()
-    }
-
-    func invalidateDeveloperAvatarCaches() throws {
-        let developers = try context.fetch(FetchDescriptor<DBDeveloper>())
-        for developer in developers {
-            developer.avatarURL = nil
-            developer.avatarSource = nil
-            developer.avatarResolvedAt = nil
+        var errorDescription: String? {
+            switch self {
+            case .pendingChanges:
+                return "A transaction cannot start while the shared context contains pending changes."
+            }
         }
-        try save()
     }
 
-    func game(id: String) throws -> DBGame? {
-        let descriptor = FetchDescriptor<DBGame>(
-            predicate: #Predicate { $0.id == id }
-        )
-        return try context.fetch(descriptor).first
+    /// Runs a synchronous unit of work against a clean shared context.
+    /// A failed operation rolls back only because no unrelated pending changes
+    /// were present at entry. Successful save:false callers may leave changes
+    /// pending for a larger caller-owned batch.
+    func performUnitOfWork<Value>(_ operation: () throws -> Value) throws -> Value {
+        guard !modelContext.hasChanges else {
+            throw TransactionError.pendingChanges
+        }
+
+        do {
+            return try operation()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 
-    func upsertGame(
-        id: String,
-        title: String,
-        gameURL: String? = nil,
-        coverURL: String? = nil,
-        engine: String? = nil,
-        developerID: String? = nil
-    ) throws {
-        let item = try game(id: id) ?? DBGame(id: id, title: title)
-        var changed = item.modelContext == nil
-        if item.modelContext == nil { context.insert(item) }
-        if item.title != title { item.title = title; changed = true }
-        if let gameURL, item.gameURL != gameURL { item.gameURL = gameURL; changed = true }
-        if let coverURL, item.coverURL != coverURL { item.coverURL = coverURL; changed = true }
-        if let engine, item.engine != engine { item.engine = engine; changed = true }
-        if let developerID, item.developerID != developerID { item.developerID = developerID; changed = true }
-        if changed { item.updatedAt = .now }
-        try save()
+    /// Runs a clean-context unit of work and commits it with one save.
+    func performTransaction<Value>(_ operation: () throws -> Value) throws -> Value {
+        let value = try performUnitOfWork(operation)
+        do {
+            try save()
+            return value
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 
-    func state(for key: String) throws -> DBAppState? {
-        let descriptor = FetchDescriptor<DBAppState>(
-            predicate: #Predicate { $0.key == key }
-        )
-        return try context.fetch(descriptor).first
-    }
-
-    func setState(_ value: String?, for key: String) throws {
-        let item = try state(for: key) ?? DBAppState(key: key)
-        if item.modelContext == nil { context.insert(item) }
-        item.stringValue = value
-        item.updatedAt = .now
-        try save()
-    }
-
-    func setState(_ value: Date?, for key: String) throws {
-        let item = try state(for: key) ?? DBAppState(key: key)
-        if item.modelContext == nil { context.insert(item) }
-        item.dateValue = value
-        item.updatedAt = .now
-        try save()
-    }
-
-    func setState(_ value: Data?, for key: String) throws {
-        let item = try state(for: key) ?? DBAppState(key: key)
-        if item.modelContext == nil { context.insert(item) }
-        item.dataValue = value
-        item.updatedAt = .now
-        try save()
-    }
-
+    /// Clears every persisted app-data model as one atomic unit of work.
+    /// Existing pending changes are rejected by performTransaction rather than
+    /// being accidentally committed or rolled back with this destructive action.
     func removeAllAppData() throws {
-        try context.delete(model: DBAppState.self)
-        try context.delete(model: DBLibraryStatusEvent.self)
-        try context.delete(model: DBLibraryCollection.self)
-        try context.delete(model: DBUpdateWatch.self)
-        try context.delete(model: DBDiscoverySnapshot.self)
-        try context.delete(model: DBTranslation.self)
-        try context.delete(model: DBSparkMetadata.self)
-        try context.delete(model: DBCalendarEvent.self)
-        try context.delete(model: DBGameUpdate.self)
-        try context.delete(model: DBLibraryEntry.self)
-        try context.delete(model: DBGame.self)
-        try context.delete(model: DBDeveloper.self)
-        try save()
+        try performTransaction {
+            try AppStateRepository(database: self).removeAll(save: false)
+            try modelContext.delete(model: DBLibraryCollectionItem.self)
+            try modelContext.delete(model: DBGameDetail.self)
+            try modelContext.delete(model: DBLibraryStatusEvent.self)
+            try modelContext.delete(model: DBLibraryCollection.self)
+            try modelContext.delete(model: DBUpdateWatch.self)
+            try modelContext.delete(model: DBDiscoverySnapshot.self)
+            try modelContext.delete(model: DBTranslation.self)
+            try modelContext.delete(model: DBSparkMetadata.self)
+            try modelContext.delete(model: DBCalendarEvent.self)
+            try modelContext.delete(model: DBGameUpdate.self)
+            try modelContext.delete(model: DBLibraryEntry.self)
+            try modelContext.delete(model: DBGame.self)
+            try modelContext.delete(model: DBDeveloper.self)
+        }
     }
 }

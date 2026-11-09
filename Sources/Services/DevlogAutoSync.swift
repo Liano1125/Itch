@@ -24,7 +24,8 @@ enum DevlogAutoSync {
         calendar: GameCalendarStore,
         force: Bool = false
     ) async {
-        let lastAttempt = try? AppDatabase.shared.state(for: lastSyncKey)?.dateValue
+        let stateRepository = AppStateRepository(database: AppDatabase.shared)
+        let lastAttempt = try? stateRepository.state(for: lastSyncKey)?.dateValue
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < interval {
             scheduleNext()
             return
@@ -39,7 +40,7 @@ enum DevlogAutoSync {
             calendarStore: calendar,
             libraryStore: library
         )
-        try? AppDatabase.shared.setState(Date(), for: lastSyncKey)
+        try? stateRepository.setDate(Date(), for: lastSyncKey)
         scheduleNext()
     }
 
@@ -78,8 +79,16 @@ enum DevlogAutoSync {
     }
 
     static func handle(_ task: BGAppRefreshTask) {
-        scheduleNext()
         let operation = Task { @MainActor in
+            // The app can be launched into its database-recovery screen if
+            // durable storage cannot be opened. A background refresh must
+            // never touch the shared stores until startup has installed it.
+            guard AppDatabase.isInstalled else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            scheduleNext()
             await refreshIfNeeded(
                 monitor: .shared,
                 library: .shared,
