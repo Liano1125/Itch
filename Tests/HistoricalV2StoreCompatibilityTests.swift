@@ -21,7 +21,7 @@ final class HistoricalV2StoreCompatibilityTests: XCTestCase {
         // Bundle resources are read-only. Work on a private copy so SwiftData can
         // open the V2 store and V3StoreBootstrap can create its sibling V3 store.
         let workingRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HistoricalV2Compatibility-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("HistoricalV2Compatibility-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
             at: workingRoot,
             withIntermediateDirectories: true
