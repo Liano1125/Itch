@@ -295,4 +295,21 @@ final class LibraryRepositoryTests: XCTestCase {
     }
 
 
+
+    @MainActor
+    func testLibraryEntryReadValidationRejectsDuplicateGameIDs() throws {
+        XCTAssertNoThrow(try LibraryRepository.validateUniqueGameIDs(["game-a", "game-b"]))
+
+        XCTAssertThrowsError(
+            try LibraryRepository.validateUniqueGameIDs(["game-a", "game-b", "game-a"])
+        ) { error in
+            guard let repositoryError = error as? LibraryRepository.RepositoryError else {
+                return XCTFail("Expected RepositoryError, got \\(error)")
+            }
+            guard case .duplicateLibraryEntry("game-a") = repositoryError else {
+                return XCTFail("Expected duplicateLibraryEntry, got \\(repositoryError)")
+            }
+        }
+    }
+
 }
