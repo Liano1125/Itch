@@ -230,8 +230,8 @@ enum ItchPocketSchemaV1: VersionedSchema {
     }
 }
 
-/// V2 uses the app's current model types plus normalized detail/collection
-/// records. Legacy columns remain for a later, separately verified V3 cutover.
+/// Frozen V2 schema declarations preserve the exact model shape used by the
+/// V2 store. Legacy columns remain here for the separately versioned V3 cutover.
 enum ItchPocketSchemaV2: VersionedSchema {
     static var versionIdentifier = Schema.Version(2, 0, 0)
     static var models: [any PersistentModel.Type] {
