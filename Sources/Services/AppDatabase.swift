@@ -19,9 +19,6 @@ final class RepositoryContext {
     }
     func insert<Model>(_ model: Model) where Model: PersistentModel { modelContext.insert(model) }
     func delete<Model>(_ model: Model) where Model: PersistentModel { modelContext.delete(model) }
-    func delete<Model>(model: Model.Type) throws where Model: PersistentModel {
-        try modelContext.delete(model: model)
-    }
 }
 
 /// Owns the app's one durable database. Feature stores and views must use
@@ -145,21 +142,25 @@ final class AppDatabase {
         }
     }
 
+    /// Clears every persisted app-data model as one atomic unit of work.
+    /// Existing pending changes are rejected by performTransaction rather than
+    /// being accidentally committed or rolled back with this destructive action.
     func removeAllAppData() throws {
-        try AppStateRepository(database: self).removeAll(save: false)
-        try modelContext.delete(model: DBLibraryCollectionItem.self)
-        try modelContext.delete(model: DBGameDetail.self)
-        try modelContext.delete(model: DBLibraryStatusEvent.self)
-        try modelContext.delete(model: DBLibraryCollection.self)
-        try modelContext.delete(model: DBUpdateWatch.self)
-        try modelContext.delete(model: DBDiscoverySnapshot.self)
-        try modelContext.delete(model: DBTranslation.self)
-        try modelContext.delete(model: DBSparkMetadata.self)
-        try modelContext.delete(model: DBCalendarEvent.self)
-        try modelContext.delete(model: DBGameUpdate.self)
-        try modelContext.delete(model: DBLibraryEntry.self)
-        try modelContext.delete(model: DBGame.self)
-        try modelContext.delete(model: DBDeveloper.self)
-        try save()
+        try performTransaction {
+            try AppStateRepository(database: self).removeAll(save: false)
+            try modelContext.delete(model: DBLibraryCollectionItem.self)
+            try modelContext.delete(model: DBGameDetail.self)
+            try modelContext.delete(model: DBLibraryStatusEvent.self)
+            try modelContext.delete(model: DBLibraryCollection.self)
+            try modelContext.delete(model: DBUpdateWatch.self)
+            try modelContext.delete(model: DBDiscoverySnapshot.self)
+            try modelContext.delete(model: DBTranslation.self)
+            try modelContext.delete(model: DBSparkMetadata.self)
+            try modelContext.delete(model: DBCalendarEvent.self)
+            try modelContext.delete(model: DBGameUpdate.self)
+            try modelContext.delete(model: DBLibraryEntry.self)
+            try modelContext.delete(model: DBGame.self)
+            try modelContext.delete(model: DBDeveloper.self)
+        }
     }
 }
