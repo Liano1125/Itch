@@ -33,6 +33,7 @@ on:
       - refactor/repository-context-capability
       - refactor/app-database-cleanup-transaction
       - refactor/freeze-v2-schema-snapshot
+      - refactor/v3-normalized-persistence-cutover
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
