@@ -8,17 +8,24 @@ import SwiftData
 final class HistoricalV2FixtureGenerationTests: XCTestCase {
     @MainActor
     func testGenerateHistoricalV2Fixture() throws {
-        guard let path = ProcessInfo.processInfo.environment["ITCHPOCKET_HISTORICAL_V2_FIXTURE_OUTPUT"],
-              !path.isEmpty else {
-            XCTFail("ITCHPOCKET_HISTORICAL_V2_FIXTURE_OUTPUT must point to the fixture store.")
+        guard let documentsURL = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else {
+            XCTFail("The historical fixture test requires an app Documents directory.")
             return
         }
 
-        let storeURL = URL(fileURLWithPath: path)
+        let fixtureDirectory = documentsURL.appendingPathComponent(
+            "HistoricalV2Store",
+            isDirectory: true
+        )
+        try? FileManager.default.removeItem(at: fixtureDirectory)
         try FileManager.default.createDirectory(
-            at: storeURL.deletingLastPathComponent(),
+            at: fixtureDirectory,
             withIntermediateDirectories: true
         )
+        let storeURL = fixtureDirectory.appendingPathComponent("itchPocket-v2.store")
 
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration(
