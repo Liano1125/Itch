@@ -10,6 +10,8 @@ on:
       - refactor/library-write-transaction-hardening
       - refactor/repository-context-capability
       - refactor/app-database-cleanup-transaction
+      - refactor/repository-integration-phase2
+      - refactor/freeze-v2-schema-snapshot
   pull_request:
     branches:
       - main

@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import SwiftData
 import UserNotifications
 
 enum GameCalendarEventKind: String, CaseIterable, Codable, Identifiable {
@@ -52,15 +51,10 @@ struct GameCalendarEvent: Codable, Identifiable {
 final class GameCalendarStore: ObservableObject {
     static let shared = GameCalendarStore()
     @Published private(set) var events: [GameCalendarEvent] = []
-    private let database = AppDatabase.shared
-    private let gameUpdateRepository: GameUpdateRepository
-    private let calendarRepository: CalendarRepository
-    private let gameRepository: GameRepository
+    private let repository: GameCalendarRepository
 
-    init() {
-        self.gameUpdateRepository = GameUpdateRepository(database: database)
-        self.calendarRepository = CalendarRepository(database: database)
-        self.gameRepository = GameRepository(database: database)
+    init(repository: GameCalendarRepository? = nil) {
+        self.repository = repository ?? .shared
         load()
     }
 
@@ -89,10 +83,12 @@ final class GameCalendarStore: ObservableObject {
         var inserted = 0
         for update in updates {
             guard !events.contains(where: { $0.gameID == update.gameID && $0.sourceFingerprint == update.fingerprint }) else { continue }
-            let updateID = try? gameUpdateRepository.detectedUpdateID(
-                gameID: update.gameID,
-                detectedAt: update.detectedAt
-            )
+            let updateID: String?
+            do { updateID = try repository.updateID(gameID: update.gameID, detectedAt: update.detectedAt) }
+            catch {
+                print("itchPocket detected update lookup failed: \(error)")
+                continue
+            }
             let event = GameCalendarEvent(
                 gameID: update.gameID,
                 gameTitle: update.gameTitle,
@@ -105,13 +101,14 @@ final class GameCalendarStore: ObservableObject {
                 sourceFingerprint: update.fingerprint
             )
             events.append(event)
-            persist(event, sourceUpdateID: updateID ?? nil, save: false)
+            do { try repository.saveEvent(event, sourceUpdateID: updateID, save: false) }
+            catch { print("itchPocket detected calendar write failed: \(error)") }
             inserted += 1
         }
         if inserted > 0 {
             events.sort { $0.date < $1.date }
             if shouldSave {
-                do { try database.save() }
+                do { try repository.save() }
                 catch { print("itchPocket detected calendar batch save failed: \(error)") }
             }
         }
@@ -138,15 +135,10 @@ final class GameCalendarStore: ObservableObject {
             guard let sourceID = update.sourceID else { continue }
             let fingerprint = "devlog:\(sourceID)"
             guard !events.contains(where: { $0.gameID == gameID && $0.sourceFingerprint == fingerprint }) else { continue }
-            let storedUpdate: GameLibraryUpdate
-            do {
-                storedUpdate = try gameUpdateRepository.upsertHistorical(
-                    update,
-                    for: gameID,
-                    save: false
-                )
-            } catch {
-                print("itchPocket historical update repository write failed: \(error)")
+            let updateID: String
+            do { updateID = try repository.upsertHistoricalUpdate(gameID: gameID, update: update) }
+            catch {
+                print("itchPocket historical update write failed: \(error)")
                 continue
             }
             let event = GameCalendarEvent(
@@ -161,12 +153,13 @@ final class GameCalendarStore: ObservableObject {
                 sourceFingerprint: fingerprint
             )
             events.append(event)
-            persist(event, sourceUpdateID: storedUpdate.id, save: false)
+            do { try repository.saveEvent(event, sourceUpdateID: updateID, save: false) }
+            catch { print("itchPocket historical calendar event write failed: \(error)") }
             inserted += 1
         }
         if inserted > 0 {
             events.sort { $0.date < $1.date }
-            do { try database.save() }
+            do { try repository.save() }
             catch { print("itchPocket historical calendar batch save failed: \(error)") }
         }
         return inserted
@@ -185,11 +178,8 @@ final class GameCalendarStore: ObservableObject {
 
     func delete(_ id: String) {
         events.removeAll { $0.id == id }
-        do {
-            try calendarRepository.delete(id: id)
-        } catch {
-            print("itchPocket calendar deletion failed: \(error)")
-        }
+        do { try repository.deleteEvent(id: id) }
+        catch { print("itchPocket calendar deletion failed: \(error)") }
         GameNotificationManager.shared.cancel(id)
     }
 
@@ -198,74 +188,16 @@ final class GameCalendarStore: ObservableObject {
     }
 
     private func load() {
-        do {
-            let storedEvents = try calendarRepository.loadEvents()
-            let games = try gameRepository.loadByID()
-            let updatesByID = try gameUpdateRepository.loadUpdatesByID()
-            events = storedEvents.compactMap { stored in
-                // A linked update is usable only when it belongs to this exact game.
-                // Calendar rows also retain their own title/date/notes as a durable fallback.
-                let linkedUpdate = stored.sourceUpdateID.flatMap { updatesByID[$0] }
-                let update = linkedUpdate.flatMap { $0.gameID == stored.gameID ? $0.update : nil }
-                let game = games[stored.gameID]
-                let title = update?.title.map { "更新：\($0)" } ?? stored.title ?? "日历事件"
-                let date = update?.publishedAt
-                    ?? (update?.isHistorical == true ? stored.date : update?.detectedAt)
-                    ?? stored.date
-                    ?? .now
-                let notes: String
-                if let update, !update.summary.isEmpty {
-                    notes = update.summary + (update.url.map { "\n\($0)" } ?? "") + (update.isHistorical == true ? "\n来源：itch.io Devlog（历史发布日期）" : "")
-                } else {
-                    notes = stored.notes ?? ""
-                }
-                return GameCalendarEvent(
-                    id: stored.id,
-                    gameID: stored.gameID,
-                    gameTitle: game?.title ?? stored.gameTitleSnapshot ?? "未知游戏",
-                    gameURL: game?.gameURL,
-                    title: title,
-                    date: date,
-                    kind: GameCalendarEventKind(rawValue: stored.kind) ?? .custom,
-                    reminderEnabled: stored.reminderEnabled,
-                    reminderMinutes: stored.reminderMinutes,
-                    notes: notes,
-                    sourceFingerprint: stored.sourceFingerprint
-                )
-            }.sorted { $0.date < $1.date }
-        } catch {
+        do { events = try repository.events() }
+        catch {
             print("itchPocket calendar database load failed: \(error)")
             events = []
         }
     }
 
-    private func persist(
-        _ event: GameCalendarEvent,
-        sourceUpdateID: String? = nil,
-        clearSourceUpdateLink: Bool = false,
-        save shouldSave: Bool = true
-    ) {
-        do {
-            try calendarRepository.upsert(
-                StoredCalendarEvent(
-                    id: event.id,
-                    gameID: event.gameID,
-                    title: event.title,
-                    date: event.date,
-                    kind: event.kind.rawValue,
-                    reminderEnabled: event.reminderEnabled,
-                    reminderMinutes: event.reminderMinutes,
-                    notes: event.notes,
-                    sourceFingerprint: event.sourceFingerprint,
-                    gameTitleSnapshot: event.gameTitle
-                ),
-                sourceUpdateID: sourceUpdateID,
-                clearSourceUpdateLink: clearSourceUpdateLink,
-                save: shouldSave
-            )
-        } catch {
-            print("itchPocket calendar database write failed: \(error)")
-        }
+    private func persist(_ event: GameCalendarEvent) {
+        do { try repository.saveEvent(event) }
+        catch { print("itchPocket calendar database write failed: \(error)") }
     }
 }
 
