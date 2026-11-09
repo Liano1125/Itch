@@ -46,6 +46,7 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
     private let database = AppDatabase.shared
+    private let gameRepository = GameRepository(database: AppDatabase.shared)
     private lazy var appStateRepository = AppStateRepository(database: database)
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
@@ -299,7 +300,7 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func load() {
         do {
             let context = database.context
-            let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
+            let games = try gameRepository.loadByID()
             let rows = try context.fetch(FetchDescriptor<DBUpdateWatch>())
             watches = Dictionary(uniqueKeysWithValues: rows.compactMap { row in
                 guard let game = games[row.gameID] else { return nil }

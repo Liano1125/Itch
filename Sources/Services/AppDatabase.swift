@@ -72,33 +72,6 @@ final class AppDatabase {
         try context.save()
     }
 
-    func game(id: String) throws -> DBGame? {
-        let descriptor = FetchDescriptor<DBGame>(
-            predicate: #Predicate { $0.id == id }
-        )
-        return try context.fetch(descriptor).first
-    }
-
-    func upsertGame(
-        id: String,
-        title: String,
-        gameURL: String? = nil,
-        coverURL: String? = nil,
-        engine: String? = nil,
-        developerID: String? = nil
-    ) throws {
-        let item = try game(id: id) ?? DBGame(id: id, title: title)
-        var changed = item.modelContext == nil
-        if item.modelContext == nil { context.insert(item) }
-        if item.title != title { item.title = title; changed = true }
-        if let gameURL, item.gameURL != gameURL { item.gameURL = gameURL; changed = true }
-        if let coverURL, item.coverURL != coverURL { item.coverURL = coverURL; changed = true }
-        if let engine, item.engine != engine { item.engine = engine; changed = true }
-        if let developerID, item.developerID != developerID { item.developerID = developerID; changed = true }
-        if changed { item.updatedAt = .now }
-        try save()
-    }
-
     func removeAllAppData() throws {
         try AppStateRepository(database: self).removeAll(save: false)
         try context.delete(model: DBLibraryCollectionItem.self)

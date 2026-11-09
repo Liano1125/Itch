@@ -165,7 +165,7 @@ final class LibraryRepositoryTests: XCTestCase {
         let repository = LibraryRepository(database: database)
         try repository.removeGameFromLibrary(gameID: "game-a")
 
-        XCTAssertNotNil(try database.game(id: "game-a"))
+        XCTAssertNotNil(try GameRepository(database: database).game(id: "game-a"))
         XCTAssertEqual(try context.fetch(FetchDescriptor<DBGameUpdate>()).map(\.id), ["update-a"])
         let calendar = try XCTUnwrap(context.fetch(FetchDescriptor<DBCalendarEvent>()).first)
         XCTAssertEqual(calendar.sourceUpdateID, "update-a")
@@ -228,7 +228,7 @@ final class LibraryRepositoryTests: XCTestCase {
         try repository.deleteCollection(id: collection.id)
 
         XCTAssertTrue(try repository.collections().isEmpty)
-        XCTAssertNotNil(try database.game(id: "game-a"))
+        XCTAssertNotNil(try GameRepository(database: database).game(id: "game-a"))
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryCollectionItem>()).isEmpty)
     }
 }
