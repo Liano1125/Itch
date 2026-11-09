@@ -991,7 +991,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
     }
     @MainActor
     private func createExactUnversionedLegacyStore(at storeURL: URL) throws {
-        // Build the database from the frozen V1 model types without attaching
+        try autoreleasepool {
+            try createExactUnversionedLegacyStoreWithinAutoreleasePool(at: storeURL)
+        }
+    }
+
+    private func createExactUnversionedLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {
+
+    private func createExactUnversionedLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {        // Build the database from the frozen V1 model types without attaching
         // VersionedSchema metadata, matching the released unversioned store.
         let schema = Schema(ItchPocketSchemaV1.models)
         let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL)
@@ -1122,7 +1129,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
     @MainActor
     private func v2GameCount(at storeURL: URL) throws -> Int {
-        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        try autoreleasepool {
+            try v2GameCountWithinAutoreleasePool(at: storeURL)
+        }
+    }
+
+    private func v2GameCountWithinAutoreleasePool(at storeURL: URL) throws -> Int {
+
+    private func v2GameCountWithinAutoreleasePool(at storeURL: URL) throws -> Int {        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL, allowsSave: false)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         return try container.mainContext.fetchCount(FetchDescriptor<DBGame>())
@@ -1130,7 +1144,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
     @MainActor
     private func legacyGameCount(at storeURL: URL) throws -> Int {
-        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
+        try autoreleasepool {
+            try legacyGameCountWithinAutoreleasePool(at: storeURL)
+        }
+    }
+
+    private func legacyGameCountWithinAutoreleasePool(at storeURL: URL) throws -> Int {
+
+    private func legacyGameCountWithinAutoreleasePool(at storeURL: URL) throws -> Int {        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL, allowsSave: false)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         return try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV1.DBGame>())
