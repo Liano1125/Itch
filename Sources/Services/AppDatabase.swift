@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 
 /// Narrow persistence capability supplied to repositories. The underlying
 /// ModelContext never escapes this wrapper in Release builds.
@@ -43,7 +44,7 @@ final class AppDatabase {
         sharedInstance = database
     }
 
-    let container: ModelContainer
+    private let container: ModelContainer
     private var modelContext: ModelContext { container.mainContext }
     var repositoryContext: RepositoryContext { RepositoryContext(modelContext) }
 
@@ -93,6 +94,10 @@ final class AppDatabase {
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
         }
+    }
+
+    func attachModelContainer<Content: View>(to content: Content) -> some View {
+        content.modelContainer(container)
     }
 
     func save() throws {
