@@ -54,16 +54,16 @@ final class GameUpdateMonitorStore: ObservableObject {
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
     init(
-        database: AppDatabase = .shared,
+        database: AppDatabase? = nil,
         shouldSimulateSnapshotLoadFailure: @escaping () -> Bool = { false }
     ) {
-        self.database = database
+        self.database = database ?? .shared
         self.shouldSimulateSnapshotLoadFailure = shouldSimulateSnapshotLoadFailure
         load()
         do {
-            lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
-            lastHistoricalSyncMessage = try database.state(for: historicalSyncMessageKey)?.stringValue
-            if let data = try database.state(for: historicalSyncResultsKey)?.dataValue {
+            lastHistoricalSyncAt = try self.database.state(for: historicalSyncDateKey)?.dateValue
+            lastHistoricalSyncMessage = try self.database.state(for: historicalSyncMessageKey)?.stringValue
+            if let data = try self.database.state(for: historicalSyncResultsKey)?.dataValue {
                 lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
             }
         } catch {
