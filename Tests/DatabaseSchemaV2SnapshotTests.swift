@@ -11,7 +11,7 @@ final class DatabaseSchemaV2SnapshotTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let storeURL = directory.appendingPathComponent("itchPocket-v2.store")
-        do {
+        try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -50,38 +50,40 @@ final class DatabaseSchemaV2SnapshotTests: XCTestCase {
             try context.save()
         }
 
-        let snapshotSchema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
-        let readOnlyConfiguration = ModelConfiguration(
-            "itchPocket-v2",
-            schema: snapshotSchema,
-            url: storeURL,
-            allowsSave: false
-        )
-        let snapshotContainer = try ModelContainer(
-            for: snapshotSchema,
-            configurations: [readOnlyConfiguration]
-        )
-        let snapshotContext = snapshotContainer.mainContext
+        try autoreleasepool {
+                let snapshotSchema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let readOnlyConfiguration = ModelConfiguration(
+                "itchPocket-v2",
+                schema: snapshotSchema,
+                url: storeURL,
+                allowsSave: false
+            )
+            let snapshotContainer = try ModelContainer(
+                for: snapshotSchema,
+                configurations: [readOnlyConfiguration]
+            )
+            let snapshotContext = snapshotContainer.mainContext
 
-        XCTAssertEqual(ItchPocketSchemaV2Snapshot.models.count, 14)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBTranslation>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBAppState>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
-        XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>()), 1)
+            XCTAssertEqual(ItchPocketSchemaV2Snapshot.models.count, 14)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBTranslation>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBAppState>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
+            XCTAssertEqual(try snapshotContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>()), 1)
 
-        let game = try XCTUnwrap(snapshotContext.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first)
-        XCTAssertEqual(game.descriptionText, "Legacy detail")
-        let collection = try XCTUnwrap(snapshotContext.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
-        XCTAssertEqual(collection.gameIDs, ["game-1"])
+            let game = try XCTUnwrap(snapshotContext.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first)
+            XCTAssertEqual(game.descriptionText, "Legacy detail")
+            let collection = try XCTUnwrap(snapshotContext.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
+            XCTAssertEqual(collection.gameIDs, ["game-1"])
+        }
     }
 }
