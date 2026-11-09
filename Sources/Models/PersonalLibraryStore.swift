@@ -142,11 +142,22 @@ final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var collections: [PersonalGameCollection] = []
     @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
 
-    private let database = AppDatabase.shared
+    private let database: AppDatabase
+    private let shouldSimulateSnapshotLoadFailure: () -> Bool
     // Full-snapshot writers must never treat a failed initial read as an empty database.
     private var didLoadLibrarySnapshots = false
 
-    init() {
+    init(
+        database: AppDatabase = .shared,
+        shouldSimulateSnapshotLoadFailure: @escaping () -> Bool = { false }
+    ) {
+        self.database = database
+        self.shouldSimulateSnapshotLoadFailure = shouldSimulateSnapshotLoadFailure
+        load()
+    }
+
+    /// Retries loading the complete library snapshot after a transient read failure.
+    func reload() {
         load()
     }
 
@@ -401,8 +412,12 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func load() {
+        didLoadLibrarySnapshots = false
         let context = database.context
         do {
+            if shouldSimulateSnapshotLoadFailure() {
+                throw SnapshotLoadTestError.simulatedFailure
+            }
             let games = try context.fetch(FetchDescriptor<DBGame>())
             let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
             let developers = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBDeveloper>()).map { ($0.id, $0) })
@@ -652,4 +667,9 @@ final class PersonalLibraryStore: ObservableObject {
     private static func canonicalDeveloperID(_ rawURL: String) -> String {
         AppDatabase.canonicalDeveloperID(rawURL)
     }
+}
+
+
+private enum SnapshotLoadTestError: Error {
+    case simulatedFailure
 }
