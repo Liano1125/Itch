@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      # Validate the stacked library-entry slice without publishing a nightly release.
+      # Validate stacked repository hardening without publishing a nightly release.
+      - refactor/repository-boundary-hardening
       - refactor/library-entry-repository
   pull_request:
     branches:
