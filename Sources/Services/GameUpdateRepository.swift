@@ -34,14 +34,14 @@ final class GameUpdateRepository {
     }
 
     func loadUpdatesByGame() throws -> [String: [GameLibraryUpdate]] {
-        let rows = try database.context.fetch(FetchDescriptor<DBGameUpdate>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBGameUpdate>())
         return Dictionary(grouping: rows, by: \.gameID).mapValues { rows in
             rows.map(Self.value(from:)).sorted(by: Self.isNewer)
         }
     }
 
     func loadUpdatesByID() throws -> [String: StoredGameUpdate] {
-        let rows = try database.context.fetch(FetchDescriptor<DBGameUpdate>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBGameUpdate>())
         return Dictionary(uniqueKeysWithValues: rows.map {
             ($0.id, StoredGameUpdate(gameID: $0.gameID, update: Self.value(from: $0)))
         })
@@ -51,12 +51,12 @@ final class GameUpdateRepository {
         let descriptor = FetchDescriptor<DBGameUpdate>(
             predicate: #Predicate { $0.gameID == gameID && $0.detectedAt == detectedAt }
         )
-        return try database.context.fetch(descriptor).first?.id
+        return try database.repositoryContext.fetch(descriptor).first?.id
     }
 
     /// Inserts or updates one row. Reusing another game's ID is rejected before mutation.
     func upsert(_ update: GameLibraryUpdate, for gameID: String, save shouldSave: Bool = true) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let updateID = update.id
         let descriptor = FetchDescriptor<DBGameUpdate>(
             predicate: #Predicate { $0.id == updateID }
@@ -97,7 +97,7 @@ final class GameUpdateRepository {
             throw RepositoryError.duplicateUpdateID(duplicate)
         }
 
-        let context = database.context
+        let context = database.repositoryContext
         let existingForGame = try context.fetch(FetchDescriptor<DBGameUpdate>(
             predicate: #Predicate { $0.gameID == gameID }
         ))
@@ -153,7 +153,7 @@ final class GameUpdateRepository {
         save shouldSave: Bool = true
     ) throws -> [GameLibraryUpdate] {
         guard !updates.isEmpty else { return [] }
-        let context = database.context
+        let context = database.repositoryContext
         let existingRows = try context.fetch(FetchDescriptor<DBGameUpdate>(
             predicate: #Predicate { $0.gameID == gameID }
         ))
@@ -207,7 +207,7 @@ final class GameUpdateRepository {
             let descriptor = FetchDescriptor<DBGameUpdate>(
                 predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
             )
-            if let existing = try database.context.fetch(descriptor).first {
+            if let existing = try database.repositoryContext.fetch(descriptor).first {
                 var refreshed = Self.value(from: existing)
                 refreshed.title = update.title
                 refreshed.summary = update.summary
