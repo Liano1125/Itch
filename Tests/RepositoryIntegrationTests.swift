@@ -100,4 +100,28 @@ final class RepositoryIntegrationTests: XCTestCase {
         try repository.remove(gameID: "game-1")
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).isEmpty)
     }
+
+    @MainActor
+    func testPersonalLibraryBlocksWritesUntilAllSnapshotsReloadSuccessfully() throws {
+        let database = try AppDatabase(inMemory: true)
+        var shouldFail = true
+        let store = PersonalLibraryStore(
+            database: database,
+            shouldSimulateLibraryLoadFailure: { shouldFail }
+        )
+
+        store.createCollection(title: "Blocked on first load")
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).isEmpty)
+
+        shouldFail = false
+        store.reload()
+        store.createCollection(title: "Allowed after recovery")
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\\.title), ["Allowed after recovery"])
+
+        shouldFail = true
+        store.reload()
+        store.createCollection(title: "Blocked after failed reload")
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\\.title), ["Allowed after recovery"])
+    }
+
 }
