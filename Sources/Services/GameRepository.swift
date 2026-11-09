@@ -1,16 +1,12 @@
 import Foundation
 import SwiftData
 
-/// Immutable projection of the canonical game row. Legacy detail columns remain
-/// represented here only until the V3 detail-store cutover is completed.
+/// Immutable projection of canonical game identity and metadata.
 struct StoredGame: Equatable {
     let id: String
     let title: String
     let gameURL: String?
     let coverURL: String?
-    let descriptionText: String?
-    let galleryURLs: [String]
-    let discoveryTagsData: Data?
     let engine: String?
     let developerID: String?
     let updatedAt: Date
@@ -20,20 +16,10 @@ struct StoredGame: Equatable {
         title = row.title
         gameURL = row.gameURL
         coverURL = row.coverURL
-        descriptionText = row.descriptionText
-        galleryURLs = row.galleryURLs
-        discoveryTagsData = row.discoveryTagsData
         engine = row.engine
         developerID = row.developerID
         updatedAt = row.updatedAt
     }
-}
-
-/// Value-only access to the legacy detail fields still stored on DBGame.
-struct StoredLegacyGameDetail: Equatable {
-    var descriptionText: String?
-    var galleryURLs: [String]
-    var discoveryTagsData: Data?
 }
 
 /// Owns canonical DBGame identity and metadata persistence. It deliberately
@@ -92,29 +78,6 @@ final class GameRepository {
         let wanted = Set(candidates)
         let rows = try database.repositoryContext.fetch(FetchDescriptor<DBGame>())
         return Set(rows.lazy.map(\.id).filter { wanted.contains($0) })
-    }
-
-    func legacyDetail(for gameID: String) throws -> StoredLegacyGameDetail? {
-        guard let game = try fetchRow(id: gameID) else { return nil }
-        return StoredLegacyGameDetail(
-            descriptionText: game.descriptionText,
-            galleryURLs: game.galleryURLs,
-            discoveryTagsData: game.discoveryTagsData
-        )
-    }
-
-    /// Updates only the compatibility detail columns. GameDetailRepository
-    /// owns partial/snapshot semantics and the related AppState keys.
-    func setLegacyDetail(
-        _ detail: StoredLegacyGameDetail,
-        for gameID: String,
-        save shouldSave: Bool = true
-    ) throws {
-        guard let game = try fetchRow(id: gameID) else { return }
-        game.descriptionText = detail.descriptionText
-        game.galleryURLs = detail.galleryURLs
-        game.discoveryTagsData = detail.discoveryTagsData
-        if shouldSave { try database.save() }
     }
 
     private func fetchRow(id: String) throws -> DBGame? {
