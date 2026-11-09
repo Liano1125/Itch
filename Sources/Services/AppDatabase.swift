@@ -11,27 +11,21 @@ final class AppDatabase {
     var context: ModelContext { container.mainContext }
 
     init(inMemory: Bool = false) {
-        let schema = Schema([
-            DBDeveloper.self,
-            DBGame.self,
-            DBLibraryEntry.self,
-            DBGameUpdate.self,
-            DBCalendarEvent.self,
-            DBSparkMetadata.self,
-            DBTranslation.self,
-            DBDiscoverySnapshot.self,
-            DBUpdateWatch.self,
-            DBLibraryCollection.self,
-            DBLibraryStatusEvent.self,
-            DBAppState.self
-        ])
+        // The V1 declaration is deliberately identical to the original
+        // unversioned twelve-model store. Keep all future schema changes in
+        // DatabaseSchema.swift and register them through ItchPocketMigrationPlan.
+        let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let configuration = ModelConfiguration(
             "itchPocket",
             schema: schema,
             isStoredInMemoryOnly: inMemory
         )
         do {
-            container = try ModelContainer(for: schema, configurations: [configuration])
+            container = try ModelContainer(
+                for: ItchPocketSchemaV1.self,
+                migrationPlan: ItchPocketMigrationPlan.self,
+                configurations: [configuration]
+            )
         } catch {
             // A failed database open must be surfaced rather than silently
             // falling back to a second, divergent persistence mechanism.
