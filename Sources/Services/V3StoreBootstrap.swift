@@ -26,13 +26,14 @@ enum V3StoreBootstrap {
 
     static let directoryName = "itchPocket-v3"
     static let stagingDirectoryName = "itchPocket-v3.staging"
+    static let storeFileName = "itchPocket-v3.store"
 
     static func prepareStore(v2StoreURL: URL, recoverInvalidExistingV3: Bool = false) throws -> URL {
         let fileManager = FileManager.default
         let parent = v2StoreURL.deletingLastPathComponent().deletingLastPathComponent()
         let finalDirectory = parent.appendingPathComponent(directoryName, isDirectory: true)
         let stagingDirectory = parent.appendingPathComponent(stagingDirectoryName, isDirectory: true)
-        let finalStoreURL = finalDirectory.appendingPathComponent(v2StoreURL.lastPathComponent)
+        let finalStoreURL = finalDirectory.appendingPathComponent(storeFileName)
 
         if fileManager.fileExists(atPath: finalDirectory.path) {
             do {
@@ -59,7 +60,7 @@ enum V3StoreBootstrap {
             try fileManager.removeItem(at: stagingDirectory)
         }
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
-        let stagingStoreURL = stagingDirectory.appendingPathComponent(v2StoreURL.lastPathComponent)
+        let stagingStoreURL = stagingDirectory.appendingPathComponent(storeFileName)
 
         do {
             try copySQLiteStoreFamily(from: v2StoreURL, to: stagingStoreURL)
