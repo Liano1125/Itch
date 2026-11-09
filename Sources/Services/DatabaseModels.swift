@@ -36,21 +36,15 @@ final class DBGame {
     var title: String
     var gameURL: String?
     var coverURL: String?
-    var descriptionText: String?
-    var galleryURLs: [String]
-    var discoveryTagsData: Data?
     var engine: String?
     var developerID: String?
     var updatedAt: Date
 
-    init(id: String, title: String, gameURL: String? = nil, coverURL: String? = nil, descriptionText: String? = nil, galleryURLs: [String] = [], discoveryTagsData: Data? = nil, engine: String? = nil, developerID: String? = nil, updatedAt: Date = .now) {
+    init(id: String, title: String, gameURL: String? = nil, coverURL: String? = nil, engine: String? = nil, developerID: String? = nil, updatedAt: Date = .now) {
         self.id = id
         self.title = title
         self.gameURL = gameURL
         self.coverURL = coverURL
-        self.descriptionText = descriptionText
-        self.galleryURLs = galleryURLs
-        self.discoveryTagsData = discoveryTagsData
         self.engine = engine
         self.developerID = developerID
         self.updatedAt = updatedAt
@@ -210,14 +204,12 @@ final class DBUpdateWatch {
 final class DBLibraryCollection {
     @Attribute(.unique) var id: String
     var title: String
-    var gameIDs: [String]
     var createdAt: Date
     var updatedAt: Date
 
-    init(id: String, title: String, gameIDs: [String] = [], createdAt: Date = .now, updatedAt: Date = .now) {
+    init(id: String, title: String, createdAt: Date = .now, updatedAt: Date = .now) {
         self.id = id
         self.title = title
-        self.gameIDs = gameIDs
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
