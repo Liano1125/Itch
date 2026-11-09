@@ -116,12 +116,12 @@ final class RepositoryIntegrationTests: XCTestCase {
         shouldFail = false
         store.reload()
         store.createCollection(title: "Allowed after recovery")
-        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\\.title), ["Allowed after recovery"])
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\.title), ["Allowed after recovery"])
 
         shouldFail = true
         store.reload()
         store.createCollection(title: "Blocked after failed reload")
-        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\\.title), ["Allowed after recovery"])
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\.title), ["Allowed after recovery"])
     }
 
 }
