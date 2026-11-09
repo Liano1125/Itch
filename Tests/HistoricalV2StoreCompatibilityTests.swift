@@ -75,10 +75,59 @@ final class HistoricalV2StoreCompatibilityTests: XCTestCase {
             XCTAssertEqual(game.id, "historical-v2-game")
             XCTAssertEqual(game.title, "Historical V2 Game")
 
+            XCTAssertEqual(game.gameURL, "https://example.com/historical-v2-game")
+            XCTAssertEqual(game.coverURL, "https://cdn.example/historical-v2-cover.png")
+            XCTAssertEqual(game.engine, "Ren'Py")
+            XCTAssertEqual(game.developerID, "historical-v2-developer")
+
+            let developer = try XCTUnwrap(context.fetch(FetchDescriptor<DBDeveloper>()).first)
+            XCTAssertEqual(developer.name, "Historical V2 Developer")
+            XCTAssertEqual(developer.patreonURL, "https://patreon.com/historical-v2")
+
+            let libraryEntry = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryEntry>()).first)
+            XCTAssertEqual(libraryEntry.status, "playing")
+            XCTAssertTrue(libraryEntry.isFavorite)
+            XCTAssertEqual(libraryEntry.notes, "historical V2 library entry")
+
+            let update = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameUpdate>()).first)
+            XCTAssertEqual(update.id, "historical-v2-update")
+            XCTAssertEqual(update.summary, "Historical update summary")
+            XCTAssertTrue(update.isHistorical)
+
+            let calendarEvent = try XCTUnwrap(context.fetch(FetchDescriptor<DBCalendarEvent>()).first)
+            XCTAssertEqual(calendarEvent.sourceUpdateID, update.id)
+            XCTAssertEqual(calendarEvent.gameTitleSnapshot, game.title)
+
+            let spark = try XCTUnwrap(context.fetch(FetchDescriptor<DBSparkMetadata>()).first)
+            XCTAssertEqual(spark.runtimeSeconds, 9876)
+            XCTAssertEqual(spark.renpyVersion, "8.2.0")
+
+            let translation = try XCTUnwrap(context.fetch(FetchDescriptor<DBTranslation>()).first)
+            XCTAssertEqual(translation.translatedText, "你好")
+
+            let discovery = try XCTUnwrap(context.fetch(FetchDescriptor<DBDiscoverySnapshot>()).first)
+            XCTAssertEqual(discovery.payload, Data("historical-v2-discovery-payload".utf8))
+
+            let watch = try XCTUnwrap(context.fetch(FetchDescriptor<DBUpdateWatch>()).first)
+            XCTAssertEqual(watch.entityTag, "historical-v2-etag")
+            XCTAssertTrue(watch.hasBaseline)
+
+            let statusEvent = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).first)
+            XCTAssertEqual(statusEvent.toStatus, "playing")
+
+            let appState = try XCTUnwrap(context.fetch(FetchDescriptor<DBAppState>()).first)
+            XCTAssertEqual(appState.stringValue, "preserved")
+            XCTAssertEqual(appState.dataValue, Data("historical-v2-state".utf8))
+
+            let collectionItem = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryCollectionItem>()).first)
+            XCTAssertEqual(collectionItem.collectionID, "historical-v2-collection")
+            XCTAssertEqual(collectionItem.gameID, game.id)
+            XCTAssertEqual(collectionItem.sortOrder, 0)
+
             let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first)
             XCTAssertEqual(detail.gameID, game.id)
             XCTAssertEqual(detail.descriptionText, "Historical normalized detail")
-            XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/historical-v2.png"])
+            XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/historical-v2.png")
 
             XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDeveloper>()), 1)
             XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
