@@ -446,3 +446,165 @@ extension PersistencePoliciesTests {
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).isEmpty)
     }
 }
+
+
+final class PersonalLibraryRepositoryTests: XCTestCase {
+    @MainActor
+    func testRepositorySnapshotLoadsGameDeveloperUpdatesHistoryCollectionsAndSparkMetadata() throws {
+        let database = AppDatabase(inMemory: true)
+        let tagData = try JSONEncoder().encode([
+            LibraryDiscoveryTag(name: "Ren'Py", url: "https://example.com/tag/renpy")
+        ])
+        database.context.insert(DBDeveloper(
+            id: "developer-1",
+            name: "Main Author",
+            profileURL: "https://itch.io/profile/author",
+            patreonURL: "https://patreon.com/author",
+            avatarURL: "https://example.com/avatar.png",
+            avatarSource: "patreon"
+        ))
+        database.context.insert(DBGame(
+            id: "game-1",
+            title: "Game One",
+            gameURL: "https://example.com/game",
+            coverURL: "https://example.com/cover.jpg",
+            discoveryTagsData: tagData,
+            engine: "Ren'Py",
+            developerID: "developer-1"
+        ))
+        database.context.insert(DBLibraryEntry(
+            gameID: "game-1",
+            status: LibraryStatus.playing.rawValue,
+            isFavorite: true,
+            notes: "Keep playing"
+        ))
+        database.context.insert(DBGameUpdate(
+            id: "update-1",
+            gameID: "game-1",
+            title: "Chapter 2",
+            summary: "New chapter",
+            publishedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            url: "https://example.com/devlog/2",
+            sourceID: "source-2",
+            isHistorical: true
+        ))
+        database.context.insert(DBSparkMetadata(
+            gameID: "game-1",
+            runtimeSeconds: 7200,
+            lastSaveAt: Date(timeIntervalSince1970: 1_800_000_100),
+            renpyVersion: "8.3.0",
+            saveCount: 12
+        ))
+        database.context.insert(DBLibraryStatusEvent(
+            id: "status-1",
+            gameID: "game-1",
+            fromStatus: LibraryStatus.wishlist.rawValue,
+            toStatus: LibraryStatus.playing.rawValue
+        ))
+        database.context.insert(DBLibraryCollection(
+            id: "collection-1",
+            title: "Favorites",
+            gameIDs: ["game-1"]
+        ))
+        try database.save()
+
+        let snapshot = try PersonalLibraryRepository(database: database).snapshot()
+        let record = try XCTUnwrap(snapshot.records.first)
+
+        XCTAssertEqual(record.id, "game-1")
+        XCTAssertEqual(record.developer, "Main Author")
+        XCTAssertEqual(record.developerProfileURL, "https://itch.io/profile/author")
+        XCTAssertEqual(record.patreonURL, "https://patreon.com/author")
+        XCTAssertEqual(record.patreonAvatarURL, "https://example.com/avatar.png")
+        XCTAssertEqual(record.status, .playing)
+        XCTAssertTrue(record.isFavorite)
+        XCTAssertEqual(record.notes, "Keep playing")
+        XCTAssertEqual(record.gameUpdates?.map(\.id), ["update-1"])
+        XCTAssertEqual(record.discoveryTags?.map(\.name), ["Ren'Py"])
+        XCTAssertEqual(record.sparkPlaytimeSeconds, 7200)
+        XCTAssertEqual(record.sparkRenpyVersion, "8.3.0")
+        XCTAssertEqual(record.sparkSaveCount, 12)
+        XCTAssertEqual(snapshot.statusEvents["game-1"]?.map(\.id), ["status-1"])
+        XCTAssertEqual(snapshot.collections.first?.gameIDs, ["game-1"])
+    }
+
+    @MainActor
+    func testRepositoryPartialRecordSavePreservesUnmentionedDevlogHistory() throws {
+        let database = AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        database.context.insert(DBLibraryEntry(gameID: "game-1", status: LibraryStatus.playing.rawValue))
+        database.context.insert(DBGameUpdate(
+            id: "old-update",
+            gameID: "game-1",
+            summary: "Previously saved update",
+            sourceID: "old-source"
+        ))
+        try database.save()
+
+        let record = LibraryRecord(
+            id: "game-1",
+            title: "Game One renamed",
+            gameURL: nil,
+            coverURL: nil,
+            developer: nil,
+            status: .completed,
+            isFavorite: true,
+            notes: "Finished",
+            addedAt: .now,
+            updatedAt: .now,
+            gameUpdates: [
+                GameLibraryUpdate(id: "new-update", summary: "New update", sourceID: "new-source")
+            ]
+        )
+        let repository = PersonalLibraryRepository(database: database)
+        repository.saveRecord(record)
+
+        let updates = try database.context.fetch(FetchDescriptor<DBGameUpdate>())
+        XCTAssertEqual(Set(updates.map(\.id)), Set(["old-update", "new-update"]))
+        let entry = try XCTUnwrap(database.context.fetch(FetchDescriptor<DBLibraryEntry>()).first)
+        XCTAssertEqual(entry.status, LibraryStatus.completed.rawValue)
+        XCTAssertTrue(entry.isFavorite)
+        XCTAssertEqual(try XCTUnwrap(database.game(id: "game-1")).title, "Game One renamed")
+    }
+
+    @MainActor
+    func testRepositoryRemovesLibraryMembershipButPreservesCanonicalGameAndDevlogs() throws {
+        let database = AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        database.context.insert(DBLibraryEntry(gameID: "game-1", status: LibraryStatus.playing.rawValue))
+        database.context.insert(DBGameUpdate(id: "devlog-1", gameID: "game-1", summary: "Keep this devlog"))
+        database.context.insert(DBSparkMetadata(gameID: "game-1", runtimeSeconds: 3600))
+        database.context.insert(DBLibraryStatusEvent(
+            id: "status-1",
+            gameID: "game-1",
+            fromStatus: nil,
+            toStatus: LibraryStatus.playing.rawValue
+        ))
+        database.context.insert(DBLibraryCollection(
+            id: "collection-1",
+            title: "Mixed",
+            gameIDs: ["game-1", "game-2"]
+        ))
+        try database.save()
+
+        let repository = PersonalLibraryRepository(database: database)
+        try repository.remove(
+            gameID: "game-1",
+            statusEvents: [:],
+            collections: [
+                PersonalGameCollection(
+                    id: "collection-1",
+                    title: "Mixed",
+                    gameIDs: ["game-2"]
+                )
+            ]
+        )
+
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryEntry>()).isEmpty)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBSparkMetadata>()).isEmpty)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).isEmpty)
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).first?.gameIDs, ["game-2"])
+        XCTAssertNotNil(try database.game(id: "game-1"))
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGameUpdate>()).map(\.id), ["devlog-1"])
+    }
+}
