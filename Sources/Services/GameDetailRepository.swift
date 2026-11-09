@@ -69,7 +69,9 @@ final class GameDetailRepository {
         guard try gameRepository.game(id: gameID) != nil else { return }
         let statusKey = fetchStatusPrefix + gameID
         let stateSnapshots = try captureStates(for: [statusKey])
-        let row = try getOrCreateDetailRow(gameID: gameID)
+        let existingRow = try fetchDetailRow(gameID: gameID)
+        let row = existingRow ?? DBGameDetail(gameID: gameID)
+        if existingRow == nil { database.repositoryContext.insert(row) }
         let original = DetailSnapshot(row)
         row.descriptionText = GameDetailPersistencePolicy.resolvedValue(
             existing: row.descriptionText,
@@ -101,7 +103,11 @@ final class GameDetailRepository {
             }
             if shouldSave { try commit() }
         } catch {
-            original.restore(to: row)
+            if existingRow == nil {
+                database.repositoryContext.delete(row)
+            } else {
+                original.restore(to: row)
+            }
             restoreStates(stateSnapshots)
             throw error
         }
@@ -118,7 +124,9 @@ final class GameDetailRepository {
         let statusKey = fetchStatusPrefix + gameID
         let dateKey = fetchDatePrefix + gameID
         let stateSnapshots = try captureStates(for: [statusKey, dateKey])
-        let row = try getOrCreateDetailRow(gameID: gameID)
+        let existingRow = try fetchDetailRow(gameID: gameID)
+        let row = existingRow ?? DBGameDetail(gameID: gameID)
+        if existingRow == nil { database.repositoryContext.insert(row) }
         let original = DetailSnapshot(row)
         if snapshot.descriptionResolved { row.descriptionText = snapshot.description }
         if snapshot.galleryResolved { row.galleryURLs = snapshot.galleryURLs }
@@ -144,7 +152,11 @@ final class GameDetailRepository {
             try commit()
             return snapshot.isComplete ? .complete : .partial
         } catch {
-            original.restore(to: row)
+            if existingRow == nil {
+                database.repositoryContext.delete(row)
+            } else {
+                original.restore(to: row)
+            }
             restoreStates(stateSnapshots)
             throw error
         }
@@ -155,13 +167,6 @@ final class GameDetailRepository {
             predicate: #Predicate { $0.gameID == gameID }
         )
         return try database.repositoryContext.fetch(descriptor).first
-    }
-
-    private func getOrCreateDetailRow(gameID: String) throws -> DBGameDetail {
-        if let existing = try fetchDetailRow(gameID: gameID) { return existing }
-        let row = DBGameDetail(gameID: gameID)
-        database.repositoryContext.insert(row)
-        return row
     }
 
     private static func decodeTags(_ data: Data?) -> [LibraryDiscoveryTag]? {
