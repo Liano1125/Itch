@@ -121,6 +121,8 @@ final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
 
     private let database = AppDatabase.shared
+    // Full-snapshot writers must never treat a failed initial read as an empty database.
+    private var didLoadLibrarySnapshots = false
 
     init() {
         load()
@@ -443,7 +445,9 @@ final class PersonalLibraryStore: ObservableObject {
             collections = try context.fetch(FetchDescriptor<DBLibraryCollection>()).map {
                 PersonalGameCollection(id: $0.id, title: $0.title, gameIDs: $0.gameIDs, createdAt: $0.createdAt, updatedAt: $0.updatedAt)
             }
+            didLoadLibrarySnapshots = true
         } catch {
+            didLoadLibrarySnapshots = false
             print("itchPocket database load failed: \(error)")
             records = []
             statusEvents = [:]
@@ -560,6 +564,10 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func saveStatusEvents(save shouldSave: Bool = true) {
+        guard didLoadLibrarySnapshots else {
+            print("itchPocket status history save skipped: initial database load did not complete")
+            return
+        }
         let context = database.context
         do {
             let desired = statusEvents.flatMap { gameID, events in events.map { (gameID, $0) } }
@@ -589,6 +597,10 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func saveCollections(save shouldSave: Bool = true) {
+        guard didLoadLibrarySnapshots else {
+            print("itchPocket collections save skipped: initial database load did not complete")
+            return
+        }
         let context = database.context
         do {
             let existing = try context.fetch(FetchDescriptor<DBLibraryCollection>())
