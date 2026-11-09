@@ -176,7 +176,18 @@ jobs:
           echo "IPA package contents:"
           unzip -l dist/itchPocket-unsigned.ipa
 
-      # 9. 将原始 IPA 作为 GitHub Release 附件发布（不经过 ZIP artifact 包装）
+      # 9. Keep downloadable IPA and checksum for PR/branch builds as well as main.
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: itchPocket-unsigned-ipa-${{ github.run_number }}
+          path: |
+            dist/itchPocket-unsigned.ipa
+            dist/itchPocket-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      # 10. 将原始 IPA 作为 GitHub Release 附件发布（不经过 ZIP artifact 包装）
       - name: Publish raw IPA release asset
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
