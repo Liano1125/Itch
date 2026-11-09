@@ -23,7 +23,7 @@ final class LibraryStatusHistoryRepository {
     }
 
     func loadEvents() throws -> [String: [LibraryStatusEvent]] {
-        let rows = try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBLibraryStatusEvent>())
         return Dictionary(grouping: rows, by: \.gameID).mapValues { events in
             events.map {
                 LibraryStatusEvent(
@@ -39,7 +39,7 @@ final class LibraryStatusHistoryRepository {
     /// Inserts or updates exactly one event. It never deletes events omitted
     /// from a caller's in-memory cache.
     func append(_ event: LibraryStatusEvent, for gameID: String, save shouldSave: Bool = true) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let eventID = event.id
         let descriptor = FetchDescriptor<DBLibraryStatusEvent>(
             predicate: #Predicate { $0.id == eventID }
