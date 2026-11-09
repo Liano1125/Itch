@@ -2,6 +2,11 @@ import XCTest
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
+    func testFullSnapshotWritesAreBlockedWhenInitialLoadFails() {
+        XCTAssertFalse(SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: false))
+        XCTAssertTrue(SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: true))
+    }
+
     func testPartialGameDetailUpdatePreservesFieldsThatWereNotProvided() {
         XCTAssertEqual(
             GameDetailPersistencePolicy.resolvedValue(existing: "saved description", incoming: nil, mode: .partial),
