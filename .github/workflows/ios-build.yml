@@ -12,6 +12,7 @@ on:
       - refactor/app-database-cleanup-transaction
       - refactor/repository-integration-phase2
       - refactor/freeze-v2-schema-snapshot
+      - fix/v3-detail-data-recovery
       - refactor/v3-normalized-persistence-cutover
       - fix/v3-detail-data-recovery
       - fix/v3-migration-integrity-hardening
