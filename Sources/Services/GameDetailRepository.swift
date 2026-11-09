@@ -218,6 +218,14 @@ struct GameDetailPageSnapshot {
 }
 
 enum GameDetailSnapshotPolicy {
+    static func resolvedValue<Value>(
+        existing: Value?,
+        incoming: Value?,
+        isResolved: Bool
+    ) -> Value? {
+        isResolved ? incoming : existing
+    }
+
     static func shouldMarkComplete(
         descriptionResolved: Bool,
         galleryResolved: Bool,
@@ -226,4 +234,3 @@ enum GameDetailSnapshotPolicy {
         descriptionResolved && galleryResolved && tagsResolved
     }
 }
-
