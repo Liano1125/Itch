@@ -45,22 +45,35 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncMessage: String?
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
-    private let database = AppDatabase.shared
+    private let database: AppDatabase
+    private let shouldSimulateSnapshotLoadFailure: () -> Bool
+    // Prevent an empty in-memory fallback from deleting persisted watch rows.
+    private var didLoadWatches = false
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
-    init() {
+    init(
+        database: AppDatabase? = nil,
+        shouldSimulateSnapshotLoadFailure: @escaping () -> Bool = { false }
+    ) {
+        self.database = database ?? .shared
+        self.shouldSimulateSnapshotLoadFailure = shouldSimulateSnapshotLoadFailure
         load()
         do {
-            lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
-            lastHistoricalSyncMessage = try database.state(for: historicalSyncMessageKey)?.stringValue
-            if let data = try database.state(for: historicalSyncResultsKey)?.dataValue {
+            lastHistoricalSyncAt = try self.database.state(for: historicalSyncDateKey)?.dateValue
+            lastHistoricalSyncMessage = try self.database.state(for: historicalSyncMessageKey)?.stringValue
+            if let data = try self.database.state(for: historicalSyncResultsKey)?.dataValue {
                 lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
             }
         } catch {
             print("itchPocket update monitor state load failed: \(error)")
         }
+    }
+
+    /// Retries loading the complete watch snapshot after a transient read failure.
+    func reload() {
+        load()
     }
 
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
@@ -291,7 +304,11 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
     private func load() {
+        didLoadWatches = false
         do {
+            if shouldSimulateSnapshotLoadFailure() {
+                throw SnapshotLoadTestError.simulatedFailure
+            }
             let context = database.context
             let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
             let rows = try context.fetch(FetchDescriptor<DBUpdateWatch>())
@@ -309,13 +326,19 @@ final class GameUpdateMonitorStore: ObservableObject {
                     isEnabled: row.isEnabled
                 ))
             })
+            didLoadWatches = true
         } catch {
             print("itchPocket update watches load failed: \(error)")
+            didLoadWatches = false
             watches = [:]
         }
     }
 
     private func persistWatches(save shouldSave: Bool = true) {
+        guard didLoadWatches else {
+            print("itchPocket update watches save skipped: initial database load did not complete")
+            return
+        }
         let context = database.context
         do {
             let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
@@ -445,4 +468,9 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
         }
         return ISO8601DateFormatter().date(from: value)
     }
+}
+
+
+private enum SnapshotLoadTestError: Error {
+    case simulatedFailure
 }

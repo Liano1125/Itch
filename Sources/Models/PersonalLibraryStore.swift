@@ -2,6 +2,28 @@ import Foundation
 import SwiftUI
 import SwiftData
 
+/// Full-snapshot persistence is safe only after its source snapshot loaded completely.
+enum SnapshotPersistencePolicy {
+    static func canReplacePersistedSnapshot(didLoadSuccessfully: Bool) -> Bool {
+        didLoadSuccessfully
+    }
+
+    /// Applies a full replacement only when the source snapshot was loaded successfully.
+    /// Returning false leaves the persisted snapshot untouched.
+    @discardableResult
+    static func replacePersistedSnapshot<Element>(
+        _ persisted: inout [Element],
+        with desired: [Element],
+        didLoadSuccessfully: Bool
+    ) -> Bool {
+        guard canReplacePersistedSnapshot(didLoadSuccessfully: didLoadSuccessfully) else {
+            return false
+        }
+        persisted = desired
+        return true
+    }
+}
+
 enum LibraryStatus: String, CaseIterable, Codable, Identifiable {
     case wishlist = "想玩"
     case playing = "在玩"
@@ -120,9 +142,22 @@ final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var collections: [PersonalGameCollection] = []
     @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
 
-    private let database = AppDatabase.shared
+    private let database: AppDatabase
+    private let shouldSimulateSnapshotLoadFailure: () -> Bool
+    // Full-snapshot writers must never treat a failed initial read as an empty database.
+    private var didLoadLibrarySnapshots = false
 
-    init() {
+    init(
+        database: AppDatabase? = nil,
+        shouldSimulateSnapshotLoadFailure: @escaping () -> Bool = { false }
+    ) {
+        self.database = database ?? .shared
+        self.shouldSimulateSnapshotLoadFailure = shouldSimulateSnapshotLoadFailure
+        load()
+    }
+
+    /// Retries loading the complete library snapshot after a transient read failure.
+    func reload() {
         load()
     }
 
@@ -377,8 +412,12 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func load() {
+        didLoadLibrarySnapshots = false
         let context = database.context
         do {
+            if shouldSimulateSnapshotLoadFailure() {
+                throw SnapshotLoadTestError.simulatedFailure
+            }
             let games = try context.fetch(FetchDescriptor<DBGame>())
             let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
             let developers = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBDeveloper>()).map { ($0.id, $0) })
@@ -443,7 +482,9 @@ final class PersonalLibraryStore: ObservableObject {
             collections = try context.fetch(FetchDescriptor<DBLibraryCollection>()).map {
                 PersonalGameCollection(id: $0.id, title: $0.title, gameIDs: $0.gameIDs, createdAt: $0.createdAt, updatedAt: $0.updatedAt)
             }
+            didLoadLibrarySnapshots = true
         } catch {
+            didLoadLibrarySnapshots = false
             print("itchPocket database load failed: \(error)")
             records = []
             statusEvents = [:]
@@ -560,6 +601,10 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func saveStatusEvents(save shouldSave: Bool = true) {
+        guard SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: didLoadLibrarySnapshots) else {
+            print("itchPocket status history save skipped: initial database load did not complete")
+            return
+        }
         let context = database.context
         do {
             let desired = statusEvents.flatMap { gameID, events in events.map { (gameID, $0) } }
@@ -589,6 +634,10 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     private func saveCollections(save shouldSave: Bool = true) {
+        guard SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: didLoadLibrarySnapshots) else {
+            print("itchPocket collections save skipped: initial database load did not complete")
+            return
+        }
         let context = database.context
         do {
             let existing = try context.fetch(FetchDescriptor<DBLibraryCollection>())
@@ -618,4 +667,9 @@ final class PersonalLibraryStore: ObservableObject {
     private static func canonicalDeveloperID(_ rawURL: String) -> String {
         AppDatabase.canonicalDeveloperID(rawURL)
     }
+}
+
+
+private enum SnapshotLoadTestError: Error {
+    case simulatedFailure
 }
