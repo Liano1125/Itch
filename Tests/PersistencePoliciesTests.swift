@@ -321,7 +321,7 @@ final class PersonalLibraryStoreReloadTests: XCTestCase {
         ))
         database.context.insert(DBLibraryCollection(
             id: "collection-1",
-            title: "Favorites",
+            title: "Favorites"
         ))
         try database.save()
 
@@ -356,7 +356,6 @@ final class PersonalLibraryStoreReloadTests: XCTestCase {
         database.context.insert(DBLibraryCollection(
             id: "collection-1",
             title: "Favorites",
-            gameIDs: []
         ))
         try database.save()
 
