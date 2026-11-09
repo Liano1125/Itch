@@ -44,23 +44,3 @@ enum GameDetailPersistencePolicy {
         }
     }
 }
-
-/// Resolves page-snapshot fields only when the parser positively identified
-/// that section. A resolved nil/empty value is authoritative and may clear cache.
-enum GameDetailSnapshotPolicy {
-    static func resolvedValue<Value>(
-        existing: Value?,
-        incoming: Value?,
-        isResolved: Bool
-    ) -> Value? {
-        isResolved ? incoming : existing
-    }
-
-    static func shouldMarkComplete(
-        descriptionResolved: Bool,
-        galleryResolved: Bool,
-        tagsResolved: Bool
-    ) -> Bool {
-        descriptionResolved && galleryResolved && tagsResolved
-    }
-}
