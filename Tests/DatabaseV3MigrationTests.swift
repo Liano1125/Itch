@@ -4,6 +4,135 @@ import SwiftData
 
 final class DatabaseV3MigrationTests: XCTestCase {
     @MainActor
+    func testUnversionedV1StoreMigratesThroughV2IntoV3AndRestartsIdempotently() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v1-to-v3-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let legacyStoreURL = root.appendingPathComponent("itchPocket.store")
+        let v2Directory = root.appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+
+        try autoreleasepool {
+            let schema = Schema(ItchPocketSchemaV1.models)
+            let configuration = ModelConfiguration("itchPocket", schema: schema, url: legacyStoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+
+            let developer = ItchPocketSchemaV1.DBDeveloper()
+            developer.id = "developer-v1"
+            developer.name = "V1 Developer"
+            developer.patreonURL = "https://patreon.com/v1creator"
+            context.insert(developer)
+
+            let game = ItchPocketSchemaV1.DBGame()
+            game.id = "game-v1"
+            game.title = "V1 Game"
+            game.gameURL = "https://example.com/v1-game"
+            game.descriptionText = "Description from unversioned V1"
+            game.galleryURLs = ["https://cdn.example/v1-cover.png"]
+            game.discoveryTagsData = Data("v1-tags".utf8)
+            game.developerID = developer.id
+            context.insert(game)
+
+            let entry = ItchPocketSchemaV1.DBLibraryEntry()
+            entry.gameID = game.id
+            entry.status = "playing"
+            context.insert(entry)
+
+            let update = ItchPocketSchemaV1.DBGameUpdate()
+            update.id = "update-v1"
+            update.gameID = game.id
+            update.summary = "V1 update"
+            context.insert(update)
+
+            let event = ItchPocketSchemaV1.DBCalendarEvent()
+            event.id = "calendar-v1"
+            event.gameID = game.id
+            event.kind = "release"
+            event.sourceUpdateID = update.id
+            context.insert(event)
+
+            let spark = ItchPocketSchemaV1.DBSparkMetadata()
+            spark.gameID = game.id
+            spark.runtimeSeconds = 321
+            context.insert(spark)
+
+            let watch = ItchPocketSchemaV1.DBUpdateWatch()
+            watch.gameID = game.id
+            watch.isEnabled = true
+            context.insert(watch)
+
+            let collection = ItchPocketSchemaV1.DBLibraryCollection()
+            collection.id = "collection-v1"
+            collection.title = "V1 Collection"
+            collection.gameIDs = [game.id]
+            context.insert(collection)
+
+            let status = ItchPocketSchemaV1.DBLibraryStatusEvent()
+            status.id = "status-v1"
+            status.gameID = game.id
+            status.toStatus = "playing"
+            context.insert(status)
+
+            try context.save()
+        }
+
+        let v2StoreURL = try LegacyStoreBootstrap.prepareStore(
+            legacyStoreURL: legacyStoreURL,
+            finalDirectory: v2Directory
+        )
+        let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyStoreURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v3StoreURL.path))
+        try SQLiteStoreIntegrityChecker.quickCheck(at: legacyStoreURL)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-e2e-verify", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+
+            let game = try XCTUnwrap(context.fetch(FetchDescriptor<DBGame>()).first { $0.id == "game-v1" })
+            XCTAssertEqual(game.title, "V1 Game")
+            XCTAssertEqual(game.gameURL, "https://example.com/v1-game")
+            XCTAssertEqual(game.developerID, "developer-v1")
+
+            let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first { $0.gameID == game.id })
+            XCTAssertEqual(detail.descriptionText, "Description from unversioned V1")
+            XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/v1-cover.png"])
+            XCTAssertEqual(detail.discoveryTagsData, Data("v1-tags".utf8))
+
+            let collectionItems = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+            XCTAssertEqual(collectionItems.map(\.gameID), [game.id])
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBSparkMetadata>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>()), 1)
+            let calendarEvent = try XCTUnwrap(context.fetch(FetchDescriptor<DBCalendarEvent>()).first)
+            XCTAssertEqual(calendarEvent.sourceUpdateID, "update-v1")
+        }
+
+        let restartedV3URL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+        XCTAssertEqual(restartedV3URL, v3StoreURL)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-e2e-restart", schema: schema, url: restartedV3URL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 1)
+            XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
+            XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 1)
+        }
+    }
+
+    @MainActor
     func testV3BootstrapMigratesNormalizedRecordsAndRetainsV2Backup() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-migration-\(UUID().uuidString)", isDirectory: true)
