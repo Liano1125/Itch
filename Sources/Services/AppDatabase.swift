@@ -56,7 +56,15 @@ final class AppDatabase {
             LegacyStoreBootstrap.legacyConfigurationName,
             schema: schema
         )
-        return FileManager.default.fileExists(atPath: configuration.url.path)
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: configuration.url.path) {
+            return true
+        }
+        let v2StoreURL = configuration.url
+            .deletingLastPathComponent()
+            .appendingPathComponent(LegacyStoreBootstrap.v2DirectoryName, isDirectory: true)
+            .appendingPathComponent(LegacyStoreBootstrap.v2StoreFileName)
+        return fileManager.fileExists(atPath: v2StoreURL.path)
     }
 
     init(inMemory: Bool = false, recoverCorruptV2: Bool = false) throws {
