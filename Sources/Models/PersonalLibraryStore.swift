@@ -7,6 +7,21 @@ enum SnapshotPersistencePolicy {
     static func canReplacePersistedSnapshot(didLoadSuccessfully: Bool) -> Bool {
         didLoadSuccessfully
     }
+
+    /// Applies a full replacement only when the source snapshot was loaded successfully.
+    /// Returning false leaves the persisted snapshot untouched.
+    @discardableResult
+    static func replacePersistedSnapshot<Element>(
+        _ persisted: inout [Element],
+        with desired: [Element],
+        didLoadSuccessfully: Bool
+    ) -> Bool {
+        guard canReplacePersistedSnapshot(didLoadSuccessfully: didLoadSuccessfully) else {
+            return false
+        }
+        persisted = desired
+        return true
+    }
 }
 
 enum LibraryStatus: String, CaseIterable, Codable, Identifiable {
