@@ -44,19 +44,16 @@ enum ItchPocketMigrationPlan: SchemaMigrationPlan {
                 }
             }
 
-            // Prefer already-normalized V2 values. Fill only missing fields
-            // from the compatibility columns so partial caches are retained.
+            // V2 repositories still read and write DBGame's compatibility
+            // columns. Those columns therefore contain the freshest V2 values;
+            // DBGameDetail is only the initial normalized bootstrap snapshot.
+            // Copy the legacy values over unconditionally, including explicit
+            // nil/empty values, while preserving normalized fetch metadata.
             for game in games {
                 if let detail = detailsByGameID[game.id] {
-                    if detail.descriptionText == nil {
-                        detail.descriptionText = game.descriptionText
-                    }
-                    if detail.galleryURLs.isEmpty && !game.galleryURLs.isEmpty {
-                        detail.galleryURLs = game.galleryURLs
-                    }
-                    if detail.discoveryTagsData == nil {
-                        detail.discoveryTagsData = game.discoveryTagsData
-                    }
+                    detail.descriptionText = game.descriptionText
+                    detail.galleryURLs = game.galleryURLs
+                    detail.discoveryTagsData = game.discoveryTagsData
                 } else if game.descriptionText != nil
                             || !game.galleryURLs.isEmpty
                             || game.discoveryTagsData != nil {
