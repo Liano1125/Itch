@@ -195,7 +195,7 @@ final class PersonalLibraryRepository {
             if let engine = record.engine, game.engine != engine { game.engine = engine; gameChanged = true }
             if let developerID, game.developerID != developerID { game.developerID = developerID; gameChanged = true }
             if let tags = record.discoveryTags {
-                try GameDetailRepository.shared.applyPartialUpdate(
+                try gameDetailRepository.applyPartialUpdate(
                     GameDetailPartialUpdate(discoveryTags: tags),
                     for: gameID,
                     save: false
