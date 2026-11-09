@@ -463,7 +463,6 @@ final class PersonalLibraryStore: ObservableObject {
         save shouldSave: Bool = true,
         updatesAreCompleteSnapshot: Bool = false
     ) {
-        let context = database.context
         do {
             let developerID: String?
             if let profileURL = record.developerProfileURL, !profileURL.isEmpty {
