@@ -25,7 +25,8 @@ final class GameDetailRepository {
 
     func detail(for gameID: String) throws -> GameDetailRecord? {
         let row = try fetchDetailRow(gameID: gameID)
-        guard row != nil || (try gameRepository.game(id: gameID)) != nil else { return nil }
+        let gameExists = try gameRepository.game(id: gameID) != nil
+        guard row != nil || gameExists else { return nil }
         let statusValue = try appStateRepository.state(for: fetchStatusPrefix + gameID)?.stringValue
         let currentFetchDate = try appStateRepository.state(for: fetchDatePrefix + gameID)?.dateValue
         let legacyFetchDate = try appStateRepository.state(for: legacyPrefetchDatePrefix + gameID)?.dateValue
