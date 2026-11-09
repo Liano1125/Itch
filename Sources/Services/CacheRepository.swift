@@ -41,7 +41,7 @@ final class CacheRepository {
     func latestTranslation(scope: String, target: String) throws -> Translation? {
         let descriptor = FetchDescriptor<DBTranslation>(
             predicate: #Predicate { $0.scope == scope && $0.targetLanguage == target },
-            sortBy: [SortDescriptor(\\.updatedAt, order: .reverse)]
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         guard let item = try database.context.fetch(descriptor).first else { return nil }
         return Self.translation(from: item)
@@ -78,7 +78,7 @@ final class CacheRepository {
         let count = try context.fetchCount(FetchDescriptor<DBTranslation>())
         if count > maximumTranslationEntries {
             let oldest = try context.fetch(FetchDescriptor<DBTranslation>(
-                sortBy: [SortDescriptor(\\.updatedAt, order: .forward)]
+                sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
             ))
             let evictionCount = max(0, count - retainedTranslationEntries)
             for old in oldest.filter({ $0.cacheKey != key }).prefix(evictionCount) {
