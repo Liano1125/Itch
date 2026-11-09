@@ -83,17 +83,27 @@ final class AppDatabase {
         }
     }
 
-    /// Runs one synchronous unit of work against a clean shared context.
-    /// On failure, rollback is safe because no unrelated pending changes were
-    /// present at entry. Callers that intentionally batch with other stores
-    /// must continue using save:false and own the outer transaction boundary.
-    func performTransaction<Value>(_ operation: () throws -> Value) throws -> Value {
+    /// Runs a synchronous unit of work against a clean shared context.
+    /// A failed operation rolls back only because no unrelated pending changes
+    /// were present at entry. Successful save:false callers may leave changes
+    /// pending for a larger caller-owned batch.
+    func performUnitOfWork<Value>(_ operation: () throws -> Value) throws -> Value {
         guard !context.hasChanges else {
             throw TransactionError.pendingChanges
         }
 
         do {
-            let value = try operation()
+            return try operation()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    /// Runs a clean-context unit of work and commits it with one save.
+    func performTransaction<Value>(_ operation: () throws -> Value) throws -> Value {
+        let value = try performUnitOfWork(operation)
+        do {
             try save()
             return value
         } catch {
