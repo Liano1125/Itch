@@ -487,14 +487,14 @@ final class PersonalLibraryStore: ObservableObject {
             do {
                 loadedStatusEvents = try statusHistoryRepository.loadEvents()
             } catch {
-                print("itchPocket status history load failed: \\(error)")
+                print("itchPocket status history load failed: \(error)")
             }
 
             var loadedCollections = collections
             do {
                 loadedCollections = try libraryRepository.collections()
             } catch {
-                print("itchPocket collection load failed: \\(error)")
+                print("itchPocket collection load failed: \(error)")
             }
 
             records = loadedRecords
@@ -503,7 +503,7 @@ final class PersonalLibraryStore: ObservableObject {
         } catch {
             // Keep the last known-good snapshot. On first launch the arrays
             // are already empty, and reload() can retry without losing data.
-            print("itchPocket database load failed; retaining previous library snapshot: \\(error)")
+            print("itchPocket database load failed; retaining previous library snapshot: \(error)")
         }
     }
 
