@@ -4,6 +4,58 @@ import SwiftData
 
 final class DatabaseSchemaV2SnapshotTests: XCTestCase {
     @MainActor
+    func testFrozenV2DiskStoreReopensThroughVersionedV2Schema() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v2-disk-roundtrip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storeURL = root.appendingPathComponent("itchPocket-v2.store")
+
+        do {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-disk-fixture", schema: schema, url: storeURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            context.insert(ItchPocketSchemaV2Snapshot.DBGame(
+                id: "disk-game",
+                title: "Disk Game",
+                descriptionText: "Retained legacy description",
+                galleryURLs: ["https://cdn.example/disk.png"]
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
+                gameID: "disk-game",
+                descriptionText: "Normalized description"
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
+                id: "disk-collection",
+                title: "Disk Collection",
+                gameIDs: ["disk-game"]
+            ))
+            try context.save()
+        }
+
+        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+
+        // Reopen through the app's public V2 schema declaration, not the
+        // fixture's direct snapshot schema, and verify legacy fields survive.
+        let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
+        let configuration = ModelConfiguration("itchPocket-v2-disk-reopen", schema: schema, url: storeURL)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+        let game = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first)
+        XCTAssertEqual(game.id, "disk-game")
+        XCTAssertEqual(game.descriptionText, "Retained legacy description")
+        XCTAssertEqual(game.galleryURLs, ["https://cdn.example/disk.png"])
+        let collection = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
+        XCTAssertEqual(collection.gameIDs, ["disk-game"])
+        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()).first)
+        XCTAssertEqual(detail.descriptionText, "Normalized description")
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+    }
+
+    @MainActor
     func testFrozenV2SchemaContainsAndPersistsAllFourteenModels() throws {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
         let configuration = ModelConfiguration(

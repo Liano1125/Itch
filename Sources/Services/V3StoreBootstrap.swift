@@ -242,9 +242,53 @@ enum V3StoreBootstrap {
     private static func validate(context: ModelContext) throws {
         let games = try context.fetch(FetchDescriptor<DBGame>())
         let gameIDs = Set(games.map(\.id))
+
         let details = try context.fetch(FetchDescriptor<DBGameDetail>())
-        guard details.allSatisfy({ gameIDs.contains($0.gameID) }) else {
-            throw BootstrapError.validationFailed("A detail record references a missing game.")
+        for detail in details where !gameIDs.contains(detail.gameID) {
+            throw BootstrapError.validationFailed("Game detail references missing game: \(detail.gameID).")
+        }
+        guard Set(details.map(\.gameID)).count == details.count else {
+            throw BootstrapError.validationFailed("Duplicate game-detail records were found.")
+        }
+
+        let libraryEntries = try context.fetch(FetchDescriptor<DBLibraryEntry>())
+        for entry in libraryEntries where !gameIDs.contains(entry.gameID) {
+            throw BootstrapError.validationFailed("Library entry references missing game: \(entry.gameID).")
+        }
+
+        let updates = try context.fetch(FetchDescriptor<DBGameUpdate>())
+        let updatesByID = Dictionary(updates.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for update in updates where !gameIDs.contains(update.gameID) {
+            throw BootstrapError.validationFailed("Game update references missing game: \(update.gameID).")
+        }
+
+        let calendarEvents = try context.fetch(FetchDescriptor<DBCalendarEvent>())
+        for event in calendarEvents {
+            guard gameIDs.contains(event.gameID) else {
+                throw BootstrapError.validationFailed("Calendar event references missing game: \(event.gameID).")
+            }
+            if let sourceUpdateID = event.sourceUpdateID,
+               let linkedUpdate = updatesByID[sourceUpdateID],
+               linkedUpdate.gameID != event.gameID {
+                throw BootstrapError.validationFailed(
+                    "Calendar event \(event.id) links to an update belonging to another game."
+                )
+            }
+        }
+
+        let sparkRows = try context.fetch(FetchDescriptor<DBSparkMetadata>())
+        for row in sparkRows where !gameIDs.contains(row.gameID) {
+            throw BootstrapError.validationFailed("Spark metadata references missing game: \(row.gameID).")
+        }
+
+        let updateWatches = try context.fetch(FetchDescriptor<DBUpdateWatch>())
+        for watch in updateWatches where !gameIDs.contains(watch.gameID) {
+            throw BootstrapError.validationFailed("Update watch references missing game: \(watch.gameID).")
+        }
+
+        let statusEvents = try context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
+        for event in statusEvents where !gameIDs.contains(event.gameID) {
+            throw BootstrapError.validationFailed("Library status event references missing game: \(event.gameID).")
         }
 
         let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
