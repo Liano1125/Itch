@@ -46,9 +46,23 @@ final class LibraryRepository {
     }
 
     func loadEntries() throws -> [StoredLibraryEntry] {
-        try database.context.fetch(FetchDescriptor<DBLibraryEntry>()).map { row in
+        let rows = try database.context.fetch(FetchDescriptor<DBLibraryEntry>())
+        try Self.validateUniqueGameIDs(rows.map(\.gameID))
+        return rows.map { row in
             StoredLibraryEntry(gameID: row.gameID, status: row.status, isFavorite: row.isFavorite,
                                notes: row.notes, addedAt: row.addedAt, updatedAt: row.updatedAt)
+        }
+    }
+
+    /// Fails closed if a malformed store exposes more than one row for a game.
+    /// SwiftData's unique attribute is the primary guard; this protects reads
+    /// from legacy or externally corrupted stores that violate that invariant.
+    static func validateUniqueGameIDs(_ gameIDs: [String]) throws {
+        var seen = Set<String>()
+        for gameID in gameIDs {
+            guard seen.insert(gameID).inserted else {
+                throw RepositoryError.duplicateLibraryEntry(gameID)
+            }
         }
     }
 
