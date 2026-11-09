@@ -106,6 +106,7 @@ final class LibraryRepository {
                 throw RepositoryError.membershipOutOfSync(row.id)
             }
 
+            try validateGamesExist(normalizedIDs)
             let gameIDs = normalizedIDs
 
             return PersonalGameCollection(
@@ -289,6 +290,7 @@ final class LibraryRepository {
               }) else {
             throw RepositoryError.membershipOutOfSync(collectionID)
         }
+        try validateGamesExist(normalizedIDs)
         return normalizedIDs
     }
 
