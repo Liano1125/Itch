@@ -459,6 +459,7 @@ final class PersonalLibraryStore: ObservableObject {
             let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
+            let detailRepository = GameDetailRepository(database: database)
             let loadedRecords: [LibraryRecord] = entries.compactMap { entry -> LibraryRecord? in
                 guard let game = gamesByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
@@ -478,9 +479,7 @@ final class PersonalLibraryStore: ObservableObject {
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
                     gameUpdates: updatesByGame[game.id] ?? [],
-                    discoveryTags: game.discoveryTagsData.flatMap {
-                        try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
-                    },
+                    discoveryTags: try? detailRepository.discoveryTags(for: game.id),
                     engine: game.engine,
                     patreonURL: developer?.patreonURL,
                     discordURL: developer?.discordURL,
