@@ -2,7 +2,6 @@ import Foundation
 import Combine
 import UserNotifications
 import CryptoKit
-import SwiftData
 
 struct DetectedGameUpdate {
     let gameID: String
@@ -45,12 +44,17 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncMessage: String?
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
-    private let database = AppDatabase.shared
+    private let database: AppDatabase
+    private let repository: GameUpdateMonitorRepository
+    private var didLoadWatches = false
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
-    init() {
+    init(database: AppDatabase? = nil, repository: GameUpdateMonitorRepository? = nil) {
+        let resolvedDatabase = database ?? .shared
+        self.database = resolvedDatabase
+        self.repository = repository ?? GameUpdateMonitorRepository(database: resolvedDatabase)
         load()
         do {
             lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
@@ -79,11 +83,17 @@ final class GameUpdateMonitorStore: ObservableObject {
                 hasBaseline: existing?.hasBaseline ?? false,
                 isEnabled: true
             )
+            persistWatch(watches[record.id])
         } else {
             watches.removeValue(forKey: record.id)
+            do {
+                guard didLoadWatches else { return }
+                try repository.remove(gameID: record.id)
+            } catch {
+                print("itchPocket update watch removal failed: \\(error)")
+            }
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationID(record.id)])
         }
-        persistWatches()
     }
 
     func checkAll(calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async {
@@ -175,7 +185,6 @@ final class GameUpdateMonitorStore: ObservableObject {
         libraryStore.recordDetectedUpdates(pendingUpdates, save: false)
         calendarStore.addDetectedUpdates(pendingUpdates, save: false)
         persistWatches(save: false)
-        try? database.save()
         for watch in notificationWatches {
             await sendUpdateNotification(for: watch)
         }
@@ -237,7 +246,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                     gameURL: record.gameURL,
                     updates: candidates
                 )
-                try? AppDatabase.shared.save()
+                try? database.save()
                 let addedForGame = max(libraryAdded, calendarAdded)
                 imported += addedForGame
                 if posts.isEmpty {
@@ -290,57 +299,40 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
+    func reload() {
+        didLoadWatches = false
+        load()
+    }
+
     private func load() {
         do {
-            let context = database.context
-            let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
-            let rows = try context.fetch(FetchDescriptor<DBUpdateWatch>())
-            watches = Dictionary(uniqueKeysWithValues: rows.compactMap { row in
-                guard let game = games[row.gameID] else { return nil }
-                return (row.gameID, GameUpdateWatch(
-                    gameID: row.gameID,
-                    gameTitle: game.title,
-                    gameURL: game.gameURL ?? "",
-                    entityTag: row.entityTag,
-                    lastModified: row.lastModified,
-                    contentHash: row.contentHash,
-                    lastCheckedAt: row.lastCheckedAt,
-                    hasBaseline: row.hasBaseline,
-                    isEnabled: row.isEnabled
-                ))
-            })
+            let loaded = try repository.watches()
+            watches = Dictionary(uniqueKeysWithValues: loaded.map { ($0.gameID, $0) })
+            didLoadWatches = true
         } catch {
-            print("itchPocket update watches load failed: \(error)")
-            watches = [:]
+            print("itchPocket update watches load failed: \\(error)")
+            didLoadWatches = false
+        }
+    }
+
+    private func persistWatch(_ watch: GameUpdateWatch?) {
+        guard didLoadWatches, let watch else { return }
+        do {
+            try repository.save(watch)
+        } catch {
+            print("itchPocket update watch save failed: \\(error)")
         }
     }
 
     private func persistWatches(save shouldSave: Bool = true) {
-        let context = database.context
+        guard didLoadWatches else { return }
         do {
-            let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
-            let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.gameID, $0) })
-            let desiredIDs = Set(watches.keys)
-            for item in existing where !desiredIDs.contains(item.gameID) {
-                context.delete(item)
-            }
-            for watch in watches.values {
-                let item = existingByID[watch.gameID] ?? DBUpdateWatch(gameID: watch.gameID)
-                if item.modelContext == nil { context.insert(item) }
-                if item.entityTag != watch.entityTag { item.entityTag = watch.entityTag }
-                if item.lastModified != watch.lastModified { item.lastModified = watch.lastModified }
-                if item.contentHash != watch.contentHash { item.contentHash = watch.contentHash }
-                if item.lastCheckedAt != watch.lastCheckedAt { item.lastCheckedAt = watch.lastCheckedAt }
-                if item.hasBaseline != watch.hasBaseline { item.hasBaseline = watch.hasBaseline }
-                if item.isEnabled != watch.isEnabled { item.isEnabled = watch.isEnabled }
-            }
-            if shouldSave { try database.save() }
+            try repository.save(Array(watches.values), save: shouldSave)
         } catch {
-            print("itchPocket update watches save failed: \(error)")
+            print("itchPocket update watches save failed: \\(error)")
         }
     }
 }
-
 
 private struct DevlogRSSPost {
     let title: String
