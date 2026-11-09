@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import SwiftData
 
 enum LibraryStatus: String, CaseIterable, Codable, Identifiable {
     case wishlist = "想玩"
@@ -127,9 +126,13 @@ final class PersonalLibraryStore: ObservableObject {
     private let sparkRepository: SparkRepository
     private let developerRepository: DeveloperRepository
     private let gameRepository: GameRepository
+    private let shouldSimulateLibraryLoadFailure: () -> Bool
 
-    init() {
-        let database = AppDatabase.shared
+    init(
+        database: AppDatabase? = nil,
+        shouldSimulateLibraryLoadFailure: @escaping () -> Bool = { false }
+    ) {
+        let database = database ?? AppDatabase.shared
         self.database = database
         self.libraryRepository = LibraryRepository(database: database)
         self.statusHistoryRepository = LibraryStatusHistoryRepository(database: database)
@@ -137,6 +140,12 @@ final class PersonalLibraryStore: ObservableObject {
         self.sparkRepository = SparkRepository(database: database)
         self.developerRepository = DeveloperRepository(database: database)
         self.gameRepository = GameRepository(database: database)
+        self.shouldSimulateLibraryLoadFailure = shouldSimulateLibraryLoadFailure
+        load()
+    }
+
+    /// Retries loading after a transient repository read failure.
+    func reload() {
         load()
     }
 
@@ -429,12 +438,16 @@ final class PersonalLibraryStore: ObservableObject {
 
     private func load() {
         do {
+            if shouldSimulateLibraryLoadFailure() {
+                throw PersonalLibraryStoreLoadError.simulatedFailure
+            }
+
             let gamesByID = try gameRepository.loadByID()
             let entries = try libraryRepository.loadEntries()
             let developers = try developerRepository.loadByID()
             let updatesByGame = try gameUpdateRepository.loadUpdatesByGame()
             let metadata = try sparkRepository.loadByGameID()
-            records = entries.compactMap { entry in
+            let loadedRecords = entries.compactMap { entry in
                 guard let game = gamesByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
                 let spark = metadata[game.id]
@@ -467,25 +480,30 @@ final class PersonalLibraryStore: ObservableObject {
                 )
             }.sorted { $0.addedAt > $1.addedAt }
 
+            // Each snapshot is prepared locally and only published after the
+            // required library reads have succeeded. A failed auxiliary read
+            // retains the last known-good in-memory value for that section.
+            var loadedStatusEvents = statusEvents
             do {
-                statusEvents = try statusHistoryRepository.loadEvents()
+                loadedStatusEvents = try statusHistoryRepository.loadEvents()
             } catch {
-                // A status-history read failure must not hide otherwise valid
-                // game-library records from the user.
-                print("itchPocket status history load failed: \(error)")
-                statusEvents = [:]
+                print("itchPocket status history load failed: \\(error)")
             }
+
+            var loadedCollections = collections
             do {
-                collections = try libraryRepository.collections()
+                loadedCollections = try libraryRepository.collections()
             } catch {
-                print("itchPocket collection load failed: \(error)")
-                collections = []
+                print("itchPocket collection load failed: \\(error)")
             }
+
+            records = loadedRecords
+            statusEvents = loadedStatusEvents
+            collections = loadedCollections
         } catch {
-            print("itchPocket database load failed: \(error)")
-            records = []
-            statusEvents = [:]
-            collections = []
+            // Keep the last known-good snapshot. On first launch the arrays
+            // are already empty, and reload() can retry without losing data.
+            print("itchPocket database load failed; retaining previous library snapshot: \\(error)")
         }
     }
 
@@ -583,4 +601,9 @@ final class PersonalLibraryStore: ObservableObject {
     private static func canonicalDeveloperID(_ rawURL: String) -> String {
         DeveloperRepository.canonicalID(for: rawURL)
     }
+}
+
+
+private enum PersonalLibraryStoreLoadError: Error {
+    case simulatedFailure
 }
