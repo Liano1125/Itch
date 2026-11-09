@@ -45,14 +45,20 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncMessage: String?
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
-    private let database = AppDatabase.shared
+    private let database: AppDatabase
+    private let shouldSimulateSnapshotLoadFailure: () -> Bool
     // Prevent an empty in-memory fallback from deleting persisted watch rows.
     private var didLoadWatches = false
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
-    init() {
+    init(
+        database: AppDatabase = .shared,
+        shouldSimulateSnapshotLoadFailure: @escaping () -> Bool = { false }
+    ) {
+        self.database = database
+        self.shouldSimulateSnapshotLoadFailure = shouldSimulateSnapshotLoadFailure
         load()
         do {
             lastHistoricalSyncAt = try database.state(for: historicalSyncDateKey)?.dateValue
@@ -63,6 +69,11 @@ final class GameUpdateMonitorStore: ObservableObject {
         } catch {
             print("itchPocket update monitor state load failed: \(error)")
         }
+    }
+
+    /// Retries loading the complete watch snapshot after a transient read failure.
+    func reload() {
+        load()
     }
 
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
@@ -293,7 +304,11 @@ final class GameUpdateMonitorStore: ObservableObject {
     private func notificationID(_ id: String) -> String { "itchPocket.update.\(id)" }
 
     private func load() {
+        didLoadWatches = false
         do {
+            if shouldSimulateSnapshotLoadFailure() {
+                throw SnapshotLoadTestError.simulatedFailure
+            }
             let context = database.context
             let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
             let rows = try context.fetch(FetchDescriptor<DBUpdateWatch>())
@@ -453,4 +468,9 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
         }
         return ISO8601DateFormatter().date(from: value)
     }
+}
+
+
+private enum SnapshotLoadTestError: Error {
+    case simulatedFailure
 }
