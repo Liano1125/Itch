@@ -46,6 +46,7 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private let database: AppDatabase
     private let repository: GameUpdateMonitorRepository
+    private let appStateRepository: AppStateRepository
     private var didLoadWatches = false
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
@@ -55,11 +56,12 @@ final class GameUpdateMonitorStore: ObservableObject {
         let resolvedDatabase = database ?? .shared
         self.database = resolvedDatabase
         self.repository = repository ?? GameUpdateMonitorRepository(database: resolvedDatabase)
+        self.appStateRepository = AppStateRepository(database: resolvedDatabase)
         load()
         do {
-            lastHistoricalSyncAt = try self.database.state(for: historicalSyncDateKey)?.dateValue
-            lastHistoricalSyncMessage = try self.database.state(for: historicalSyncMessageKey)?.stringValue
-            if let data = try self.database.state(for: historicalSyncResultsKey)?.dataValue {
+            lastHistoricalSyncAt = try self.appStateRepository.state(for: historicalSyncDateKey)?.dateValue
+            lastHistoricalSyncMessage = try self.appStateRepository.state(for: historicalSyncMessageKey)?.stringValue
+            if let data = try self.appStateRepository.state(for: historicalSyncResultsKey)?.dataValue {
                 lastHistoricalSyncResults = (try? JSONDecoder().decode([DevlogSyncGameResult].self, from: data)) ?? []
             }
         } catch {
@@ -268,9 +270,9 @@ final class GameUpdateMonitorStore: ObservableObject {
         lastHistoricalSyncMessage = message
         lastHistoricalSyncResults = results
         do {
-            try database.setState(lastHistoricalSyncAt, for: historicalSyncDateKey)
-            try database.setState(message, for: historicalSyncMessageKey)
-            try database.setState(try JSONEncoder().encode(results), for: historicalSyncResultsKey)
+            try appStateRepository.setDate(lastHistoricalSyncAt, for: historicalSyncDateKey)
+            try appStateRepository.setString(message, for: historicalSyncMessageKey)
+            try appStateRepository.setData(try JSONEncoder().encode(results), for: historicalSyncResultsKey)
         } catch {
             print("itchPocket historical sync state save failed: \(error)")
         }
