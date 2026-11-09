@@ -453,6 +453,61 @@ final class GameCalendarRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testCalendarRepositoryEditPreservesExistingSourceUpdateLink() throws {
+        let database = AppDatabase(inMemory: true)
+        let updateDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let update = DBGameUpdate(
+            id: "linked-update",
+            gameID: "calendar-game",
+            title: "Linked Devlog",
+            summary: "Linked summary",
+            detectedAt: Date(timeIntervalSince1970: 1_799_000_000),
+            publishedAt: updateDate,
+            url: "https://example.com/devlog",
+            sourceID: "linked-source",
+            isHistorical: true
+        )
+        database.context.insert(update)
+        try database.save()
+
+        let repository = GameCalendarRepository(database: database)
+        let original = GameCalendarEvent(
+            id: "editable-event",
+            gameID: "calendar-game",
+            gameTitle: "Calendar Game",
+            gameURL: nil,
+            title: "Original fallback",
+            date: Date(timeIntervalSince1970: 1_700_000_000),
+            kind: .update,
+            reminderEnabled: false,
+            notes: "Original notes",
+            sourceFingerprint: "devlog:linked-source"
+        )
+        try repository.saveEvent(original, sourceUpdateID: update.id)
+
+        let edited = GameCalendarEvent(
+            id: original.id,
+            gameID: original.gameID,
+            gameTitle: original.gameTitle,
+            gameURL: original.gameURL,
+            title: "Edited fallback",
+            date: Date(timeIntervalSince1970: 1_710_000_000),
+            kind: original.kind,
+            reminderEnabled: false,
+            notes: "Edited notes",
+            sourceFingerprint: original.sourceFingerprint
+        )
+        // Omitting sourceUpdateID during an ordinary edit must retain the
+        // existing relationship; only clearSourceUpdateLink explicitly unlinks it.
+        try repository.saveEvent(edited)
+
+        let loaded = try XCTUnwrap(repository.events().first)
+        XCTAssertEqual(loaded.title, "更新：Linked Devlog")
+        XCTAssertEqual(loaded.date, updateDate)
+        XCTAssertTrue(loaded.notes.contains("Linked summary"))
+    }
+
+    @MainActor
     func testCalendarRepositoryDeletesOnlyRequestedEvent() throws {
         let database = AppDatabase(inMemory: true)
         let repository = GameCalendarRepository(database: database)
