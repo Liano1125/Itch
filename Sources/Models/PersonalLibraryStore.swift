@@ -201,7 +201,7 @@ final class PersonalLibraryStore: ObservableObject {
             if shouldSave {
                 try database.performTransaction(write)
             } else {
-                try write()
+                try database.performUnitOfWork(write)
             }
             records = proposedRecords
             return inserted
@@ -211,7 +211,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-        @discardableResult
+    @discardableResult
     func recordHistoricalUpdate(gameID: String, title: String, summary: String, publishedAt: Date, url: String?, sourceID: String) -> Bool {
         let update = GameLibraryUpdate(
             title: title,
@@ -252,7 +252,7 @@ final class PersonalLibraryStore: ObservableObject {
             if shouldSave {
                 result = try database.performTransaction(write)
             } else {
-                result = try write()
+                result = try database.performUnitOfWork(write)
             }
             if result.0 > 0 { records[index] = result.1 }
             return result.0
@@ -334,7 +334,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-        func update(_ record: LibraryRecord) {
+    func update(_ record: LibraryRecord) {
         guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
         let previous = records[index]
         var updated = record
@@ -359,7 +359,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-        /// Persists one complete scan in a single database transaction, and only writes
+    /// Persists one complete scan in a single database transaction, and only writes
     /// Spark rows whose values actually changed.
     func updateSparkMetadata(_ metadataByGameID: [String: SparkPlayMetadata]) {
         guard !metadataByGameID.isEmpty else { return }
