@@ -139,7 +139,8 @@ enum V3StoreBootstrap {
             let v2Configuration = ModelConfiguration(
                 "itchPocket-v2-recovery-readonly",
                 schema: v2Schema,
-                url: v2StoreURL
+                url: v2StoreURL,
+                allowsSave: false
             )
             let v2Container = try ModelContainer(for: v2Schema, configurations: [v2Configuration])
             let v2Context = v2Container.mainContext
