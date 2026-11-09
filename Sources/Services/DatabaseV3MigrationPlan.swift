@@ -9,6 +9,7 @@ enum ItchPocketMigrationPlan: SchemaMigrationPlan {
     enum MigrationError: LocalizedError {
         case collectionMembershipConflict(String)
         case duplicateCollectionMember(String)
+        case duplicateGameDetail(String)
 
         var errorDescription: String? {
             switch self {
@@ -16,6 +17,8 @@ enum ItchPocketMigrationPlan: SchemaMigrationPlan {
                 return "V2 collection membership representations disagree for collection \(id)."
             case .duplicateCollectionMember(let id):
                 return "V2 collection contains duplicate normalized members: \(id)."
+            case .duplicateGameDetail(let id):
+                return "V2 contains duplicate normalized detail records for game: \(id)."
             }
         }
     }
@@ -34,7 +37,12 @@ enum ItchPocketMigrationPlan: SchemaMigrationPlan {
         willMigrate: { context in
             let games = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
             let details = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>())
-            var detailsByGameID = Dictionary(uniqueKeysWithValues: details.map { ($0.gameID, $0) })
+            var detailsByGameID: [String: ItchPocketSchemaV2Snapshot.DBGameDetail] = [:]
+            for detail in details {
+                guard detailsByGameID.updateValue(detail, forKey: detail.gameID) == nil else {
+                    throw MigrationError.duplicateGameDetail(detail.gameID)
+                }
+            }
 
             // Prefer already-normalized V2 values. Fill only missing fields
             // from the compatibility columns so partial caches are retained.
@@ -115,6 +123,9 @@ enum ItchPocketMigrationPlan: SchemaMigrationPlan {
             let details = try context.fetch(FetchDescriptor<DBGameDetail>())
             guard details.allSatisfy({ gameIDs.contains($0.gameID) }) else {
                 throw MigrationError.collectionMembershipConflict("orphan-game-detail")
+            }
+            guard Set(details.map(\.gameID)).count == details.count else {
+                throw MigrationError.duplicateGameDetail("duplicate")
             }
 
             let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
