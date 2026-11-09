@@ -1,4 +1,6 @@
 import XCTest
+import SwiftData
+import CryptoKit
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
@@ -303,5 +305,73 @@ final class GameDetailRepositoryTests: XCTestCase {
         let preservedState = try XCTUnwrap(database.state(for: "unrelated.pending.change"))
         XCTAssertEqual(preservedState.stringValue, "keep me")
         XCTAssertNotNil(preservedState.modelContext)
+    }
+}
+
+extension PersistencePoliciesTests {
+    @MainActor
+    func testTranslationCacheRepositoryStoresUpdatesAndLooksUpEntries() throws {
+        let database = AppDatabase(inMemory: true)
+        let repository = TranslationCacheRepository(database: database)
+        let key = TranslationCacheKey.make(scope: "game:123", source: "Hello", target: "zh-Hans")
+        let timestamp = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try repository.store(
+            "你好",
+            source: "Hello",
+            scope: "game:123",
+            target: "zh-Hans",
+            for: key,
+            updatedAt: timestamp
+        )
+
+        let entry = try XCTUnwrap(repository.translation(for: key))
+        XCTAssertEqual(entry.translation, "你好")
+        XCTAssertEqual(entry.sourceText, "Hello")
+        XCTAssertEqual(entry.sourceHash, SHA256.hash(data: Data("Hello".utf8)).map { String(format: "%02x", $0) }.joined())
+        XCTAssertEqual(entry.scope, "game:123")
+        XCTAssertEqual(entry.target, "zh-Hans")
+        XCTAssertEqual(entry.updatedAt, timestamp)
+        XCTAssertEqual(try repository.latest(scope: "game:123", target: "zh-Hans")?.translation, "你好")
+
+        try repository.store(
+            "您好",
+            source: "Hello",
+            scope: "game:123",
+            target: "zh-Hans",
+            for: key,
+            updatedAt: timestamp.addingTimeInterval(60)
+        )
+        XCTAssertEqual(try repository.translation(for: key)?.translation, "您好")
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBTranslation>()), 1)
+    }
+
+    @MainActor
+    func testTranslationCacheRepositoryRetainsNewestEntriesAfterLimitIsExceeded() throws {
+        let database = AppDatabase(inMemory: true)
+        let repository = TranslationCacheRepository(
+            database: database,
+            maximumEntries: 3,
+            retainedEntries: 2
+        )
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+        for index in 0..<4 {
+            let key = "translation-retention-\(index)"
+            try repository.store(
+                "translated-\(index)",
+                source: "source-\(index)",
+                scope: "retention-test",
+                target: "en",
+                for: key,
+                updatedAt: start.addingTimeInterval(TimeInterval(index))
+            )
+        }
+
+        let remaining = try database.context.fetch(FetchDescriptor<DBTranslation>(
+            sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
+        ))
+        XCTAssertEqual(remaining.count, 2)
+        XCTAssertEqual(Set(remaining.map(\.cacheKey)), ["translation-retention-2", "translation-retention-3"])
     }
 }
