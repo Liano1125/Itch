@@ -2,9 +2,64 @@ import XCTest
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
-    func testFullSnapshotWritesAreBlockedWhenInitialLoadFails() {
-        XCTAssertFalse(SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: false))
-        XCTAssertTrue(SnapshotPersistencePolicy.canReplacePersistedSnapshot(didLoadSuccessfully: true))
+    func testFailedLibraryHistoryLoadPreservesPersistedHistory() {
+        var persisted = ["old-playing", "old-completed"]
+        let replaced = SnapshotPersistencePolicy.replacePersistedSnapshot(
+            &persisted,
+            with: ["new-playing"],
+            didLoadSuccessfully: false
+        )
+        XCTAssertFalse(replaced)
+        XCTAssertEqual(persisted, ["old-playing", "old-completed"])
+    }
+
+    func testFailedCollectionLoadPreservesPersistedCollections() {
+        var persisted = ["Favorites", "Completed"]
+        let replaced = SnapshotPersistencePolicy.replacePersistedSnapshot(
+            &persisted,
+            with: ["New collection"],
+            didLoadSuccessfully: false
+        )
+        XCTAssertFalse(replaced)
+        XCTAssertEqual(persisted, ["Favorites", "Completed"])
+    }
+
+    func testFailedUpdateWatchLoadPreservesPersistedWatches() {
+        var persisted = ["game-a", "game-b"]
+        let replaced = SnapshotPersistencePolicy.replacePersistedSnapshot(
+            &persisted,
+            with: ["game-c"],
+            didLoadSuccessfully: false
+        )
+        XCTAssertFalse(replaced)
+        XCTAssertEqual(persisted, ["game-a", "game-b"])
+    }
+
+    func testSuccessfulSnapshotLoadAllowsIntentionalReplacement() {
+        var persisted = ["old-a", "old-b"]
+        let replaced = SnapshotPersistencePolicy.replacePersistedSnapshot(
+            &persisted,
+            with: ["new-a"],
+            didLoadSuccessfully: true
+        )
+        XCTAssertTrue(replaced)
+        XCTAssertEqual(persisted, ["new-a"])
+    }
+
+    func testFailedLoadCanRecoverAndAllowReplacementAfterSuccessfulRetry() {
+        var persisted = ["existing-a", "existing-b"]
+        XCTAssertFalse(SnapshotPersistencePolicy.replacePersistedSnapshot(
+            &persisted,
+            with: [String](),
+            didLoadSuccessfully: false
+        ))
+        XCTAssertEqual(persisted, ["existing-a", "existing-b"])
+        XCTAssertTrue(SnapshotPersistencePolicy.replacePersistedSnapshot(
+            &persisted,
+            with: ["recovered-a"],
+            didLoadSuccessfully: true
+        ))
+        XCTAssertEqual(persisted, ["recovered-a"])
     }
 
     func testPartialGameDetailUpdatePreservesFieldsThatWereNotProvided() {
