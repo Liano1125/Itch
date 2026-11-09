@@ -367,7 +367,7 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             try repository.saveSparkMetadata(records: records, changedGameIDs: changedGameIDs)
         } catch {
-            print("itchPocket Spark metadata save failed: \\(error)")
+            print("itchPocket Spark metadata save failed: \(error)")
         }
     }
 
@@ -385,7 +385,7 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             try repository.remove(gameID: id, statusEvents: statusEvents, collections: collections)
         } catch {
-            print("itchPocket library removal failed: \\(error)")
+            print("itchPocket library removal failed: \(error)")
         }
     }
 
@@ -402,7 +402,7 @@ final class PersonalLibraryStore: ObservableObject {
             didLoadLibrarySnapshots = true
         } catch {
             didLoadLibrarySnapshots = false
-            print("itchPocket database load failed: \\(error)")
+            print("itchPocket database load failed: \(error)")
             records = []
             statusEvents = [:]
             collections = []
@@ -417,7 +417,7 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             try repository.saveStatusEvents(statusEvents, save: shouldSave)
         } catch {
-            print("itchPocket status history save failed: \\(error)")
+            print("itchPocket status history save failed: \(error)")
         }
     }
 
@@ -429,7 +429,7 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             try repository.saveCollections(collections, save: shouldSave)
         } catch {
-            print("itchPocket collections save failed: \\(error)")
+            print("itchPocket collections save failed: \(error)")
         }
     }
 
