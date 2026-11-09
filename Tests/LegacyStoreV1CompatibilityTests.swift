@@ -313,7 +313,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: recoveredURL, allowsSave: false)
         let container = try ModelContainer(for: schema, configurations: [configuration])
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 2)
     }
 
     @MainActor
@@ -409,18 +409,18 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
 
         // Check the entity names for every frozen V1 model against the
         // original top-level model types used by the unversioned app.
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBDeveloper.self), Schema.entityName(for: DBDeveloper.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBGame.self), Schema.entityName(for: DBGame.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBLibraryEntry.self), Schema.entityName(for: DBLibraryEntry.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBGameUpdate.self), Schema.entityName(for: DBGameUpdate.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBCalendarEvent.self), Schema.entityName(for: DBCalendarEvent.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBSparkMetadata.self), Schema.entityName(for: DBSparkMetadata.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBTranslation.self), Schema.entityName(for: DBTranslation.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBDiscoverySnapshot.self), Schema.entityName(for: DBDiscoverySnapshot.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBUpdateWatch.self), Schema.entityName(for: DBUpdateWatch.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBLibraryCollection.self), Schema.entityName(for: DBLibraryCollection.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBLibraryStatusEvent.self), Schema.entityName(for: DBLibraryStatusEvent.self))
-        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBAppState.self), Schema.entityName(for: DBAppState.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBDeveloper.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBDeveloper.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBGame.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBGame.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBLibraryEntry.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBLibraryEntry.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBGameUpdate.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBGameUpdate.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBCalendarEvent.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBCalendarEvent.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBSparkMetadata.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBSparkMetadata.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBTranslation.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBTranslation.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBDiscoverySnapshot.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBUpdateWatch.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBUpdateWatch.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBLibraryCollection.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBLibraryCollection.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBLibraryStatusEvent.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent.self))
+        XCTAssertEqual(Schema.entityName(for: ItchPocketSchemaV1.DBAppState.self), Schema.entityName(for: ItchPocketSchemaV2Snapshot.DBAppState.self))
 
         XCTAssertFalse(context.hasChanges)
     }
@@ -449,26 +449,26 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = container.mainContext
 
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDeveloper>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 2)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBSparkMetadata>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBTranslation>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollection>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAppState>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 2)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 2)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBTranslation>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBAppState>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>()), 2)
 
-        let developer = try XCTUnwrap(context.fetch(FetchDescriptor<DBDeveloper>()).first)
+        let developer = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>()).first)
         XCTAssertEqual(developer.name, "Legacy Developer")
         XCTAssertEqual(developer.profileURL, "https://example.com/developer")
 
-        let game = try XCTUnwrap(context.fetch(FetchDescriptor<DBGame>()).first { $0.id == "legacy-game-a" })
+        let game = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first { $0.id == "legacy-game-a" })
         XCTAssertEqual(game.title, "Legacy Game A")
         XCTAssertEqual(game.gameURL, "https://example.com/game-a")
         XCTAssertEqual(game.coverURL, "https://example.com/cover.jpg")
@@ -479,23 +479,23 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertEqual(game.galleryURLs, ["https://example.com/one.jpg", "https://example.com/two.jpg"])
         XCTAssertEqual(game.discoveryTagsData, Data("legacy-tags".utf8))
 
-        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first)
+        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()).first)
         XCTAssertEqual(detail.gameID, "legacy-game-a")
         XCTAssertEqual(detail.descriptionText, "Saved legacy description")
         XCTAssertNil(detail.fetchedAt)
         XCTAssertFalse(detail.isComplete)
 
-        let libraryEntry = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryEntry>()).first)
+        let libraryEntry = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryEntry>()).first)
         XCTAssertEqual(libraryEntry.status, "playing")
         XCTAssertTrue(libraryEntry.isFavorite)
         XCTAssertEqual(libraryEntry.notes, "Keep this note")
 
-        let update = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameUpdate>()).first)
+        let update = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameUpdate>()).first)
         XCTAssertEqual(update.id, "legacy-update-a")
         XCTAssertEqual(update.sourceID, "legacy-source-a")
         XCTAssertTrue(update.isHistorical)
 
-        let event = try XCTUnwrap(context.fetch(FetchDescriptor<DBCalendarEvent>()).first)
+        let event = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBCalendarEvent>()).first)
         XCTAssertEqual(event.gameTitleSnapshot, "Legacy Game A")
         XCTAssertEqual(event.title, "Legacy calendar event")
         XCTAssertEqual(event.kind, "custom")
@@ -506,14 +506,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertEqual(event.sourceUpdateID, "legacy-update-a")
         XCTAssertNil(event.date)
 
-        let spark = try XCTUnwrap(context.fetch(FetchDescriptor<DBSparkMetadata>()).first)
+        let spark = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBSparkMetadata>()).first)
         XCTAssertEqual(spark.runtimeSeconds, 1234)
         XCTAssertEqual(spark.renpyVersion, "8.2.0")
         XCTAssertEqual(spark.saveCount, 3)
         XCTAssertEqual(spark.lastSaveAt, Date(timeIntervalSince1970: 1_700_000_005))
         XCTAssertEqual(spark.scannedAt, Date(timeIntervalSince1970: 1_700_000_006))
 
-        let translation = try XCTUnwrap(context.fetch(FetchDescriptor<DBTranslation>()).first)
+        let translation = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBTranslation>()).first)
         XCTAssertEqual(translation.cacheKey, "legacy-translation")
         XCTAssertEqual(translation.scope, "description")
         XCTAssertEqual(translation.sourceHash, "legacy-hash")
@@ -521,11 +521,11 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertEqual(translation.targetLanguage, "zh-CN")
         XCTAssertEqual(translation.translatedText, "你好")
         XCTAssertEqual(translation.updatedAt, Date(timeIntervalSince1970: 1_700_000_007))
-        let discovery = try XCTUnwrap(context.fetch(FetchDescriptor<DBDiscoverySnapshot>()).first)
+        let discovery = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot>()).first)
         XCTAssertEqual(discovery.payload, Data("legacy-payload".utf8))
         XCTAssertEqual(discovery.fetchedAt, Date(timeIntervalSince1970: 1_700_000_008))
         XCTAssertEqual(discovery.expiresAt, Date(timeIntervalSince1970: 1_900_000_000))
-        let watch = try XCTUnwrap(context.fetch(FetchDescriptor<DBUpdateWatch>()).first)
+        let watch = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBUpdateWatch>()).first)
         XCTAssertEqual(watch.gameID, "legacy-game-a")
         XCTAssertEqual(watch.entityTag, "legacy-etag")
         XCTAssertEqual(watch.lastModified, "Wed, 01 Jan 2025 00:00:00 GMT")
@@ -534,23 +534,23 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         XCTAssertTrue(watch.hasBaseline)
         XCTAssertTrue(watch.isEnabled)
 
-        let collection = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryCollection>()).first)
+        let collection = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
         XCTAssertEqual(collection.title, "Legacy collection")
         XCTAssertEqual(collection.gameIDs, ["legacy-game-b", "legacy-game-a", "legacy-game-b"])
         XCTAssertEqual(collection.createdAt, Date(timeIntervalSince1970: 1_700_000_010))
         XCTAssertEqual(collection.updatedAt, Date(timeIntervalSince1970: 1_700_000_011))
-        let items = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+        let items = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
             .sorted { $0.sortOrder < $1.sortOrder }
         XCTAssertEqual(items.map(\.gameID), ["legacy-game-b", "legacy-game-a"])
         XCTAssertEqual(items.map(\.sortOrder), [0, 1])
 
-        let status = try XCTUnwrap(context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).first)
+        let status = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent>()).first)
         XCTAssertEqual(status.id, "legacy-status-event")
         XCTAssertEqual(status.gameID, "legacy-game-a")
         XCTAssertNil(status.fromStatus)
         XCTAssertEqual(status.toStatus, "playing")
         XCTAssertEqual(status.changedAt, Date(timeIntervalSince1970: 1_700_000_012))
-        let state = try XCTUnwrap(context.fetch(FetchDescriptor<DBAppState>()).first)
+        let state = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBAppState>()).first)
         XCTAssertEqual(state.key, "legacy.test.state")
         XCTAssertEqual(state.stringValue, "preserve-me")
         XCTAssertEqual(state.dateValue, Date(timeIntervalSince1970: 1_700_000_013))
@@ -616,9 +616,9 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: secondURL)
         let container = try ModelContainer(for: schema, configurations: [configuration])
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 2)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 2)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>()), 2)
     }
 
     @MainActor
@@ -674,20 +674,20 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
             let context = container.mainContext
-            try context.delete(model: DBAppState.self)
-            try context.delete(model: DBLibraryCollectionItem.self)
-            try context.delete(model: DBGameDetail.self)
-            try context.delete(model: DBLibraryStatusEvent.self)
-            try context.delete(model: DBLibraryCollection.self)
-            try context.delete(model: DBUpdateWatch.self)
-            try context.delete(model: DBDiscoverySnapshot.self)
-            try context.delete(model: DBTranslation.self)
-            try context.delete(model: DBSparkMetadata.self)
-            try context.delete(model: DBCalendarEvent.self)
-            try context.delete(model: DBGameUpdate.self)
-            try context.delete(model: DBLibraryEntry.self)
-            try context.delete(model: DBGame.self)
-            try context.delete(model: DBDeveloper.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBAppState.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBGameDetail.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBLibraryStatusEvent.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBLibraryCollection.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBUpdateWatch.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBDiscoverySnapshot.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBTranslation.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBSparkMetadata.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBCalendarEvent.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBGameUpdate.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBLibraryEntry.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBGame.self)
+            try context.delete(model: ItchPocketSchemaV2Snapshot.DBDeveloper.self)
             try context.save()
         }
 
@@ -743,7 +743,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
-            container.mainContext.insert(DBLibraryCollectionItem(
+            container.mainContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
                 id: "orphan-item",
                 collectionID: "missing-collection",
                 gameID: "legacy-game-a",
@@ -782,8 +782,8 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
-            container.mainContext.insert(DBLibraryCollection(id: "valid-collection", title: "Valid collection"))
-            container.mainContext.insert(DBLibraryCollectionItem(
+            container.mainContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(id: "valid-collection", title: "Valid collection"))
+            container.mainContext.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
                 id: "orphan-game-item",
                 collectionID: "valid-collection",
                 gameID: "missing-game",
@@ -853,7 +853,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
             let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: finalStoreURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
-            try container.mainContext.delete(model: DBGame.self)
+            try container.mainContext.delete(model: ItchPocketSchemaV2Snapshot.DBGame.self)
             try container.mainContext.save()
         }
 
@@ -898,97 +898,14 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: recoveredURL, allowsSave: false)
         let container = try ModelContainer(for: schema, configurations: [configuration])
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<DBGame>()), 2)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 2)
     }
 
     @MainActor
     private func createUnversionedLegacyStore(at storeURL: URL) throws {
-        // This is intentionally built from the original top-level model types,
-        // not the V1 nested snapshots, so the test exercises the real legacy shape.
-        let legacySchema = Schema([
-            DBDeveloper.self, DBGame.self, DBLibraryEntry.self, DBGameUpdate.self,
-            DBCalendarEvent.self, DBSparkMetadata.self, DBTranslation.self,
-            DBDiscoverySnapshot.self, DBUpdateWatch.self, DBLibraryCollection.self,
-            DBLibraryStatusEvent.self, DBAppState.self
-        ])
-        let configuration = ModelConfiguration("itchPocket", schema: legacySchema, url: storeURL)
-        let legacyContainer = try ModelContainer(for: legacySchema, configurations: [configuration])
-        let context = legacyContainer.mainContext
-
-        context.insert(DBDeveloper(id: "legacy-developer", name: "Legacy Developer", profileURL: "https://example.com/developer"))
-        context.insert(DBGame(
-            id: "legacy-game-a",
-            title: "Legacy Game A",
-            gameURL: "https://example.com/game-a",
-            coverURL: "https://example.com/cover.jpg",
-            descriptionText: "Saved legacy description",
-            galleryURLs: ["https://example.com/one.jpg", "https://example.com/two.jpg"],
-            discoveryTagsData: Data("legacy-tags".utf8),
-            engine: "Ren'Py",
-            developerID: "legacy-developer"
-        ))
-        context.insert(DBGame(id: "legacy-game-b", title: "Legacy Game B"))
-        context.insert(DBLibraryEntry(gameID: "legacy-game-a", status: "playing", isFavorite: true, notes: "Keep this note"))
-        context.insert(DBGameUpdate(
-            id: "legacy-update-a",
-            gameID: "legacy-game-a",
-            title: "Legacy update",
-            summary: "Historical update",
-            detectedAt: Date(timeIntervalSince1970: 1_700_000_004),
-            publishedAt: Date(timeIntervalSince1970: 1_700_000_000),
-            url: "https://example.com/update",
-            sourceID: "legacy-source-a",
-            isHistorical: true
-        ))
-        context.insert(DBCalendarEvent(
-            id: "legacy-calendar-a",
-            gameID: "legacy-game-a",
-            title: "Legacy calendar event",
-            date: nil,
-            kind: "custom",
-            sourceUpdateID: "legacy-update-a"
-        ))
-        context.insert(DBSparkMetadata(gameID: "legacy-game-a", runtimeSeconds: 1234, renpyVersion: "8.2.0", saveCount: 3))
-        context.insert(DBTranslation(
-            cacheKey: "legacy-translation",
-            scope: "description",
-            sourceHash: "legacy-hash",
-            sourceText: "hello",
-            targetLanguage: "zh-CN",
-            translatedText: "你好"
-        ))
-        context.insert(DBDiscoverySnapshot(
-            key: "legacy-discovery",
-            payload: Data("legacy-payload".utf8),
-            expiresAt: Date(timeIntervalSince1970: 1_900_000_000)
-        ))
-        context.insert(DBUpdateWatch(
-            gameID: "legacy-game-a",
-            entityTag: "legacy-etag",
-            lastModified: "Wed, 01 Jan 2025 00:00:00 GMT",
-            contentHash: "legacy-content-hash",
-            hasBaseline: true,
-            isEnabled: true
-        ))
-        context.insert(DBLibraryCollection(
-            id: "legacy-collection",
-            title: "Legacy collection",
-            gameIDs: ["legacy-game-b", "legacy-game-a", "legacy-game-b"]
-        ))
-        context.insert(DBLibraryStatusEvent(
-            id: "legacy-status-event",
-            gameID: "legacy-game-a",
-            fromStatus: nil,
-            toStatus: "playing"
-        ))
-        context.insert(DBAppState(
-            key: "legacy.test.state",
-            stringValue: "preserve-me",
-            dataValue: Data("opaque-state".utf8)
-        ))
-
-        try context.save()
+        try createExactUnversionedLegacyStore(at: storeURL)
     }
+
     @MainActor
     private func createExactUnversionedLegacyStore(at storeURL: URL) throws {
         try autoreleasepool {
@@ -1139,7 +1056,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL, allowsSave: false)
         let container = try ModelContainer(for: schema, configurations: [configuration])
-        return try container.mainContext.fetchCount(FetchDescriptor<DBGame>())
+        return try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
     }
 
     @MainActor
