@@ -80,9 +80,6 @@ jobs:
           set -euo pipefail
           HISTORICAL_V2_SHA="594f33feca5efd578393955014bbc51150037071"
           HISTORICAL_DIR="$RUNNER_TEMP/itchPocket-historical-v2"
-          FIXTURE_ROOT="$RUNNER_TEMP/itchPocket-historical-v2-fixture"
-          FIXTURE_PATH="$FIXTURE_ROOT/itchPocket-v2/itchPocket-v2.store"
-
           git fetch --no-tags origin "$HISTORICAL_V2_SHA"
           git worktree add --detach "$HISTORICAL_DIR" "$HISTORICAL_V2_SHA"
           trap 'git worktree remove --force "$HISTORICAL_DIR" || true' EXIT
@@ -101,9 +98,7 @@ jobs:
               exit 1
             fi
 
-            mkdir -p "$FIXTURE_ROOT/itchPocket-v2"
-            ITCHPOCKET_HISTORICAL_V2_FIXTURE_OUTPUT="$FIXTURE_PATH" \
-              xcodebuild \
+            xcodebuild \
                 -project itchPocket.xcodeproj \
                 -scheme itchPocket \
                 -destination "platform=iOS Simulator,id=$DEVICE_ID" \
@@ -116,9 +111,28 @@ jobs:
                 test
           )
 
-          test -s "$FIXTURE_PATH"
+          APP_PATH="$(find "$RUNNER_TEMP/historicalV2DerivedData/Build/Products" -maxdepth 3 -type d -name 'itchPocket.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Historical V2 host app was not built"
+            find "$RUNNER_TEMP/historicalV2DerivedData/Build/Products" -maxdepth 4 -name '*.app' -print
+            exit 1
+          fi
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data)"
+          SIMULATOR_FIXTURE="$APP_DATA/Documents/HistoricalV2Store"
+          if [ ! -s "$SIMULATOR_FIXTURE/itchPocket-v2.store" ]; then
+            echo "::error::Historical V2 fixture was not found in the simulator app container"
+            find "$APP_DATA/Documents" -maxdepth 3 -print || true
+            exit 1
+          fi
+
+          mkdir -p Tests/Fixtures
+          rm -rf Tests/Fixtures/HistoricalV2Store
+          cp -R "$SIMULATOR_FIXTURE" Tests/Fixtures/HistoricalV2Store
+          sqlite3 Tests/Fixtures/HistoricalV2Store/itchPocket-v2.store 'PRAGMA quick_check;'
           echo "Historical V2 fixture generated from $HISTORICAL_V2_SHA"
-          ls -l "$FIXTURE_PATH"
+          find Tests/Fixtures/HistoricalV2Store -maxdepth 1 -type f -print
 
       # 5. 生成当前 Xcode 项目
       - name: Generate Xcode project
@@ -143,8 +157,7 @@ jobs:
             exit 1
           fi
 
-          ITCHPOCKET_HISTORICAL_V2_FIXTURE="$RUNNER_TEMP/itchPocket-historical-v2-fixture/itchPocket-v2/itchPocket-v2.store" \
-            xcodebuild \
+          xcodebuild \
             -project itchPocket.xcodeproj \
             -scheme itchPocket \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
