@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 
 /// Owns persistence operations for rebuildable discovery snapshots.
+/// Uses the restricted repository capability rather than exposing ModelContext.
 /// Callers deal in payloads and keys; SwiftData models remain behind this boundary.
 @MainActor
 final class DiscoveryCacheRepository {
