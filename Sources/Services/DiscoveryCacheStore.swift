@@ -1,7 +1,7 @@
 import Foundation
-import SwiftData
 
 /// Shared TTL cache for rebuildable discovery and collection responses.
+/// Serialization stays here; persistence is delegated to DiscoveryCacheRepository.
 @MainActor
 enum DiscoveryCacheStore {
     static func load<Value: Decodable>(
@@ -10,16 +10,10 @@ enum DiscoveryCacheStore {
         now: Date = .now
     ) -> Value? {
         do {
-            let descriptor = FetchDescriptor<DBDiscoverySnapshot>(
-                predicate: #Predicate { $0.key == key }
-            )
-            guard let snapshot = try AppDatabase.shared.context.fetch(descriptor).first else { return nil }
-            guard snapshot.expiresAt > now else {
-                AppDatabase.shared.context.delete(snapshot)
-                try AppDatabase.shared.save()
+            guard let payload = try DiscoveryCacheRepository.shared.payload(for: key, now: now) else {
                 return nil
             }
-            return try JSONDecoder().decode(type, from: snapshot.payload)
+            return try JSONDecoder().decode(type, from: payload)
         } catch {
             print("itchPocket discovery cache read failed: \(error)")
             return nil
@@ -33,17 +27,11 @@ enum DiscoveryCacheStore {
     ) {
         do {
             let payload = try JSONEncoder().encode(value)
-            let context = AppDatabase.shared.context
-            let descriptor = FetchDescriptor<DBDiscoverySnapshot>(
-                predicate: #Predicate { $0.key == key }
+            try DiscoveryCacheRepository.shared.save(
+                payload: payload,
+                for: key,
+                timeToLive: timeToLive
             )
-            let snapshot = try context.fetch(descriptor).first
-                ?? DBDiscoverySnapshot(key: key, payload: payload, expiresAt: .now.addingTimeInterval(timeToLive))
-            if snapshot.modelContext == nil { context.insert(snapshot) }
-            snapshot.payload = payload
-            snapshot.fetchedAt = .now
-            snapshot.expiresAt = .now.addingTimeInterval(timeToLive)
-            try AppDatabase.shared.save()
         } catch {
             print("itchPocket discovery cache write failed: \(error)")
         }
@@ -51,13 +39,7 @@ enum DiscoveryCacheStore {
 
     static func remove(key: String) {
         do {
-            let descriptor = FetchDescriptor<DBDiscoverySnapshot>(
-                predicate: #Predicate { $0.key == key }
-            )
-            if let snapshot = try AppDatabase.shared.context.fetch(descriptor).first {
-                AppDatabase.shared.context.delete(snapshot)
-                try AppDatabase.shared.save()
-            }
+            try DiscoveryCacheRepository.shared.remove(key: key)
         } catch {
             print("itchPocket discovery cache removal failed: \(error)")
         }
