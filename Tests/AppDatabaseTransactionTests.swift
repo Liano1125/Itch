@@ -53,4 +53,25 @@ final class AppDatabaseTransactionTests: XCTestCase {
             ["transaction.first", "transaction.second"]
         )
     }
+    @MainActor
+    func testFailedTransactionRestoresUpdatedRowsAndDiscardsNewRows() throws {
+        let database = try AppDatabase(inMemory: true)
+        let developer = DBDeveloper(id: "developer-a", name: "Original")
+        database.context.insert(developer)
+        try database.save()
+
+        XCTAssertThrowsError(try database.performTransaction {
+            developer.name = "Partially updated"
+            database.context.insert(DBLibraryEntry(gameID: "game-a", status: "在玩"))
+            throw TestError.simulatedFailure
+        })
+
+        let storedDeveloper = try XCTUnwrap(database.context.fetch(
+            FetchDescriptor<DBDeveloper>(predicate: #Predicate { $0.id == "developer-a" })
+        ).first)
+        XCTAssertEqual(storedDeveloper.name, "Original")
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryEntry>()).isEmpty)
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
 }
