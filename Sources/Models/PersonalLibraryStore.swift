@@ -497,7 +497,7 @@ final class PersonalLibraryStore: ObservableObject {
                 loadedStatusEvents = try statusHistoryRepository.loadEvents()
                 statusHistoryLoaded = true
             } catch {
-                print("itchPocket status history load failed: \\(error)")
+                print("itchPocket status history load failed: \(error)")
             }
 
             var loadedCollections = collections
@@ -506,7 +506,7 @@ final class PersonalLibraryStore: ObservableObject {
                 loadedCollections = try libraryRepository.collections()
                 collectionsLoaded = true
             } catch {
-                print("itchPocket collection load failed: \\(error)")
+                print("itchPocket collection load failed: \(error)")
             }
 
             records = loadedRecords
@@ -516,18 +516,18 @@ final class PersonalLibraryStore: ObservableObject {
         } catch {
             // Keep the last known-good snapshot. On first launch the arrays
             // are already empty, and reload() can retry without losing data.
-            print("itchPocket database load failed; retaining previous library snapshot: \\(error)")
+            print("itchPocket database load failed; retaining previous library snapshot: \(error)")
         }
     }
 
     private func persist(
-        guard didLoadLibrarySnapshots else {
-            throw PersonalLibraryStoreLoadError.persistenceBlocked
-        }
         _ record: LibraryRecord,
         save shouldSave: Bool = true,
         updatesAreCompleteSnapshot: Bool = false
     ) throws {
+        guard didLoadLibrarySnapshots else {
+            throw PersonalLibraryStoreLoadError.persistenceBlocked
+        }
         let write = {
             let developerID: String?
             if let profileURL = record.developerProfileURL, !profileURL.isEmpty {
