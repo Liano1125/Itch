@@ -51,11 +51,11 @@ final class GameRepository {
         let descriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == gameID }
         )
-        return try database.context.fetch(descriptor).first.map(StoredGame.init)
+        return try database.repositoryContext.fetch(descriptor).first.map(StoredGame.init)
     }
 
     func loadByID() throws -> [String: StoredGame] {
-        let rows = try database.context.fetch(FetchDescriptor<DBGame>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBGame>())
         return Dictionary(rows.map { ($0.id, StoredGame($0)) }, uniquingKeysWith: { _, latest in latest })
     }
 
@@ -70,7 +70,7 @@ final class GameRepository {
         developerID: String? = nil,
         save shouldSave: Bool = true
     ) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let gameID = id
         let descriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == gameID }
@@ -90,7 +90,7 @@ final class GameRepository {
     func existingGameIDs(in candidates: [String]) throws -> Set<String> {
         guard !candidates.isEmpty else { return [] }
         let wanted = Set(candidates)
-        let rows = try database.context.fetch(FetchDescriptor<DBGame>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBGame>())
         return Set(rows.lazy.map(\.id).filter { wanted.contains($0) })
     }
 
@@ -122,6 +122,6 @@ final class GameRepository {
         let descriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == gameID }
         )
-        return try database.context.fetch(descriptor).first
+        return try database.repositoryContext.fetch(descriptor).first
     }
 }
