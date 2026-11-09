@@ -1,6 +1,28 @@
 import Foundation
 import SwiftData
 
+/// Narrow persistence capability supplied to repositories. The underlying
+/// ModelContext never escapes this wrapper in Release builds.
+@MainActor
+final class RepositoryContext {
+    private let modelContext: ModelContext
+
+    fileprivate init(_ modelContext: ModelContext) { self.modelContext = modelContext }
+    var hasChanges: Bool { modelContext.hasChanges }
+
+    func fetch<Model>(_ descriptor: FetchDescriptor<Model>) throws -> [Model] where Model: PersistentModel {
+        try modelContext.fetch(descriptor)
+    }
+    func fetchCount<Model>(_ descriptor: FetchDescriptor<Model>) throws -> Int where Model: PersistentModel {
+        try modelContext.fetchCount(descriptor)
+    }
+    func insert<Model>(_ model: Model) where Model: PersistentModel { modelContext.insert(model) }
+    func delete<Model>(_ model: Model) where Model: PersistentModel { modelContext.delete(model) }
+    func delete<Model>(model: Model.Type) throws where Model: PersistentModel {
+        try modelContext.delete(model: model)
+    }
+}
+
 /// Owns the app's one durable database. Feature stores and views must use
 /// repositories backed by this container instead of creating their own files.
 @MainActor
@@ -22,7 +44,13 @@ final class AppDatabase {
     }
 
     let container: ModelContainer
-    var context: ModelContext { container.mainContext }
+    private var modelContext: ModelContext { container.mainContext }
+    var repositoryContext: RepositoryContext { RepositoryContext(modelContext) }
+
+    #if DEBUG
+    /// Test-only escape hatch for persistence fixtures. Not present in Release.
+    var context: ModelContext { modelContext }
+    #endif
 
     static var hasLegacyStoreForRecovery: Bool {
         let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
@@ -68,8 +96,8 @@ final class AppDatabase {
     }
 
     func save() throws {
-        guard context.hasChanges else { return }
-        try context.save()
+        guard modelContext.hasChanges else { return }
+        try modelContext.save()
     }
 
     enum TransactionError: LocalizedError {
@@ -88,14 +116,14 @@ final class AppDatabase {
     /// were present at entry. Successful save:false callers may leave changes
     /// pending for a larger caller-owned batch.
     func performUnitOfWork<Value>(_ operation: () throws -> Value) throws -> Value {
-        guard !context.hasChanges else {
+        guard !modelContext.hasChanges else {
             throw TransactionError.pendingChanges
         }
 
         do {
             return try operation()
         } catch {
-            context.rollback()
+            modelContext.rollback()
             throw error
         }
     }
@@ -107,26 +135,26 @@ final class AppDatabase {
             try save()
             return value
         } catch {
-            context.rollback()
+            modelContext.rollback()
             throw error
         }
     }
 
     func removeAllAppData() throws {
         try AppStateRepository(database: self).removeAll(save: false)
-        try context.delete(model: DBLibraryCollectionItem.self)
-        try context.delete(model: DBGameDetail.self)
-        try context.delete(model: DBLibraryStatusEvent.self)
-        try context.delete(model: DBLibraryCollection.self)
-        try context.delete(model: DBUpdateWatch.self)
-        try context.delete(model: DBDiscoverySnapshot.self)
-        try context.delete(model: DBTranslation.self)
-        try context.delete(model: DBSparkMetadata.self)
-        try context.delete(model: DBCalendarEvent.self)
-        try context.delete(model: DBGameUpdate.self)
-        try context.delete(model: DBLibraryEntry.self)
-        try context.delete(model: DBGame.self)
-        try context.delete(model: DBDeveloper.self)
+        try modelContext.delete(model: DBLibraryCollectionItem.self)
+        try modelContext.delete(model: DBGameDetail.self)
+        try modelContext.delete(model: DBLibraryStatusEvent.self)
+        try modelContext.delete(model: DBLibraryCollection.self)
+        try modelContext.delete(model: DBUpdateWatch.self)
+        try modelContext.delete(model: DBDiscoverySnapshot.self)
+        try modelContext.delete(model: DBTranslation.self)
+        try modelContext.delete(model: DBSparkMetadata.self)
+        try modelContext.delete(model: DBCalendarEvent.self)
+        try modelContext.delete(model: DBGameUpdate.self)
+        try modelContext.delete(model: DBLibraryEntry.self)
+        try modelContext.delete(model: DBGame.self)
+        try modelContext.delete(model: DBDeveloper.self)
         try save()
     }
 }
