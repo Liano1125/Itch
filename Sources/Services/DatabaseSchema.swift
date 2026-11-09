@@ -235,6 +235,18 @@ enum ItchPocketSchemaV1: VersionedSchema {
 enum ItchPocketSchemaV2: VersionedSchema {
     static var versionIdentifier = Schema.Version(2, 0, 0)
     static var models: [any PersistentModel.Type] {
+        // Use the frozen V2 declarations for all V2 store creation and reads.
+        // The live app models below belong exclusively to V3.
+        ItchPocketSchemaV2Snapshot.models
+    }
+}
+
+/// V3 removes the duplicated detail columns and legacy collection array.
+/// DBGameDetail and DBLibraryCollectionItem are now the only durable sources
+/// for those domains.
+enum ItchPocketSchemaV3: VersionedSchema {
+    static var versionIdentifier = Schema.Version(3, 0, 0)
+    static var models: [any PersistentModel.Type] {
         [
             DBDeveloper.self, DBGame.self, DBLibraryEntry.self, DBGameUpdate.self,
             DBCalendarEvent.self, DBSparkMetadata.self, DBTranslation.self,
