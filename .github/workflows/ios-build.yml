@@ -14,6 +14,7 @@ on:
       - refactor/freeze-v2-schema-snapshot
       - refactor/v3-normalized-persistence-cutover
       - fix/v3-detail-data-recovery
+      - fix/v3-migration-integrity-hardening
   pull_request:
     branches:
       - main
