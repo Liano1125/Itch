@@ -46,6 +46,8 @@ final class GameUpdateMonitorStore: ObservableObject {
     @Published private(set) var lastHistoricalSyncResults: [DevlogSyncGameResult] = []
 
     private let database = AppDatabase.shared
+    // Prevent an empty in-memory fallback from deleting persisted watch rows.
+    private var didLoadWatches = false
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
@@ -309,13 +311,19 @@ final class GameUpdateMonitorStore: ObservableObject {
                     isEnabled: row.isEnabled
                 ))
             })
+            didLoadWatches = true
         } catch {
             print("itchPocket update watches load failed: \(error)")
+            didLoadWatches = false
             watches = [:]
         }
     }
 
     private func persistWatches(save shouldSave: Bool = true) {
+        guard didLoadWatches else {
+            print("itchPocket update watches save skipped: initial database load did not complete")
+            return
+        }
         let context = database.context
         do {
             let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
