@@ -250,8 +250,7 @@ final class DBAppState {
 }
 
 
-/// Normalized, independently invalidatable game-detail cache.
-/// Legacy detail columns on DBGame remain until the V3 cutover is verified.
+/// Canonical, independently invalidatable V3 game-detail record.
 @Model
 final class DBGameDetail {
     @Attribute(.unique) var gameID: String
