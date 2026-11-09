@@ -996,6 +996,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         }
     }
 
+    @MainActor
     private func createExactUnversionedLegacyStoreWithinAutoreleasePool(at storeURL: URL) throws {
         // Build the database from the frozen V1 model types without attaching
         // VersionedSchema metadata, matching the released unversioned store.
@@ -1133,6 +1134,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         }
     }
 
+    @MainActor
     private func v2GameCountWithinAutoreleasePool(at storeURL: URL) throws -> Int {
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2", schema: schema, url: storeURL, allowsSave: false)
@@ -1147,6 +1149,7 @@ final class LegacyStoreV1CompatibilityTests: XCTestCase {
         }
     }
 
+    @MainActor
     private func legacyGameCountWithinAutoreleasePool(at storeURL: URL) throws -> Int {
         let schema = Schema(versionedSchema: ItchPocketSchemaV1.self)
         let configuration = ModelConfiguration("itchPocket", schema: schema, url: storeURL, allowsSave: false)
