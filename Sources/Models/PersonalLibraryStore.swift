@@ -262,7 +262,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-        func createCollection(title: String) {
+    func createCollection(title: String) {
         do {
             let collection = try libraryRepository.createCollection(title: title)
             collections.insert(collection, at: 0)
@@ -412,9 +412,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-
-
-        func remove(_ id: String) {
+    func remove(_ id: String) {
         do {
             try libraryRepository.removeGameFromLibrary(gameID: id)
             records.removeAll { $0.id == id }
@@ -582,7 +580,7 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-        private static func canonicalDeveloperID(_ rawURL: String) -> String {
+    private static func canonicalDeveloperID(_ rawURL: String) -> String {
         DeveloperRepository.canonicalID(for: rawURL)
     }
 }
