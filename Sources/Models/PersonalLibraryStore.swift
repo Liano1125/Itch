@@ -463,7 +463,6 @@ final class PersonalLibraryStore: ObservableObject {
                 guard let game = gamesByID[entry.gameID] else { return nil }
                 let developer = game.developerID.flatMap { developers[$0] }
                 let spark = metadata[game.id]
-                let gameUpdates = updatesByGame[game.id] ?? []
                 return LibraryRecord(
                     id: game.id,
                     title: game.title,
@@ -478,7 +477,7 @@ final class PersonalLibraryStore: ObservableObject {
                     notes: entry.notes,
                     addedAt: entry.addedAt,
                     updatedAt: entry.updatedAt,
-                    gameUpdates: gameUpdates,
+                    gameUpdates: updatesByGame[game.id] ?? [],
                     discoveryTags: game.discoveryTagsData.flatMap {
                         try? JSONDecoder().decode([LibraryDiscoveryTag].self, from: $0)
                     },
@@ -492,30 +491,32 @@ final class PersonalLibraryStore: ObservableObject {
                 )
             }.sorted { $0.addedAt > $1.addedAt }
 
-            // Each snapshot is prepared locally and only published after the
-            // required library reads have succeeded. A failed auxiliary read
-            // retains the last known-good in-memory value for that section.
             var loadedStatusEvents = statusEvents
+            var statusHistoryLoaded = false
             do {
                 loadedStatusEvents = try statusHistoryRepository.loadEvents()
+                statusHistoryLoaded = true
             } catch {
-                print("itchPocket status history load failed: \(error)")
+                print("itchPocket status history load failed: \\(error)")
             }
 
             var loadedCollections = collections
+            var collectionsLoaded = false
             do {
                 loadedCollections = try libraryRepository.collections()
+                collectionsLoaded = true
             } catch {
-                print("itchPocket collection load failed: \(error)")
+                print("itchPocket collection load failed: \\(error)")
             }
 
             records = loadedRecords
             statusEvents = loadedStatusEvents
             collections = loadedCollections
+            didLoadLibrarySnapshots = statusHistoryLoaded && collectionsLoaded
         } catch {
             // Keep the last known-good snapshot. On first launch the arrays
             // are already empty, and reload() can retry without losing data.
-            print("itchPocket database load failed; retaining previous library snapshot: \(error)")
+            print("itchPocket database load failed; retaining previous library snapshot: \\(error)")
         }
     }
 
