@@ -195,13 +195,13 @@ final class GameDetailRepositoryTests: XCTestCase {
     @MainActor
     func testUnresolvedPageSectionsPreserveStoredDetailsAndDoNotRefreshTimestamp() throws {
         let database = try AppDatabase(inMemory: true)
-        let game = DBGame(
-            id: "test-game",
-            title: "Test Game",
+        let game = DBGame(id: "test-game", title: "Test Game")
+        database.context.insert(game)
+        database.context.insert(DBGameDetail(
+            gameID: "test-game",
             descriptionText: "Previously saved description",
             galleryURLs: ["https://example.com/old.jpg"]
-        )
-        database.context.insert(game)
+        ))
         try database.save()
 
         let repository = GameDetailRepository(database: database)
@@ -228,13 +228,13 @@ final class GameDetailRepositoryTests: XCTestCase {
     @MainActor
     func testResolvedEmptySectionsCanClearStoredDetailsAndMarkComplete() throws {
         let database = try AppDatabase(inMemory: true)
-        let game = DBGame(
-            id: "test-game",
-            title: "Test Game",
+        let game = DBGame(id: "test-game", title: "Test Game")
+        database.context.insert(game)
+        database.context.insert(DBGameDetail(
+            gameID: "test-game",
             descriptionText: "Previously saved description",
             galleryURLs: ["https://example.com/old.jpg"]
-        )
-        database.context.insert(game)
+        ))
         try database.save()
 
         let repository = GameDetailRepository(database: database)
@@ -263,13 +263,13 @@ final class GameDetailRepositoryTests: XCTestCase {
     @MainActor
     func testFailedSnapshotSaveRestoresOnlyDetailChangesAndPreservesUnrelatedPendingChanges() throws {
         let database = try AppDatabase(inMemory: true)
-        let game = DBGame(
-            id: "test-game",
-            title: "Test Game",
+        let game = DBGame(id: "test-game", title: "Test Game")
+        database.context.insert(game)
+        database.context.insert(DBGameDetail(
+            gameID: "test-game",
             descriptionText: "Previously saved description",
             galleryURLs: ["https://example.com/old.jpg"]
-        )
-        database.context.insert(game)
+        ))
         try database.save()
 
         // This unrelated edit shares the main context but is not part of this repository write.
@@ -322,7 +322,6 @@ final class PersonalLibraryStoreReloadTests: XCTestCase {
         database.context.insert(DBLibraryCollection(
             id: "collection-1",
             title: "Favorites",
-            gameIDs: []
         ))
         try database.save()
 
