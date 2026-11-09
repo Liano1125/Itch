@@ -34,7 +34,7 @@ final class CacheRepository {
         let descriptor = FetchDescriptor<DBTranslation>(
             predicate: #Predicate { $0.cacheKey == key }
         )
-        guard let item = try database.context.fetch(descriptor).first else { return nil }
+        guard let item = try database.repositoryContext.fetch(descriptor).first else { return nil }
         return Self.translation(from: item)
     }
 
@@ -43,7 +43,7 @@ final class CacheRepository {
             predicate: #Predicate { $0.scope == scope && $0.targetLanguage == target },
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        guard let item = try database.context.fetch(descriptor).first else { return nil }
+        guard let item = try database.repositoryContext.fetch(descriptor).first else { return nil }
         return Self.translation(from: item)
     }
 
@@ -55,7 +55,7 @@ final class CacheRepository {
         target: String,
         for key: String
     ) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let descriptor = FetchDescriptor<DBTranslation>(
             predicate: #Predicate { $0.cacheKey == key }
         )
@@ -89,7 +89,7 @@ final class CacheRepository {
     }
 
     func discoverySnapshot(for key: String, now: Date = .now) throws -> Data? {
-        let context = database.context
+        let context = database.repositoryContext
         let descriptor = FetchDescriptor<DBDiscoverySnapshot>(
             predicate: #Predicate { $0.key == key }
         )
@@ -108,7 +108,7 @@ final class CacheRepository {
         timeToLive: TimeInterval,
         now: Date = .now
     ) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let descriptor = FetchDescriptor<DBDiscoverySnapshot>(
             predicate: #Predicate { $0.key == key }
         )
@@ -122,7 +122,7 @@ final class CacheRepository {
     }
 
     func removeDiscoverySnapshot(key: String) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let descriptor = FetchDescriptor<DBDiscoverySnapshot>(
             predicate: #Predicate { $0.key == key }
         )
@@ -133,7 +133,7 @@ final class CacheRepository {
     }
 
     func counts() throws -> Counts {
-        let context = database.context
+        let context = database.repositoryContext
         return Counts(
             translations: try context.fetchCount(FetchDescriptor<DBTranslation>()),
             discoverySnapshots: try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>())
@@ -143,7 +143,7 @@ final class CacheRepository {
     /// Clears only the two cache-owned tables. Avatar metadata and app-state
     /// keys are invalidated by their own repositories at the lifecycle layer.
     func clearRebuildableCaches(save shouldSave: Bool = true) throws {
-        let context = database.context
+        let context = database.repositoryContext
         // Delete tracked rows individually so save:false participates reliably
         // in the caller's shared ModelContext transaction.
         let translations = try context.fetch(FetchDescriptor<DBTranslation>())
@@ -154,7 +154,7 @@ final class CacheRepository {
     }
 
     func pruneExpiredDiscoverySnapshots(now: Date = .now, save shouldSave: Bool = true) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let expired = try context.fetch(FetchDescriptor<DBDiscoverySnapshot>(
             predicate: #Predicate { $0.expiresAt <= now }
         ))

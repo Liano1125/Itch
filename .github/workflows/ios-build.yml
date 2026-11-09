@@ -8,6 +8,7 @@ on:
       - refactor/repository-boundary-hardening
       - refactor/library-entry-repository
       - refactor/library-write-transaction-hardening
+      - refactor/repository-context-capability
   pull_request:
     branches:
       - main
@@ -25,6 +26,7 @@ on:
       - refactor/cache-repository
       - refactor/library-entry-repository
       - refactor/library-write-transaction-hardening
+      - refactor/repository-context-capability
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.

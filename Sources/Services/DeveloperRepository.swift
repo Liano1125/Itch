@@ -28,11 +28,11 @@ final class DeveloperRepository {
         let descriptor = FetchDescriptor<DBDeveloper>(
             predicate: #Predicate { $0.id == developerID }
         )
-        return try database.context.fetch(descriptor).first.map(Self.snapshot)
+        return try database.repositoryContext.fetch(descriptor).first.map(Self.snapshot)
     }
 
     func loadByID() throws -> [String: StoredDeveloper] {
-        let rows = try database.context.fetch(FetchDescriptor<DBDeveloper>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBDeveloper>())
         return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, Self.snapshot($0)) })
     }
 
@@ -46,7 +46,7 @@ final class DeveloperRepository {
         discordURL: String? = nil,
         save: Bool = true
     ) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let developerID = id
         let descriptor = FetchDescriptor<DBDeveloper>(
             predicate: #Predicate { $0.id == developerID }
@@ -71,7 +71,7 @@ final class DeveloperRepository {
         resolvedAt: Date? = nil,
         save: Bool = true
     ) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let developerID = id
         let descriptor = FetchDescriptor<DBDeveloper>(
             predicate: #Predicate { $0.id == developerID }
@@ -86,7 +86,7 @@ final class DeveloperRepository {
     }
 
     func invalidateAvatarCaches(save: Bool = true) throws {
-        let developers = try database.context.fetch(FetchDescriptor<DBDeveloper>())
+        let developers = try database.repositoryContext.fetch(FetchDescriptor<DBDeveloper>())
         for developer in developers {
             developer.avatarURL = nil
             developer.avatarSource = nil

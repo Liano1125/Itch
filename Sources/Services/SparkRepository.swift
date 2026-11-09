@@ -52,7 +52,7 @@ final class SparkRepository {
     }
 
     func loadByGameID() throws -> [String: StoredSparkMetadata] {
-        let rows = try database.context.fetch(FetchDescriptor<DBSparkMetadata>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBSparkMetadata>())
         return Dictionary(rows.map { ($0.gameID, StoredSparkMetadata($0)) }, uniquingKeysWith: { _, latest in latest })
     }
 
@@ -69,7 +69,7 @@ final class SparkRepository {
             }
         }
 
-        let context = database.context
+        let context = database.repositoryContext
         // Resolve every existing row before mutating the shared context so a
         // fetch failure cannot leave a partially applied batch.
         var existingByGameID: [String: DBSparkMetadata] = [:]

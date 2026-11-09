@@ -74,4 +74,21 @@ final class AppDatabaseTransactionTests: XCTestCase {
         XCTAssertFalse(database.context.hasChanges)
     }
 
+    @MainActor
+    func testRepositoryContextProvidesScopedPersistenceOperations() throws {
+        let database = try AppDatabase(inMemory: true)
+        let context = database.repositoryContext
+        let row = DBAppState(key: "repository.context", stringValue: "scoped")
+
+        context.insert(row)
+        XCTAssertTrue(context.hasChanges)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAppState>()), 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DBAppState>()).first?.stringValue, "scoped")
+
+        context.delete(row)
+        try database.save()
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAppState>()), 0)
+        XCTAssertFalse(context.hasChanges)
+    }
+
 }

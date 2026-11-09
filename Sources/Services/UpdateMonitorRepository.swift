@@ -22,7 +22,7 @@ final class UpdateMonitorRepository {
     /// Orphaned watch rows are ignored, not deleted, by this read.
     func loadWatches() throws -> [String: GameUpdateWatch] {
         let games = try gameRepository.loadByID()
-        let rows = try database.context.fetch(FetchDescriptor<DBUpdateWatch>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBUpdateWatch>())
         var result: [String: GameUpdateWatch] = [:]
 
         for row in rows {
@@ -56,7 +56,7 @@ final class UpdateMonitorRepository {
             desiredByID[watch.gameID] = watch
         }
 
-        let context = database.context
+        let context = database.repositoryContext
         let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
         var existingByID: [String: DBUpdateWatch] = [:]
         for row in existing {

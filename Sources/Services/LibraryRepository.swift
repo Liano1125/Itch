@@ -46,7 +46,7 @@ final class LibraryRepository {
     }
 
     func loadEntries() throws -> [StoredLibraryEntry] {
-        let rows = try database.context.fetch(FetchDescriptor<DBLibraryEntry>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBLibraryEntry>())
         try Self.validateUniqueGameIDs(rows.map(\.gameID))
         return rows.map { row in
             StoredLibraryEntry(gameID: row.gameID, status: row.status, isFavorite: row.isFavorite,
@@ -70,7 +70,7 @@ final class LibraryRepository {
     func upsertEntry(_ entry: StoredLibraryEntry, save: Bool = true) throws {
         let gameID = entry.gameID
         let descriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
-        let context = database.context
+        let context = database.repositoryContext
         let matches = try context.fetch(descriptor)
         guard matches.count <= 1 else { throw RepositoryError.duplicateLibraryEntry(gameID) }
         let row: DBLibraryEntry
@@ -89,7 +89,7 @@ final class LibraryRepository {
     }
 
     func collections() throws -> [PersonalGameCollection] {
-        let context = database.context
+        let context = database.repositoryContext
         let rows = try context.fetch(FetchDescriptor<DBLibraryCollection>())
         let membershipRows = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
         let membershipsByCollection = Dictionary(grouping: membershipRows, by: \.collectionID)
@@ -145,7 +145,7 @@ final class LibraryRepository {
             createdAt: now,
             updatedAt: now
         )
-        database.context.insert(DBLibraryCollection(
+        database.repositoryContext.insert(DBLibraryCollection(
             id: collection.id,
             title: collection.title,
             gameIDs: [],
@@ -161,7 +161,7 @@ final class LibraryRepository {
         let cleaned = collection.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { throw RepositoryError.emptyCollectionTitle }
 
-        let context = database.context
+        let context = database.repositoryContext
         let collectionID = collection.id
         let descriptor = FetchDescriptor<DBLibraryCollection>(
             predicate: #Predicate { $0.id == collectionID }
@@ -191,7 +191,7 @@ final class LibraryRepository {
     }
 
     func deleteCollection(id: String) throws {
-        let context = database.context
+        let context = database.repositoryContext
         let descriptor = FetchDescriptor<DBLibraryCollection>(
             predicate: #Predicate { $0.id == id }
         )
@@ -209,7 +209,7 @@ final class LibraryRepository {
 
     @discardableResult
     func toggleGame(_ gameID: String, in collectionID: String, now: Date = .now) throws -> PersonalGameCollection {
-        let context = database.context
+        let context = database.repositoryContext
         let descriptor = FetchDescriptor<DBLibraryCollection>(
             predicate: #Predicate { $0.id == collectionID }
         )
@@ -243,7 +243,7 @@ final class LibraryRepository {
     /// Removes only library-owned records and collection membership.
     /// Game metadata, update history, and calendar events intentionally survive.
     func removeGameFromLibrary(gameID: String) throws {
-        let context = database.context
+        let context = database.repositoryContext
 
         // Read and validate every affected relationship before mutating the
         // shared context. A malformed collection must not leave half-applied
@@ -309,7 +309,7 @@ final class LibraryRepository {
         let descriptor = FetchDescriptor<DBLibraryCollectionItem>(
             predicate: #Predicate { $0.collectionID == collectionID }
         )
-        let items = try database.context.fetch(descriptor).sorted {
+        let items = try database.repositoryContext.fetch(descriptor).sorted {
             if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
             return $0.id < $1.id
         }
@@ -337,7 +337,7 @@ final class LibraryRepository {
         let descriptor = FetchDescriptor<DBLibraryCollectionItem>(
             predicate: #Predicate { $0.collectionID == collectionID }
         )
-        let existing = try database.context.fetch(descriptor)
+        let existing = try database.repositoryContext.fetch(descriptor)
         guard Set(existing.map(\.gameID)).count == existing.count,
               existing.allSatisfy({
                   $0.id == DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: $0.gameID)
@@ -347,13 +347,13 @@ final class LibraryRepository {
         let existingByGameID = Dictionary(uniqueKeysWithValues: existing.map { ($0.gameID, $0) })
         let desiredIDs = Set(gameIDs)
         for item in existing where !desiredIDs.contains(item.gameID) {
-            database.context.delete(item)
+            database.repositoryContext.delete(item)
         }
         for (index, gameID) in gameIDs.enumerated() {
             if let item = existingByGameID[gameID] {
                 item.sortOrder = index
             } else {
-                database.context.insert(DBLibraryCollectionItem(
+                database.repositoryContext.insert(DBLibraryCollectionItem(
                     id: DBLibraryCollectionItem.stableID(collectionID: collectionID, gameID: gameID),
                     collectionID: collectionID,
                     gameID: gameID,

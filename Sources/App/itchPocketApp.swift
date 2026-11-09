@@ -27,8 +27,7 @@ struct itchPocketApp: App {
         WindowGroup {
             Group {
                 if let database {
-                    ContentView()
-                        .modelContainer(database.container)
+                    database.attachModelContainer(to: ContentView())
                         .environmentObject(authService)
                         .task {
                             await authService.restoreSession()

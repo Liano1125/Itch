@@ -31,7 +31,7 @@ final class AppStateRepository {
         let descriptor = FetchDescriptor<DBAppState>(
             predicate: #Predicate { $0.key == key }
         )
-        return try database.context.fetch(descriptor).first.map(StoredAppState.init)
+        return try database.repositoryContext.fetch(descriptor).first.map(StoredAppState.init)
     }
 
     func setString(_ value: String?, for key: String, clearOtherValues: Bool = false, save shouldSave: Bool = true) throws {
@@ -63,15 +63,15 @@ final class AppStateRepository {
         let descriptor = FetchDescriptor<DBAppState>(
             predicate: #Predicate { $0.key == key }
         )
-        let existing = try database.context.fetch(descriptor).first
+        let existing = try database.repositoryContext.fetch(descriptor).first
         guard let snapshot else {
-            if let existing { database.context.delete(existing) }
+            if let existing { database.repositoryContext.delete(existing) }
             if shouldSave { try database.save() }
             return
         }
 
         let row = existing ?? DBAppState(key: key)
-        if row.modelContext == nil { database.context.insert(row) }
+        if row.modelContext == nil { database.repositoryContext.insert(row) }
         row.stringValue = snapshot.stringValue
         row.dateValue = snapshot.dateValue
         row.dataValue = snapshot.dataValue
@@ -80,9 +80,9 @@ final class AppStateRepository {
     }
 
     func removeAll(matchingKeyPrefix prefix: String, save shouldSave: Bool = true) throws {
-        let rows = try database.context.fetch(FetchDescriptor<DBAppState>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBAppState>())
         for row in rows where row.key.hasPrefix(prefix) {
-            database.context.delete(row)
+            database.repositoryContext.delete(row)
         }
         if shouldSave { try database.save() }
     }
@@ -90,9 +90,9 @@ final class AppStateRepository {
     func removeAll(save shouldSave: Bool = true) throws {
         // Use tracked per-model deletions so save:false remains part of the
         // caller's ModelContext transaction instead of issuing a bulk delete.
-        let rows = try database.context.fetch(FetchDescriptor<DBAppState>())
+        let rows = try database.repositoryContext.fetch(FetchDescriptor<DBAppState>())
         for row in rows {
-            database.context.delete(row)
+            database.repositoryContext.delete(row)
         }
         if shouldSave { try database.save() }
     }
@@ -101,11 +101,11 @@ final class AppStateRepository {
         let descriptor = FetchDescriptor<DBAppState>(
             predicate: #Predicate { $0.key == key }
         )
-        if let existing = try database.context.fetch(descriptor).first {
+        if let existing = try database.repositoryContext.fetch(descriptor).first {
             return existing
         }
         let row = DBAppState(key: key)
-        database.context.insert(row)
+        database.repositoryContext.insert(row)
         return row
     }
 }
