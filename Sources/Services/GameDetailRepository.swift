@@ -74,28 +74,29 @@ final class GameDetailRepository {
         let row = existingRow ?? DBGameDetail(gameID: gameID)
         if existingRow == nil { database.repositoryContext.insert(row) }
         let original = DetailSnapshot(row)
-        row.descriptionText = GameDetailPersistencePolicy.resolvedValue(
-            existing: row.descriptionText,
-            incoming: update.description,
-            mode: .partial
-        )
-        if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
-            existing: Optional(row.galleryURLs),
-            incoming: update.galleryURLs,
-            mode: .partial
-        ) {
-            row.galleryURLs = galleryURLs
-        }
-        let existingTags = Self.decodeTags(row.discoveryTagsData)
-        if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
-            existing: existingTags,
-            incoming: update.discoveryTags,
-            mode: .partial
-        ) {
-            row.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
-        }
 
         do {
+            row.descriptionText = GameDetailPersistencePolicy.resolvedValue(
+                existing: row.descriptionText,
+                incoming: update.description,
+                mode: .partial
+            )
+            if let galleryURLs = GameDetailPersistencePolicy.resolvedValue(
+                existing: Optional(row.galleryURLs),
+                incoming: update.galleryURLs,
+                mode: .partial
+            ) {
+                row.galleryURLs = galleryURLs
+            }
+            let existingTags = Self.decodeTags(row.discoveryTagsData)
+            if let discoveryTags = GameDetailPersistencePolicy.resolvedValue(
+                existing: existingTags,
+                incoming: update.discoveryTags,
+                mode: .partial
+            ) {
+                row.discoveryTagsData = try JSONEncoder().encode(discoveryTags)
+            }
+
             if update.description != nil || update.galleryURLs != nil || update.discoveryTags != nil {
                 let existingStatus = try appStateRepository.state(for: statusKey)?.stringValue
                 if existingStatus == nil {
@@ -129,17 +130,18 @@ final class GameDetailRepository {
         let row = existingRow ?? DBGameDetail(gameID: gameID)
         if existingRow == nil { database.repositoryContext.insert(row) }
         let original = DetailSnapshot(row)
-        if snapshot.descriptionResolved { row.descriptionText = snapshot.description }
-        if snapshot.galleryResolved { row.galleryURLs = snapshot.galleryURLs }
-        if snapshot.tagsResolved {
-            row.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
-        }
-        if snapshot.isComplete {
-            row.fetchedAt = fetchedAt
-            row.isComplete = true
-        }
 
         do {
+            if snapshot.descriptionResolved { row.descriptionText = snapshot.description }
+            if snapshot.galleryResolved { row.galleryURLs = snapshot.galleryURLs }
+            if snapshot.tagsResolved {
+                row.discoveryTagsData = try JSONEncoder().encode(snapshot.discoveryTags)
+            }
+            if snapshot.isComplete {
+                row.fetchedAt = fetchedAt
+                row.isComplete = true
+            }
+
             if snapshot.isComplete {
                 try appStateRepository.setDate(fetchedAt, for: dateKey, clearOtherValues: true, save: false)
                 try appStateRepository.setString(GameDetailFetchStatus.complete.rawValue, for: statusKey, clearOtherValues: true, save: false)
