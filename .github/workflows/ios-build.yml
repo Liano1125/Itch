@@ -96,6 +96,7 @@ jobs:
             -scheme itchPocket \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -derivedDataPath "$RUNNER_TEMP/itchPocketTestDerivedData" \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
