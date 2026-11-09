@@ -52,7 +52,7 @@ final class DatabaseSchemaV2SnapshotTests: XCTestCase {
         }
 
         try autoreleasepool {
-                let snapshotSchema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+                let snapshotSchema = Schema(ItchPocketSchemaV2Snapshot.models)
             let readOnlyConfiguration = ModelConfiguration(
                 "itchPocket-v2",
                 schema: snapshotSchema,
