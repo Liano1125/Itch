@@ -11,6 +11,8 @@ final class V3MigrationInterruptionTests: XCTestCase {
     func testInterruptionAfterCopyKeepsV2AndRetryCompletesMigration() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -35,6 +37,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
         try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
         XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+        }
     }
 
     @MainActor
@@ -90,6 +93,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
         XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        }
     }
 
     @MainActor
@@ -119,6 +123,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
         try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
         XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+        }
     }
 
     @MainActor
@@ -151,6 +156,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
         XCTAssertEqual(restartedURL, finalStoreURL)
         XCTAssertEqual(try v3GameCount(at: restartedURL), 2)
         XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+        }
     }
 
     @MainActor
@@ -201,6 +207,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
             try Data(contentsOf: movedInvalidStore.appendingPathComponent(V3StoreBootstrap.storeFileName)),
             invalidV3Bytes
         )
+        }
     }
 
     @MainActor
