@@ -29,7 +29,7 @@ enum V3StoreBootstrap {
     static let storeFileName = "itchPocket-v3.store"
     private static let recoveryMarkerName = ".v2-detail-recovery-v1"
 
-    enum PreparationPhase {
+    enum PreparationPhase: Equatable {
         case sourceCopiedToStaging
         case stagingMigratedAndValidated
         case stagingPromoted
