@@ -15,6 +15,7 @@ on:
       - refactor/v3-normalized-persistence-cutover
       - fix/v3-detail-data-recovery
       - fix/v3-migration-integrity-hardening
+      - test/historical-v2-store-compatibility
   pull_request:
     branches:
       - main
@@ -35,6 +36,7 @@ on:
       - refactor/repository-context-capability
       - refactor/app-database-cleanup-transaction
       - refactor/freeze-v2-schema-snapshot
+      - fix/v3-migration-integrity-hardening
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
@@ -54,6 +56,8 @@ jobs:
       # 1. 获取仓库代码
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. 检查 Xcode 和 iOS SDK
       - name: Select Xcode
@@ -69,7 +73,87 @@ jobs:
           brew install xcodegen
           xcodegen --version
 
-      # 4. 生成 Xcode 项目
+      # 4. Generate a disk store using the original V2 source implementation.
+      # This source commit was never merged/released; this is not a released-IPA fixture.
+      - name: Generate historical V2 source fixture
+        run: |
+          set -euo pipefail
+          HISTORICAL_V2_SHA="594f33feca5efd578393955014bbc51150037071"
+          HISTORICAL_DIR="$RUNNER_TEMP/itchPocket-historical-v2"
+          git fetch --no-tags origin "$HISTORICAL_V2_SHA"
+          git worktree add --detach "$HISTORICAL_DIR" "$HISTORICAL_V2_SHA"
+          trap 'git worktree remove --force "$HISTORICAL_DIR" || true' EXIT
+
+          cp Scripts/HistoricalV2FixtureGenerationTests.swift \
+            "$HISTORICAL_DIR/Tests/HistoricalV2FixtureGenerationTests.swift"
+
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next((d["udid"] for group in data["devices"].values() for d in group if d.get("isAvailable") and d.get("name", "").startswith("iPhone")), ""))')"
+          if [ -z "$DEVICE_ID" ]; then
+            echo "::error::No available iPhone simulator found for historical V2 fixture generation"
+            xcrun simctl list devices available
+            exit 1
+          fi
+
+          (
+            cd "$HISTORICAL_DIR"
+            xcodegen generate
+
+            xcodebuild \
+                -project itchPocket.xcodeproj \
+                -scheme itchPocket \
+                -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+                -derivedDataPath "$RUNNER_TEMP/historicalV2DerivedData" \
+                -parallel-testing-enabled NO \
+                -only-testing:itchPocketTests/HistoricalV2FixtureGenerationTests/testGenerateHistoricalV2Fixture \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY="" \
+                test
+          )
+
+          APP_PATH="$(find "$RUNNER_TEMP/historicalV2DerivedData/Build/Products" -maxdepth 3 -type d -name 'itchPocket.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Historical V2 host app was not built"
+            find "$RUNNER_TEMP/historicalV2DerivedData/Build/Products" -maxdepth 4 -name '*.app' -print
+            exit 1
+          fi
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+
+          # XCTest may shut down its simulator after completing the selected test.
+          # Reboot the same device before querying its app data container.
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+          APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data)"
+          SIMULATOR_FIXTURE="$APP_DATA/Documents/HistoricalV2Store"
+          if [ ! -s "$SIMULATOR_FIXTURE/itchPocket-v2.store" ]; then
+            echo "::error::Historical V2 fixture was not found in the simulator app container"
+            find "$APP_DATA/Documents" -maxdepth 3 -print || true
+            exit 1
+          fi
+
+          # The XCTest bundle copies individual resources, not SQLite WAL/SHM
+          # sidecars. Checkpoint the historical store and switch it to DELETE
+          # journaling while the source app/container is no longer running.
+          sqlite3 "$SIMULATOR_FIXTURE/itchPocket-v2.store" 'PRAGMA wal_checkpoint(TRUNCATE);'
+          JOURNAL_MODE="$(sqlite3 "$SIMULATOR_FIXTURE/itchPocket-v2.store" 'PRAGMA journal_mode=DELETE;')"
+          QUICK_CHECK="$(sqlite3 "$SIMULATOR_FIXTURE/itchPocket-v2.store" 'PRAGMA quick_check;')"
+          if [ "$JOURNAL_MODE" != "delete" ] || [ "$QUICK_CHECK" != "ok" ]; then
+            echo "::error::Historical V2 fixture did not become a standalone healthy SQLite database"
+            echo "journal_mode=$JOURNAL_MODE"
+            echo "quick_check=$QUICK_CHECK"
+            exit 1
+          fi
+
+          mkdir -p Tests/Fixtures
+          rm -rf Tests/Fixtures/HistoricalV2Store
+          cp -R "$SIMULATOR_FIXTURE" Tests/Fixtures/HistoricalV2Store
+          sqlite3 Tests/Fixtures/HistoricalV2Store/itchPocket-v2.store 'PRAGMA quick_check;'
+          echo "Historical V2 fixture generated from $HISTORICAL_V2_SHA"
+          find Tests/Fixtures/HistoricalV2Store -maxdepth 1 -type f -print
+
+      # 5. 生成当前 Xcode 项目
       - name: Generate Xcode project
         run: |
           xcodegen generate
@@ -81,7 +165,7 @@ jobs:
             -list \
             -project itchPocket.xcodeproj
 
-      # 6. Run persistence regression tests on an available iPhone simulator
+      # 7. Run persistence regression tests, including the historical V2 fixture.
       - name: Run persistence regression tests
         run: |
           DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next((d["udid"] for group in data["devices"].values() for d in group if d.get("isAvailable") and d.get("name", "").startswith("iPhone")), ""))')"
