@@ -108,16 +108,14 @@ enum V3StoreBootstrap {
     }
 
     private static func copySQLiteStoreFamily(from source: URL, to destination: URL) throws {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: source.path) else {
+        guard FileManager.default.fileExists(atPath: source.path) else {
             throw BootstrapError.missingSource(source)
         }
-        for suffix in ["", "-wal", "-shm", "-journal"] {
-            let sourcePart = URL(fileURLWithPath: source.path + suffix)
-            guard fileManager.fileExists(atPath: sourcePart.path) else { continue }
-            let destinationPart = URL(fileURLWithPath: destination.path + suffix)
-            try fileManager.copyItem(at: sourcePart, to: destinationPart)
-        }
+
+        // SQLite's backup API takes a consistent read snapshot, including
+        // committed pages still resident in WAL. Copying the main/WAL/SHM
+        // files one by one can otherwise capture different database moments.
+        try SQLiteStoreSnapshotCopier.copy(from: source, to: destination)
     }
 
     /// Validate V2 invariants that can be checked before SwiftData starts the
