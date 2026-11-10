@@ -24,6 +24,7 @@ on:
       - fix/v3-interruption-test-safe-temp-cleanup
       - fix/v3-sqlite-consistent-snapshot-copy
       - fix/v3-snapshot-open-flags
+      - fix/v3-snapshot-normalize-journal-mode
       - test/v3-backfill-marker-interruption-recovery
   pull_request:
     branches:
