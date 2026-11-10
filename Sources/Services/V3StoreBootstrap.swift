@@ -452,6 +452,12 @@ enum V3StoreBootstrap {
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
+    /// Preserve the first occurrence of each legacy game ID while retaining its order.
+    private static func uniqueInOrder(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
     private static func hasText(_ value: String?) -> Bool {
         guard let value else { return false }
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
