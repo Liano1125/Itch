@@ -339,9 +339,16 @@ final class DatabaseV3MigrationTests: XCTestCase {
 
         try createV2Fixture(at: v2StoreURL, conflictingCollection: true)
         let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
-        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL))
+        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)) { error in
+            guard let migrationError = error as? ItchPocketMigrationPlan.MigrationError,
+                  case .collectionMembershipConflict("favorites") = migrationError else {
+                return XCTFail("Expected the V2 preflight to reject conflicting favorites membership, got \\(error)")
+            }
+        }
         XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: v3Directory.path))
+        let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
     }
 
