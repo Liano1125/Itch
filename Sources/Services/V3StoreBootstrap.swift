@@ -121,12 +121,19 @@ enum V3StoreBootstrap {
                 schema: schema,
                 url: storeURL
             )
-            let container = try ModelContainer(
+            var container: ModelContainer? = try ModelContainer(
                 for: schema,
                 migrationPlan: ItchPocketMigrationPlan.self,
                 configurations: [configuration]
             )
-            try validate(context: container.mainContext)
+
+            // Keep the migration context scoped so every SwiftData reference
+            // is released before the independent SQLite integrity check.
+            do {
+                let context = container!.mainContext
+                try validate(context: context)
+            }
+            container = nil
         }
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
