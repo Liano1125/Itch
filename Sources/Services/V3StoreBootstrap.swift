@@ -141,7 +141,7 @@ enum V3StoreBootstrap {
                 let items = try context.fetch(
                     FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>()
                 )
-                let itemsByCollection = Dictionary(grouping: items, by: \\.collectionID)
+                let itemsByCollection = Dictionary(grouping: items, by: \.collectionID)
 
                 for collection in collections {
                     let legacyIDs = uniqueInOrder(collection.gameIDs)
@@ -149,7 +149,7 @@ enum V3StoreBootstrap {
                         if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
                         return $0.id < $1.id
                     }
-                    let existingIDs = existing.map(\\.gameID)
+                    let existingIDs = existing.map(\.gameID)
 
                     guard Set(existingIDs).count == existingIDs.count else {
                         throw ItchPocketMigrationPlan.MigrationError.duplicateCollectionMember(collection.id)
