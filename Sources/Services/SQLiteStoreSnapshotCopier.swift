@@ -10,6 +10,7 @@ enum SQLiteStoreSnapshotCopier {
         case backupInitializationFailed(String)
         case backupFailed(String)
         case backupFinalizeFailed(String)
+        case journalModeNormalizationFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -23,6 +24,8 @@ enum SQLiteStoreSnapshotCopier {
                 return "SQLite snapshot failed: \(detail)"
             case .backupFinalizeFailed(let detail):
                 return "SQLite snapshot could not be finalized: \(detail)"
+            case .journalModeNormalizationFailed(let detail):
+                return "SQLite snapshot journal mode could not be normalized: \(detail)"
             }
         }
     }
@@ -45,7 +48,7 @@ enum SQLiteStoreSnapshotCopier {
         sqlite3_busy_timeout(source, 5_000)
 
         guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
-            throw CopyError.destinationOpenFailed("Destination already exists: \\(destinationURL.lastPathComponent)")
+            throw CopyError.destinationOpenFailed("Destination already exists: \(destinationURL.lastPathComponent)")
         }
 
         var destination: OpaquePointer?
@@ -87,6 +90,35 @@ enum SQLiteStoreSnapshotCopier {
         guard finishResult == SQLITE_OK else {
             throw CopyError.backupFinalizeFailed(
                 "SQLite error \(finishResult): \(String(cString: sqlite3_errmsg(destination)))"
+            )
+        }
+
+        // The online backup copies the source database header, including its
+        // WAL read/write mode bits. A standalone snapshot must not depend on
+        // the source's -wal/-shm sidecars, so normalize the destination to
+        // rollback-journal mode before handing it to SwiftData.
+        var journalModeStatement: OpaquePointer?
+        let prepareResult = sqlite3_prepare_v2(
+            destination,
+            "PRAGMA journal_mode=DELETE;",
+            -1,
+            &journalModeStatement,
+            nil
+        )
+        guard prepareResult == SQLITE_OK, let journalModeStatement else {
+            throw CopyError.journalModeNormalizationFailed(
+                "SQLite error \(prepareResult): \(String(cString: sqlite3_errmsg(destination)))"
+            )
+        }
+        defer { sqlite3_finalize(journalModeStatement) }
+
+        let modeStepResult = sqlite3_step(journalModeStatement)
+        let journalMode = modeStepResult == SQLITE_ROW
+            ? sqlite3_column_text(journalModeStatement, 0).map { String(cString: $0) }
+            : nil
+        guard modeStepResult == SQLITE_ROW, journalMode?.lowercased() == "delete" else {
+            throw CopyError.journalModeNormalizationFailed(
+                "SQLite error \(modeStepResult), returned mode: \(journalMode ?? "nil")"
             )
         }
     }
