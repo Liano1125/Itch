@@ -22,6 +22,7 @@ on:
       - fix/v3-migration-preflight-keypath-syntax
       - fix/v3-preflight-ordered-dedup-helper
       - fix/v3-interruption-test-safe-temp-cleanup
+      - test/v3-backfill-marker-interruption-recovery
   pull_request:
     branches:
       - main
@@ -48,6 +49,7 @@ on:
       - audit/v3-startup-recovery-hardening
       - fix/v3-migration-conflict-preflight-v2
       - fix/v3-preflight-ordered-dedup-helper
+      - fix/v3-interruption-test-safe-temp-cleanup
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
