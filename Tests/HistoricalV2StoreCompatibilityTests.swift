@@ -12,11 +12,23 @@ final class HistoricalV2StoreCompatibilityTests: XCTestCase {
             Bundle(for: Self.self).resourceURL,
             "The test bundle must expose its copied resources."
         )
-        let bundledFixtureDirectory = resourcesURL
-            .appendingPathComponent("Fixtures", isDirectory: true)
-            .appendingPathComponent("HistoricalV2Store", isDirectory: true)
-        let bundledStoreURL = bundledFixtureDirectory.appendingPathComponent("itchPocket-v2.store")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: bundledStoreURL.path))
+        // XcodeGen/Xcode may flatten directory resources into the test bundle
+        // rather than preserving the source folder hierarchy. Locate the store
+        // by its stable filename and copy its containing directory as a unit.
+        let fileManager = FileManager.default
+        let resourceEnumerator = fileManager.enumerator(
+            at: resourcesURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        let bundledStoreURL = try XCTUnwrap(
+            resourceEnumerator?.compactMap { $0 as? URL }.first {
+                $0.lastPathComponent == "itchPocket-v2.store"
+            },
+            "The historical V2 store must be present in the XCTest resource bundle."
+        )
+        let bundledFixtureDirectory = bundledStoreURL.deletingLastPathComponent()
+        XCTAssertTrue(fileManager.fileExists(atPath: bundledStoreURL.path))
 
         // Bundle resources are read-only. Work on a private copy so SwiftData can
         // open the V2 store and V3StoreBootstrap can create its sibling V3 store.
