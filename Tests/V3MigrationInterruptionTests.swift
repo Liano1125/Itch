@@ -179,10 +179,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: recoveredURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
         XCTAssertEqual(try Data(contentsOf: quarantineMarker), Data("prior quarantine".utf8))
-        XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
-        XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+
+        // Check both stores immediately after recovery, before reopening either
+        // through SwiftData for logical assertions. This keeps SQLite's raw
+        // integrity connection isolated from any persistent-store lifecycle.
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
         try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
+
+        XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+        XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
 
         let quarantinedDirectories = try FileManager.default.contentsOfDirectory(
             at: root,
