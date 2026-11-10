@@ -41,6 +41,7 @@ on:
       - fix/v3-migration-integrity-hardening
       - test/historical-v2-store-compatibility
       - test/v3-migration-failure-recovery
+      - audit/v3-startup-recovery-hardening
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
