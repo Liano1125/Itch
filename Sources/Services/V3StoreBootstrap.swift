@@ -139,6 +139,12 @@ enum V3StoreBootstrap {
     }
 
     private static func validateV3Store(at storeURL: URL) throws {
+        // Reject non-SQLite or structurally corrupt files before SwiftData /
+        // CoreData attempts to attach a persistent store. A failed CoreData
+        // open can leave SQLite sidecar descriptors alive while recovery
+        // quarantines (moves) the invalid directory.
+        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
             let configuration = ModelConfiguration(
@@ -146,10 +152,12 @@ enum V3StoreBootstrap {
                 schema: schema,
                 url: storeURL
             )
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            try validate(context: container.mainContext)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                try validate(context: container!.mainContext)
+            }
+            container = nil
         }
-        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
     private struct V2BackfillSnapshot {
