@@ -52,8 +52,6 @@ enum V3StoreBootstrap {
                     throw BootstrapError.incompleteDestination(finalStoreURL)
                 }
                 try validateV3Store(at: finalStoreURL)
-                try? recoverMissingDataFromV2Backup(v2StoreURL: v2StoreURL, v3StoreURL: finalStoreURL, directory: finalDirectory)
-                return finalStoreURL
             } catch {
                 guard recoverInvalidExistingV3 else { throw error }
                 let quarantine = parent.appendingPathComponent(
@@ -61,6 +59,19 @@ enum V3StoreBootstrap {
                     isDirectory: true
                 )
                 try fileManager.moveItem(at: finalDirectory, to: quarantine)
+            }
+
+            // A valid V3 store must never be quarantined merely because its
+            // optional V2-backup backfill failed. However, do not silently
+            // report startup success either: surface the error so the caller
+            // can diagnose/restore the backup and retry on the next launch.
+            if fileManager.fileExists(atPath: finalStoreURL.path) {
+                try recoverMissingDataFromV2Backup(
+                    v2StoreURL: v2StoreURL,
+                    v3StoreURL: finalStoreURL,
+                    directory: finalDirectory
+                )
+                return finalStoreURL
             }
         }
 
