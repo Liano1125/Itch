@@ -20,6 +20,7 @@ on:
       - audit/v3-startup-recovery-hardening
       - fix/v3-migration-conflict-preflight-v2
       - fix/v3-migration-preflight-keypath-syntax
+      - fix/v3-preflight-ordered-dedup-helper
   pull_request:
     branches:
       - main
