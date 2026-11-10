@@ -119,6 +119,12 @@ jobs:
           fi
 
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+
+          # XCTest may shut down its simulator after completing the selected test.
+          # Reboot the same device before querying its app data container.
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
           APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data)"
           SIMULATOR_FIXTURE="$APP_DATA/Documents/HistoricalV2Store"
           if [ ! -s "$SIMULATOR_FIXTURE/itchPocket-v2.store" ]; then
