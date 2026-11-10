@@ -59,7 +59,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
 
         for iteration in 0..<12 {
             let recoveredURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
-            XCTAssertEqual(recoveredURL, v3StoreURL, "Unexpected V3 URL on iteration \\(iteration)")
+            XCTAssertEqual(recoveredURL, v3StoreURL, "Unexpected V3 URL on iteration \(iteration)")
             XCTAssertTrue(FileManager.default.fileExists(atPath: recoveryMarkerURL.path))
             XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
             XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
@@ -69,7 +69,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
             let detailCount = try autoreleasepool {
                 let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
                 let configuration = ModelConfiguration(
-                    "itchPocket-v3-stress-verify-\\(UUID().uuidString)",
+                    "itchPocket-v3-stress-verify-\(UUID().uuidString)",
                     schema: schema,
                     url: recoveredURL,
                     allowsSave: false
@@ -79,7 +79,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
                 container = nil
                 return count
             }
-            XCTAssertEqual(detailCount, 1, "Backfill duplicated detail rows on iteration \\(iteration)")
+            XCTAssertEqual(detailCount, 1, "Backfill duplicated detail rows on iteration \(iteration)")
 
             if iteration < 11 {
                 try FileManager.default.removeItem(at: recoveryMarkerURL)
