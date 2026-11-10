@@ -270,98 +270,107 @@ enum V3StoreBootstrap {
                 schema: schema,
                 url: storeURL
             )
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let context = container.mainContext
-            let currentGames = try context.fetch(FetchDescriptor<DBGame>())
-            let currentGamesByID = Dictionary(
-                currentGames.map { ($0.id, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let currentDetails = try context.fetch(FetchDescriptor<DBGameDetail>())
-            var currentDetailsByID = Dictionary(
-                currentDetails.map { ($0.gameID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let currentDevelopers = try context.fetch(FetchDescriptor<DBDeveloper>())
-            let currentDevelopersByID = Dictionary(
-                currentDevelopers.map { ($0.id, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
 
-            var changed = false
-            for oldGame in snapshot.games {
-                guard let game = currentGamesByID[oldGame.id] else { continue }
+            // Keep every ModelContext and PersistentModel local inside this
+            // scope. Release those references before releasing the container,
+            // so no SwiftData reader/writer can outlive the backfill operation.
+            do {
+                let context = container!.mainContext
+                let currentGames = try context.fetch(FetchDescriptor<DBGame>())
+                let currentGamesByID = Dictionary(
+                    currentGames.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                let currentDetails = try context.fetch(FetchDescriptor<DBGameDetail>())
+                var currentDetailsByID = Dictionary(
+                    currentDetails.map { ($0.gameID, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                let currentDevelopers = try context.fetch(FetchDescriptor<DBDeveloper>())
+                let currentDevelopersByID = Dictionary(
+                    currentDevelopers.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
 
-                if !hasText(game.gameURL), hasText(oldGame.gameURL) {
-                    game.gameURL = oldGame.gameURL
-                    changed = true
-                }
-                if game.developerID == nil, let oldDeveloperID = oldGame.developerID {
-                    game.developerID = oldDeveloperID
-                    changed = true
+                var changed = false
+                for oldGame in snapshot.games {
+                    guard let game = currentGamesByID[oldGame.id] else { continue }
+
+                    if !hasText(game.gameURL), hasText(oldGame.gameURL) {
+                        game.gameURL = oldGame.gameURL
+                        changed = true
+                    }
+                    if game.developerID == nil, let oldDeveloperID = oldGame.developerID {
+                        game.developerID = oldDeveloperID
+                        changed = true
+                    }
+
+                    let oldDetail = snapshot.detailsByGameID[oldGame.id]
+                    let sourceDescription = hasText(oldGame.descriptionText)
+                        ? oldGame.descriptionText
+                        : oldDetail?.descriptionText
+                    let sourceGallery = !oldGame.galleryURLs.isEmpty
+                        ? oldGame.galleryURLs
+                        : (oldDetail?.galleryURLs ?? [])
+                    let sourceTags = oldGame.discoveryTagsData ?? oldDetail?.discoveryTagsData
+                    var detail = currentDetailsByID[oldGame.id]
+                    if detail == nil,
+                       hasText(sourceDescription) || !sourceGallery.isEmpty || sourceTags != nil {
+                        let inserted = DBGameDetail(gameID: oldGame.id)
+                        context.insert(inserted)
+                        currentDetailsByID[oldGame.id] = inserted
+                        detail = inserted
+                        changed = true
+                    }
+                    if let detail {
+                        if !hasText(detail.descriptionText), hasText(sourceDescription) {
+                            detail.descriptionText = sourceDescription
+                            changed = true
+                        }
+                        if detail.galleryURLs.isEmpty, !sourceGallery.isEmpty {
+                            detail.galleryURLs = sourceGallery
+                            changed = true
+                        }
+                        if detail.discoveryTagsData == nil, let sourceTags {
+                            detail.discoveryTagsData = sourceTags
+                            changed = true
+                        }
+                    }
+
+                    if let developerID = game.developerID,
+                       let oldDeveloper = snapshot.developersByID[developerID],
+                       let developer = currentDevelopersByID[developerID] {
+                        if !hasText(developer.profileURL), hasText(oldDeveloper.profileURL) {
+                            developer.profileURL = oldDeveloper.profileURL
+                            changed = true
+                        }
+                        if !hasText(developer.patreonURL), hasText(oldDeveloper.patreonURL) {
+                            developer.patreonURL = oldDeveloper.patreonURL
+                            changed = true
+                        }
+                        if !hasText(developer.discordURL), hasText(oldDeveloper.discordURL) {
+                            developer.discordURL = oldDeveloper.discordURL
+                            changed = true
+                        }
+                        if !hasText(developer.avatarURL), hasText(oldDeveloper.avatarURL) {
+                            developer.avatarURL = oldDeveloper.avatarURL
+                            developer.avatarSource = oldDeveloper.avatarSource
+                            developer.avatarResolvedAt = oldDeveloper.avatarResolvedAt
+                            changed = true
+                        }
+                    }
                 }
 
-                let oldDetail = snapshot.detailsByGameID[oldGame.id]
-                let sourceDescription = hasText(oldGame.descriptionText)
-                    ? oldGame.descriptionText
-                    : oldDetail?.descriptionText
-                let sourceGallery = !oldGame.galleryURLs.isEmpty
-                    ? oldGame.galleryURLs
-                    : (oldDetail?.galleryURLs ?? [])
-                let sourceTags = oldGame.discoveryTagsData ?? oldDetail?.discoveryTagsData
-                var detail = currentDetailsByID[oldGame.id]
-                if detail == nil,
-                   hasText(sourceDescription) || !sourceGallery.isEmpty || sourceTags != nil {
-                    let inserted = DBGameDetail(gameID: oldGame.id)
-                    context.insert(inserted)
-                    currentDetailsByID[oldGame.id] = inserted
-                    detail = inserted
-                    changed = true
-                }
-                if let detail {
-                    if !hasText(detail.descriptionText), hasText(sourceDescription) {
-                        detail.descriptionText = sourceDescription
-                        changed = true
-                    }
-                    if detail.galleryURLs.isEmpty, !sourceGallery.isEmpty {
-                        detail.galleryURLs = sourceGallery
-                        changed = true
-                    }
-                    if detail.discoveryTagsData == nil, let sourceTags {
-                        detail.discoveryTagsData = sourceTags
-                        changed = true
-                    }
-                }
-
-                if let developerID = game.developerID,
-                   let oldDeveloper = snapshot.developersByID[developerID],
-                   let developer = currentDevelopersByID[developerID] {
-                    if !hasText(developer.profileURL), hasText(oldDeveloper.profileURL) {
-                        developer.profileURL = oldDeveloper.profileURL
-                        changed = true
-                    }
-                    if !hasText(developer.patreonURL), hasText(oldDeveloper.patreonURL) {
-                        developer.patreonURL = oldDeveloper.patreonURL
-                        changed = true
-                    }
-                    if !hasText(developer.discordURL), hasText(oldDeveloper.discordURL) {
-                        developer.discordURL = oldDeveloper.discordURL
-                        changed = true
-                    }
-                    if !hasText(developer.avatarURL), hasText(oldDeveloper.avatarURL) {
-                        developer.avatarURL = oldDeveloper.avatarURL
-                        developer.avatarSource = oldDeveloper.avatarSource
-                        developer.avatarResolvedAt = oldDeveloper.avatarResolvedAt
-                        changed = true
-                    }
-                }
+                if changed { try context.save() }
+                try validate(context: context)
             }
 
-            if changed { try context.save() }
-            try validate(context: context)
+            // The context and all fetched persistent models have left scope.
+            container = nil
         }
 
-        // The V3 ModelContainer is now out of scope before SQLite opens a
+        // The V3 ModelContainer is fully released before SQLite opens a
         // separate read-only connection for the post-backfill integrity check.
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
