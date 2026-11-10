@@ -29,7 +29,17 @@ enum V3StoreBootstrap {
     static let storeFileName = "itchPocket-v3.store"
     private static let recoveryMarkerName = ".v2-detail-recovery-v1"
 
-    static func prepareStore(v2StoreURL: URL, recoverInvalidExistingV3: Bool = false) throws -> URL {
+    enum PreparationPhase: Equatable {
+        case sourceCopiedToStaging
+        case stagingMigratedAndValidated
+        case stagingPromoted
+    }
+
+    static func prepareStore(
+        v2StoreURL: URL,
+        recoverInvalidExistingV3: Bool = false,
+        afterPhase: ((PreparationPhase) throws -> Void)? = nil
+    ) throws -> URL {
         let fileManager = FileManager.default
         let parent = v2StoreURL.deletingLastPathComponent().deletingLastPathComponent()
         let finalDirectory = parent.appendingPathComponent(directoryName, isDirectory: true)
@@ -66,8 +76,11 @@ enum V3StoreBootstrap {
 
         do {
             try copySQLiteStoreFamily(from: v2StoreURL, to: stagingStoreURL)
+            try afterPhase?(.sourceCopiedToStaging)
             try migrateAndValidate(at: stagingStoreURL)
+            try afterPhase?(.stagingMigratedAndValidated)
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
+            try afterPhase?(.stagingPromoted)
             try recoverMissingDataFromV2Backup(v2StoreURL: v2StoreURL, v3StoreURL: finalStoreURL, directory: finalDirectory)
             return finalStoreURL
         } catch {
