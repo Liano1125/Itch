@@ -53,7 +53,7 @@ enum SQLiteStoreIntegrityChecker {
             let stepResult = sqlite3_step(statement)
             if stepResult == SQLITE_DONE { break }
             guard stepResult == SQLITE_ROW else {
-                throw CheckError.queryFailed(String(cString: sqlite3_errmsg(database)))
+                throw CheckError.queryFailed("SQLite error \(sqlite3_extended_errcode(database)): \(String(cString: sqlite3_errmsg(database)))")
             }
             if let value = sqlite3_column_text(statement, 0) {
                 rows.append(String(cString: value))
