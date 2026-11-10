@@ -44,11 +44,15 @@ enum SQLiteStoreSnapshotCopier {
         sqlite3_extended_result_codes(source, 1)
         sqlite3_busy_timeout(source, 5_000)
 
+        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+            throw CopyError.destinationOpenFailed("Destination already exists: \\(destinationURL.lastPathComponent)")
+        }
+
         var destination: OpaquePointer?
         let destinationResult = sqlite3_open_v2(
             destinationURL.path,
             &destination,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXCLUSIVE | SQLITE_OPEN_FULLMUTEX,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
             nil
         )
         guard destinationResult == SQLITE_OK, let destination else {
