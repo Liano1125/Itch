@@ -19,6 +19,7 @@ on:
       - test/v3-migration-failure-recovery
       - audit/v3-startup-recovery-hardening
       - fix/v3-migration-conflict-preflight-v2
+      - fix/v3-migration-preflight-keypath-syntax
   pull_request:
     branches:
       - main
