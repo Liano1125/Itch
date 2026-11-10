@@ -33,6 +33,7 @@ enum V3StoreBootstrap {
         case sourceCopiedToStaging
         case stagingMigratedAndValidated
         case stagingPromoted
+        case backfillApplied
     }
 
     static func prepareStore(
@@ -69,7 +70,8 @@ enum V3StoreBootstrap {
                 try recoverMissingDataFromV2Backup(
                     v2StoreURL: v2StoreURL,
                     v3StoreURL: finalStoreURL,
-                    directory: finalDirectory
+                    directory: finalDirectory,
+                    afterPhase: afterPhase
                 )
                 return finalStoreURL
             }
@@ -92,7 +94,12 @@ enum V3StoreBootstrap {
             try afterPhase?(.stagingMigratedAndValidated)
             try fileManager.moveItem(at: stagingDirectory, to: finalDirectory)
             try afterPhase?(.stagingPromoted)
-            try recoverMissingDataFromV2Backup(v2StoreURL: v2StoreURL, v3StoreURL: finalStoreURL, directory: finalDirectory)
+            try recoverMissingDataFromV2Backup(
+                v2StoreURL: v2StoreURL,
+                v3StoreURL: finalStoreURL,
+                directory: finalDirectory,
+                afterPhase: afterPhase
+            )
             return finalStoreURL
         } catch {
             try? fileManager.removeItem(at: stagingDirectory)
@@ -261,7 +268,8 @@ enum V3StoreBootstrap {
     private static func recoverMissingDataFromV2Backup(
         v2StoreURL: URL,
         v3StoreURL: URL,
-        directory: URL
+        directory: URL,
+        afterPhase: ((PreparationPhase) throws -> Void)? = nil
     ) throws {
         let fileManager = FileManager.default
         let markerURL = directory.appendingPathComponent(recoveryMarkerName)
@@ -270,6 +278,7 @@ enum V3StoreBootstrap {
 
         let snapshot = try readV2BackfillSnapshot(at: v2StoreURL)
         try applyBackfill(snapshot, to: v3StoreURL)
+        try afterPhase?(.backfillApplied)
 
         // Write the marker only after the V3 store has been saved and validated.
         try Data("completed".utf8).write(to: markerURL, options: .atomic)
