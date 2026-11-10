@@ -113,7 +113,69 @@ enum V3StoreBootstrap {
         }
     }
 
+    /// Validate V2 invariants that can be checked before SwiftData starts the
+    /// destructive schema transition on the disposable staging copy. In
+    /// particular, reject ambiguous collection membership while the store is
+    /// still opened with its frozen V2 schema. A failed V3 migration can leave
+    /// CoreData/SQLite descriptors attached to the staging files, so detecting
+    /// this deterministic conflict first avoids quarantining live sidecars.
+    private static func validateV2MigrationInputs(at storeURL: URL) throws {
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration(
+                "itchPocket-v2-migration-preflight",
+                schema: schema,
+                url: storeURL,
+                allowsSave: false
+            )
+            var container: ModelContainer? = try ModelContainer(
+                for: schema,
+                configurations: [configuration]
+            )
+
+            do {
+                let context = container!.mainContext
+                let collections = try context.fetch(
+                    FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()
+                )
+                let items = try context.fetch(
+                    FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>()
+                )
+                let itemsByCollection = Dictionary(grouping: items, by: \\.collectionID)
+
+                for collection in collections {
+                    let legacyIDs = uniqueInOrder(collection.gameIDs)
+                    let existing = (itemsByCollection[collection.id] ?? []).sorted {
+                        if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                        return $0.id < $1.id
+                    }
+                    let existingIDs = existing.map(\\.gameID)
+
+                    guard Set(existingIDs).count == existingIDs.count else {
+                        throw ItchPocketMigrationPlan.MigrationError.duplicateCollectionMember(collection.id)
+                    }
+                    guard existing.allSatisfy({
+                        $0.id == ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem.stableID(
+                            collectionID: collection.id,
+                            gameID: $0.gameID
+                        )
+                    }) else {
+                        throw ItchPocketMigrationPlan.MigrationError.collectionMembershipConflict(collection.id)
+                    }
+                    if !existing.isEmpty, existingIDs != legacyIDs {
+                        throw ItchPocketMigrationPlan.MigrationError.collectionMembershipConflict(collection.id)
+                    }
+                }
+            }
+
+            // Release all persistent models and the V2 container before the
+            // migration plan attempts to open the same staging store as V3.
+            container = nil
+        }
+    }
+
     private static func migrateAndValidate(at storeURL: URL) throws {
+        try validateV2MigrationInputs(at: storeURL)
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
             let configuration = ModelConfiguration(
