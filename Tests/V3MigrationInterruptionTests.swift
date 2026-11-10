@@ -10,8 +10,11 @@ final class V3MigrationInterruptionTests: XCTestCase {
     @MainActor
     func testInterruptionAfterCopyKeepsV2AndRetryCompletesMigration() throws {
         let root = try makeRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        // Keep this fixture directory until the simulator process exits. The
+        // retry path can leave CoreData/SQLite file descriptors alive briefly
+        // after SwiftData containers are released; unlinking the store family
+        // during XCTest teardown triggers SQLite's vnode-unlinked diagnostic.
+        // The CI simulator is ephemeral, so its sandbox reclaims this directory.
         try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
