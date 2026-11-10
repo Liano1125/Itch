@@ -44,6 +44,8 @@ final class V3MigrationInterruptionTests: XCTestCase {
     func testRepeatedInterruptedMigrationAndBackfillRecoveryIsStableAndIdempotent() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
         let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
@@ -100,6 +102,8 @@ final class V3MigrationInterruptionTests: XCTestCase {
     func testInterruptionAfterStagingValidationKeepsV2AndRetryCompletesMigration() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -130,6 +134,8 @@ final class V3MigrationInterruptionTests: XCTestCase {
     func testInterruptionImmediatelyAfterPromotionReusesValidatedV3OnRestart() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -163,6 +169,8 @@ final class V3MigrationInterruptionTests: XCTestCase {
     func testExplicitRecoveryQuarantinesInvalidV3AndIgnoresStaleStagingAndQuarantine() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
