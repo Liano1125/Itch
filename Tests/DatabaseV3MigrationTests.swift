@@ -243,17 +243,23 @@ final class DatabaseV3MigrationTests: XCTestCase {
 
         _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
 
-        let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
-        let configuration = ModelConfiguration("itchPocket-v3-backfill-verify", schema: schema, url: v3StoreURL)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        let context = container.mainContext
-        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first { $0.gameID == "game-a" })
-        XCTAssertEqual(detail.descriptionText, "Legacy description")
-        XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/a.png"])
-        XCTAssertEqual(detail.discoveryTagsData, Data("[]".utf8))
+        // Keep the verification container strictly inside this scope. The
+        // SQLite integrity check and deferred temporary-directory cleanup must
+        // run only after SwiftData has released every V3 store handle.
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-backfill-verify", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let detail = try XCTUnwrap(context.fetch(FetchDescriptor<DBGameDetail>()).first { $0.gameID == "game-a" })
+            XCTAssertEqual(detail.descriptionText, "Legacy description")
+            XCTAssertEqual(detail.galleryURLs, ["https://cdn.example/a.png"])
+            XCTAssertEqual(detail.discoveryTagsData, Data("[]".utf8))
+        }
 
-        // Recovery must not modify or replace the V2 source.
+        // Both stores are checked only after all SwiftData containers close.
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
     }
 

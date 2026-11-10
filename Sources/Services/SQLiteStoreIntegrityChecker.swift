@@ -33,11 +33,18 @@ enum SQLiteStoreIntegrityChecker {
         }
         defer { sqlite3_close_v2(database) }
 
+        // SwiftData may be finishing a short-lived store transaction while
+        // the independent read-only integrity connection starts. Let SQLite
+        // resolve transient BUSY contention natively instead of failing
+        // immediately; this is a bounded busy handler, not an application retry.
+        sqlite3_extended_result_codes(database, 1)
+        sqlite3_busy_timeout(database, 5_000)
+
         var statement: OpaquePointer?
         let sql = "PRAGMA quick_check;"
         let prepareResult = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
         guard prepareResult == SQLITE_OK, let statement else {
-            throw CheckError.queryFailed(String(cString: sqlite3_errmsg(database)))
+            throw CheckError.queryFailed("SQLite error \(sqlite3_extended_errcode(database)): \(String(cString: sqlite3_errmsg(database)))")
         }
         defer { sqlite3_finalize(statement) }
 
@@ -46,7 +53,7 @@ enum SQLiteStoreIntegrityChecker {
             let stepResult = sqlite3_step(statement)
             if stepResult == SQLITE_DONE { break }
             guard stepResult == SQLITE_ROW else {
-                throw CheckError.queryFailed(String(cString: sqlite3_errmsg(database)))
+                throw CheckError.queryFailed("SQLite error \(sqlite3_extended_errcode(database)): \(String(cString: sqlite3_errmsg(database)))")
             }
             if let value = sqlite3_column_text(statement, 0) {
                 rows.append(String(cString: value))

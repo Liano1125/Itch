@@ -52,8 +52,6 @@ enum V3StoreBootstrap {
                     throw BootstrapError.incompleteDestination(finalStoreURL)
                 }
                 try validateV3Store(at: finalStoreURL)
-                try? recoverMissingDataFromV2Backup(v2StoreURL: v2StoreURL, v3StoreURL: finalStoreURL, directory: finalDirectory)
-                return finalStoreURL
             } catch {
                 guard recoverInvalidExistingV3 else { throw error }
                 let quarantine = parent.appendingPathComponent(
@@ -61,6 +59,19 @@ enum V3StoreBootstrap {
                     isDirectory: true
                 )
                 try fileManager.moveItem(at: finalDirectory, to: quarantine)
+            }
+
+            // A valid V3 store must never be quarantined merely because its
+            // optional V2-backup backfill failed. However, do not silently
+            // report startup success either: surface the error so the caller
+            // can diagnose/restore the backup and retry on the next launch.
+            if fileManager.fileExists(atPath: finalStoreURL.path) {
+                try recoverMissingDataFromV2Backup(
+                    v2StoreURL: v2StoreURL,
+                    v3StoreURL: finalStoreURL,
+                    directory: finalDirectory
+                )
+                return finalStoreURL
             }
         }
 
@@ -110,17 +121,30 @@ enum V3StoreBootstrap {
                 schema: schema,
                 url: storeURL
             )
-            let container = try ModelContainer(
+            var container: ModelContainer? = try ModelContainer(
                 for: schema,
                 migrationPlan: ItchPocketMigrationPlan.self,
                 configurations: [configuration]
             )
-            try validate(context: container.mainContext)
+
+            // Keep the migration context scoped so every SwiftData reference
+            // is released before the independent SQLite integrity check.
+            do {
+                let context = container!.mainContext
+                try validate(context: context)
+            }
+            container = nil
         }
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
     private static func validateV3Store(at storeURL: URL) throws {
+        // Reject non-SQLite or structurally corrupt files before SwiftData /
+        // CoreData attempts to attach a persistent store. A failed CoreData
+        // open can leave SQLite sidecar descriptors alive while recovery
+        // quarantines (moves) the invalid directory.
+        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
             let configuration = ModelConfiguration(
@@ -128,15 +152,50 @@ enum V3StoreBootstrap {
                 schema: schema,
                 url: storeURL
             )
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            try validate(context: container.mainContext)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                try validate(context: container!.mainContext)
+            }
+            container = nil
         }
-        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+    }
+
+    private struct V2BackfillSnapshot {
+        struct Game {
+            let id: String
+            let gameURL: String?
+            let developerID: String?
+            let descriptionText: String?
+            let galleryURLs: [String]
+            let discoveryTagsData: Data?
+        }
+
+        struct Detail {
+            let gameID: String
+            let descriptionText: String?
+            let galleryURLs: [String]
+            let discoveryTagsData: Data?
+        }
+
+        struct Developer {
+            let id: String
+            let profileURL: String?
+            let patreonURL: String?
+            let discordURL: String?
+            let avatarURL: String?
+            let avatarSource: String?
+            let avatarResolvedAt: Date?
+        }
+
+        let games: [Game]
+        let detailsByGameID: [String: Detail]
+        let developersByID: [String: Developer]
     }
 
     /// One-time, non-destructive backfill for V3 installs whose detail rows
-    /// were incomplete after cutover. V2 is opened read-only and retained as
-    /// the recovery source; only missing V3 values are filled.
+    /// were incomplete after cutover. Read V2 into value-only snapshots first,
+    /// close that store, and only then open V3 for writes. Never keep two
+    /// SwiftData containers alive while checking or mutating either store.
     private static func recoverMissingDataFromV2Backup(
         v2StoreURL: URL,
         v3StoreURL: URL,
@@ -147,104 +206,188 @@ enum V3StoreBootstrap {
         guard !fileManager.fileExists(atPath: markerURL.path),
               fileManager.fileExists(atPath: v2StoreURL.path) else { return }
 
-        try autoreleasepool {
-            let v2Schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
-            let v2Configuration = ModelConfiguration(
-                "itchPocket-v2-recovery-readonly",
-                schema: v2Schema,
-                url: v2StoreURL,
-                allowsSave: false
-            )
-            let v2Container = try ModelContainer(for: v2Schema, configurations: [v2Configuration])
-            let v2Context = v2Container.mainContext
-            let oldGames = try v2Context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
-            let oldDetails = try v2Context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>())
-            let oldDetailsByID = Dictionary(oldDetails.map { ($0.gameID, $0) }, uniquingKeysWith: { first, _ in first })
-            let oldDevelopers = try v2Context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>())
-            let oldDevelopersByID = Dictionary(oldDevelopers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-
-            let v3Schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
-            let v3Configuration = ModelConfiguration("itchPocket-v3-recovery", schema: v3Schema, url: v3StoreURL)
-            let v3Container = try ModelContainer(for: v3Schema, configurations: [v3Configuration])
-            let v3Context = v3Container.mainContext
-            let currentGames = try v3Context.fetch(FetchDescriptor<DBGame>())
-            let currentGamesByID = Dictionary(currentGames.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            let currentDetails = try v3Context.fetch(FetchDescriptor<DBGameDetail>())
-            var currentDetailsByID = Dictionary(currentDetails.map { ($0.gameID, $0) }, uniquingKeysWith: { first, _ in first })
-            let currentDevelopers = try v3Context.fetch(FetchDescriptor<DBDeveloper>())
-            let currentDevelopersByID = Dictionary(currentDevelopers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-
-            var changed = false
-            for oldGame in oldGames {
-                guard let game = currentGamesByID[oldGame.id] else { continue }
-
-                if !hasText(game.gameURL), hasText(oldGame.gameURL) {
-                    game.gameURL = oldGame.gameURL
-                    changed = true
-                }
-                if game.developerID == nil, let oldDeveloperID = oldGame.developerID {
-                    game.developerID = oldDeveloperID
-                    changed = true
-                }
-
-                let oldDetail = oldDetailsByID[oldGame.id]
-                let sourceDescription = hasText(oldGame.descriptionText) ? oldGame.descriptionText : oldDetail?.descriptionText
-                let sourceGallery = !oldGame.galleryURLs.isEmpty ? oldGame.galleryURLs : (oldDetail?.galleryURLs ?? [])
-                let sourceTags = oldGame.discoveryTagsData ?? oldDetail?.discoveryTagsData
-                var detail = currentDetailsByID[oldGame.id]
-                if detail == nil,
-                   hasText(sourceDescription) || !sourceGallery.isEmpty || sourceTags != nil {
-                    let inserted = DBGameDetail(gameID: oldGame.id)
-                    v3Context.insert(inserted)
-                    currentDetailsByID[oldGame.id] = inserted
-                    detail = inserted
-                    changed = true
-                }
-                if let detail {
-                    if !hasText(detail.descriptionText), hasText(sourceDescription) {
-                        detail.descriptionText = sourceDescription
-                        changed = true
-                    }
-                    if detail.galleryURLs.isEmpty, !sourceGallery.isEmpty {
-                        detail.galleryURLs = sourceGallery
-                        changed = true
-                    }
-                    if detail.discoveryTagsData == nil, let sourceTags {
-                        detail.discoveryTagsData = sourceTags
-                        changed = true
-                    }
-                }
-
-                if let developerID = game.developerID,
-                   let oldDeveloper = oldDevelopersByID[developerID],
-                   let developer = currentDevelopersByID[developerID] {
-                    if !hasText(developer.profileURL), hasText(oldDeveloper.profileURL) {
-                        developer.profileURL = oldDeveloper.profileURL
-                        changed = true
-                    }
-                    if !hasText(developer.patreonURL), hasText(oldDeveloper.patreonURL) {
-                        developer.patreonURL = oldDeveloper.patreonURL
-                        changed = true
-                    }
-                    if !hasText(developer.discordURL), hasText(oldDeveloper.discordURL) {
-                        developer.discordURL = oldDeveloper.discordURL
-                        changed = true
-                    }
-                    if !hasText(developer.avatarURL), hasText(oldDeveloper.avatarURL) {
-                        developer.avatarURL = oldDeveloper.avatarURL
-                        developer.avatarSource = oldDeveloper.avatarSource
-                        developer.avatarResolvedAt = oldDeveloper.avatarResolvedAt
-                        changed = true
-                    }
-                }
-            }
-
-            if changed { try v3Context.save() }
-            try validate(context: v3Context)
-        }
+        let snapshot = try readV2BackfillSnapshot(at: v2StoreURL)
+        try applyBackfill(snapshot, to: v3StoreURL)
 
         // Write the marker only after the V3 store has been saved and validated.
         try Data("completed".utf8).write(to: markerURL, options: .atomic)
+    }
+
+    private static func readV2BackfillSnapshot(at storeURL: URL) throws -> V2BackfillSnapshot {
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration(
+                "itchPocket-v2-recovery-readonly",
+                schema: schema,
+                url: storeURL,
+                allowsSave: false
+            )
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let games = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
+            let details = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>())
+            let developers = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBDeveloper>())
+
+            // Convert every SwiftData model into plain value data. No persistent
+            // model or ModelContext is allowed to escape this autorelease scope.
+            let gameValues = games.map {
+                V2BackfillSnapshot.Game(
+                    id: $0.id,
+                    gameURL: $0.gameURL,
+                    developerID: $0.developerID,
+                    descriptionText: $0.descriptionText,
+                    galleryURLs: $0.galleryURLs,
+                    discoveryTagsData: $0.discoveryTagsData
+                )
+            }
+            let detailValues = details.map {
+                V2BackfillSnapshot.Detail(
+                    gameID: $0.gameID,
+                    descriptionText: $0.descriptionText,
+                    galleryURLs: $0.galleryURLs,
+                    discoveryTagsData: $0.discoveryTagsData
+                )
+            }
+            let developerValues = developers.map {
+                V2BackfillSnapshot.Developer(
+                    id: $0.id,
+                    profileURL: $0.profileURL,
+                    patreonURL: $0.patreonURL,
+                    discordURL: $0.discordURL,
+                    avatarURL: $0.avatarURL,
+                    avatarSource: $0.avatarSource,
+                    avatarResolvedAt: $0.avatarResolvedAt
+                )
+            }
+
+            return V2BackfillSnapshot(
+                games: gameValues,
+                detailsByGameID: Dictionary(
+                    detailValues.map { ($0.gameID, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                ),
+                developersByID: Dictionary(
+                    developerValues.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            )
+        }
+    }
+
+    private static func applyBackfill(
+        _ snapshot: V2BackfillSnapshot,
+        to storeURL: URL
+    ) throws {
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration(
+                "itchPocket-v3-recovery",
+                schema: schema,
+                url: storeURL
+            )
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+
+            // Keep every ModelContext and PersistentModel local inside this
+            // scope. Release those references before releasing the container,
+            // so no SwiftData reader/writer can outlive the backfill operation.
+            do {
+                let context = container!.mainContext
+                let currentGames = try context.fetch(FetchDescriptor<DBGame>())
+                let currentGamesByID = Dictionary(
+                    currentGames.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                let currentDetails = try context.fetch(FetchDescriptor<DBGameDetail>())
+                var currentDetailsByID = Dictionary(
+                    currentDetails.map { ($0.gameID, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                let currentDevelopers = try context.fetch(FetchDescriptor<DBDeveloper>())
+                let currentDevelopersByID = Dictionary(
+                    currentDevelopers.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+
+                var changed = false
+                for oldGame in snapshot.games {
+                    guard let game = currentGamesByID[oldGame.id] else { continue }
+
+                    if !hasText(game.gameURL), hasText(oldGame.gameURL) {
+                        game.gameURL = oldGame.gameURL
+                        changed = true
+                    }
+                    if game.developerID == nil, let oldDeveloperID = oldGame.developerID {
+                        game.developerID = oldDeveloperID
+                        changed = true
+                    }
+
+                    let oldDetail = snapshot.detailsByGameID[oldGame.id]
+                    let sourceDescription = hasText(oldGame.descriptionText)
+                        ? oldGame.descriptionText
+                        : oldDetail?.descriptionText
+                    let sourceGallery = !oldGame.galleryURLs.isEmpty
+                        ? oldGame.galleryURLs
+                        : (oldDetail?.galleryURLs ?? [])
+                    let sourceTags = oldGame.discoveryTagsData ?? oldDetail?.discoveryTagsData
+                    var detail = currentDetailsByID[oldGame.id]
+                    if detail == nil,
+                       hasText(sourceDescription) || !sourceGallery.isEmpty || sourceTags != nil {
+                        let inserted = DBGameDetail(gameID: oldGame.id)
+                        context.insert(inserted)
+                        currentDetailsByID[oldGame.id] = inserted
+                        detail = inserted
+                        changed = true
+                    }
+                    if let detail {
+                        if !hasText(detail.descriptionText), hasText(sourceDescription) {
+                            detail.descriptionText = sourceDescription
+                            changed = true
+                        }
+                        if detail.galleryURLs.isEmpty, !sourceGallery.isEmpty {
+                            detail.galleryURLs = sourceGallery
+                            changed = true
+                        }
+                        if detail.discoveryTagsData == nil, let sourceTags {
+                            detail.discoveryTagsData = sourceTags
+                            changed = true
+                        }
+                    }
+
+                    if let developerID = game.developerID,
+                       let oldDeveloper = snapshot.developersByID[developerID],
+                       let developer = currentDevelopersByID[developerID] {
+                        if !hasText(developer.profileURL), hasText(oldDeveloper.profileURL) {
+                            developer.profileURL = oldDeveloper.profileURL
+                            changed = true
+                        }
+                        if !hasText(developer.patreonURL), hasText(oldDeveloper.patreonURL) {
+                            developer.patreonURL = oldDeveloper.patreonURL
+                            changed = true
+                        }
+                        if !hasText(developer.discordURL), hasText(oldDeveloper.discordURL) {
+                            developer.discordURL = oldDeveloper.discordURL
+                            changed = true
+                        }
+                        if !hasText(developer.avatarURL), hasText(oldDeveloper.avatarURL) {
+                            developer.avatarURL = oldDeveloper.avatarURL
+                            developer.avatarSource = oldDeveloper.avatarSource
+                            developer.avatarResolvedAt = oldDeveloper.avatarResolvedAt
+                            changed = true
+                        }
+                    }
+                }
+
+                if changed { try context.save() }
+                try validate(context: context)
+            }
+
+            // The context and all fetched persistent models have left scope.
+            container = nil
+        }
+
+        // The V3 ModelContainer is fully released before SQLite opens a
+        // separate read-only connection for the post-backfill integrity check.
+        try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
     private static func hasText(_ value: String?) -> Bool {

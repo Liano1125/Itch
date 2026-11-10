@@ -11,6 +11,8 @@ final class V3MigrationInterruptionTests: XCTestCase {
     func testInterruptionAfterCopyKeepsV2AndRetryCompletesMigration() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -35,12 +37,73 @@ final class V3MigrationInterruptionTests: XCTestCase {
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
         try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
         XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+        }
+    }
+
+    @MainActor
+    func testRepeatedInterruptedMigrationAndBackfillRecoveryIsStableAndIdempotent() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
+        let v2StoreURL = try makeV2Store(in: root)
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
+        let recoveryMarkerURL = v3Directory.appendingPathComponent(".v2-detail-recovery-v1")
+
+        // Exercise the copy/interruption/retry boundary once, then repeatedly
+        // replay the one-time backfill by removing only its completion marker.
+        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(
+            v2StoreURL: v2StoreURL,
+            afterPhase: { phase in
+                if phase == .sourceCopiedToStaging {
+                    throw SimulatedInterruption.requested
+                }
+            }
+        ))
+
+        for iteration in 0..<12 {
+            let recoveredURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            XCTAssertEqual(recoveredURL, v3StoreURL, "Unexpected V3 URL on iteration \(iteration)")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: recoveryMarkerURL.path))
+            XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+            XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+            try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+            try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
+
+            let detailCount = try autoreleasepool {
+                let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+                let configuration = ModelConfiguration(
+                    "itchPocket-v3-stress-verify-\(UUID().uuidString)",
+                    schema: schema,
+                    url: recoveredURL,
+                    allowsSave: false
+                )
+                var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+                let count = try container!.mainContext.fetchCount(FetchDescriptor<DBGameDetail>())
+                container = nil
+                return count
+            }
+            XCTAssertEqual(detailCount, 1, "Backfill duplicated detail rows on iteration \(iteration)")
+
+            if iteration < 11 {
+                try FileManager.default.removeItem(at: recoveryMarkerURL)
+            }
+        }
+
+        // The legacy source remains intact after every retry and replay.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+        XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        }
     }
 
     @MainActor
     func testInterruptionAfterStagingValidationKeepsV2AndRetryCompletesMigration() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -64,12 +127,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
         try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
         XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+        }
     }
 
     @MainActor
     func testInterruptionImmediatelyAfterPromotionReusesValidatedV3OnRestart() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -96,12 +162,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
         XCTAssertEqual(restartedURL, finalStoreURL)
         XCTAssertEqual(try v3GameCount(at: restartedURL), 2)
         XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+        }
     }
 
     @MainActor
     func testExplicitRecoveryQuarantinesInvalidV3AndIgnoresStaleStagingAndQuarantine() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        // Drain any autoreleased CoreData/SQLite objects before the temporary store family is removed.
+        try autoreleasepool {
         let v2StoreURL = try makeV2Store(in: root)
         let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
         let finalDirectory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -124,10 +193,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: recoveredURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
         XCTAssertEqual(try Data(contentsOf: quarantineMarker), Data("prior quarantine".utf8))
-        XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
-        XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+
+        // Check both stores immediately after recovery, before reopening either
+        // through SwiftData for logical assertions. This keeps SQLite's raw
+        // integrity connection isolated from any persistent-store lifecycle.
         try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
         try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
+
+        XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+        XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
 
         let quarantinedDirectories = try FileManager.default.contentsOfDirectory(
             at: root,
@@ -141,6 +215,7 @@ final class V3MigrationInterruptionTests: XCTestCase {
             try Data(contentsOf: movedInvalidStore.appendingPathComponent(V3StoreBootstrap.storeFileName)),
             invalidV3Bytes
         )
+        }
     }
 
     @MainActor
@@ -159,23 +234,26 @@ final class V3MigrationInterruptionTests: XCTestCase {
 
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
-            let configuration = ModelConfiguration("itchPocket-v2-interruption-fixture", schema: schema, url: storeURL)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let context = container.mainContext
-            context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-a", title: "Game A"))
-            context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
-            context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
-                gameID: "game-a",
-                descriptionText: "Keep this legacy detail",
-                galleryURLs: ["https://cdn.example/cover.png"],
-                discoveryTagsData: Data("[]".utf8)
-            ))
-            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
-                id: "favorites",
-                title: "Favorites",
-                gameIDs: ["game-b", "game-a"]
-            ))
-            try context.save()
+            let configuration = ModelConfiguration("itchPocket-v2-interruption-fixture-\(UUID().uuidString)", schema: schema, url: storeURL)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                let context = container!.mainContext
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-a", title: "Game A"))
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
+                context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
+                    gameID: "game-a",
+                    descriptionText: "Keep this legacy detail",
+                    galleryURLs: ["https://cdn.example/cover.png"],
+                    discoveryTagsData: Data("[]".utf8)
+                ))
+                context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
+                    id: "favorites",
+                    title: "Favorites",
+                    gameIDs: ["game-b", "game-a"]
+                ))
+                try context.save()
+            }
+            container = nil
         }
 
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
@@ -186,9 +264,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
     private func v2GameCount(at storeURL: URL) throws -> Int {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
-            let configuration = ModelConfiguration("itchPocket-v2-interruption-verify", schema: schema, url: storeURL, allowsSave: false)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            return try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
+            let configuration = ModelConfiguration("itchPocket-v2-interruption-verify-\(UUID().uuidString)", schema: schema, url: storeURL, allowsSave: false)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            let count: Int
+            do {
+                let context = container!.mainContext
+                count = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
+            }
+            container = nil
+            return count
         }
     }
 
@@ -196,9 +280,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
     private func v3GameCount(at storeURL: URL) throws -> Int {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
-            let configuration = ModelConfiguration("itchPocket-v3-interruption-verify", schema: schema, url: storeURL, allowsSave: false)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            return try container.mainContext.fetchCount(FetchDescriptor<DBGame>())
+            let configuration = ModelConfiguration("itchPocket-v3-interruption-verify-\(UUID().uuidString)", schema: schema, url: storeURL, allowsSave: false)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            let count: Int
+            do {
+                let context = container!.mainContext
+                count = try context.fetchCount(FetchDescriptor<DBGame>())
+            }
+            container = nil
+            return count
         }
     }
 }
