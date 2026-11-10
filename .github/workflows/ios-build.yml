@@ -133,6 +133,19 @@ jobs:
             exit 1
           fi
 
+          # The XCTest bundle copies individual resources, not SQLite WAL/SHM
+          # sidecars. Checkpoint the historical store and switch it to DELETE
+          # journaling while the source app/container is no longer running.
+          sqlite3 "$SIMULATOR_FIXTURE/itchPocket-v2.store" 'PRAGMA wal_checkpoint(TRUNCATE);'
+          JOURNAL_MODE="$(sqlite3 "$SIMULATOR_FIXTURE/itchPocket-v2.store" 'PRAGMA journal_mode=DELETE;')"
+          QUICK_CHECK="$(sqlite3 "$SIMULATOR_FIXTURE/itchPocket-v2.store" 'PRAGMA quick_check;')"
+          if [ "$JOURNAL_MODE" != "delete" ] || [ "$QUICK_CHECK" != "ok" ]; then
+            echo "::error::Historical V2 fixture did not become a standalone healthy SQLite database"
+            echo "journal_mode=$JOURNAL_MODE"
+            echo "quick_check=$QUICK_CHECK"
+            exit 1
+          fi
+
           mkdir -p Tests/Fixtures
           rm -rf Tests/Fixtures/HistoricalV2Store
           cp -R "$SIMULATOR_FIXTURE" Tests/Fixtures/HistoricalV2Store
