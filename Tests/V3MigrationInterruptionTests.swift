@@ -101,6 +101,98 @@ final class V3MigrationInterruptionTests: XCTestCase {
         }
     }
 
+
+    @MainActor
+    func testInterruptionAfterBackfillSaveRetriesWithoutDuplicatingDetails() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try autoreleasepool {
+            let v2StoreURL = try makeV2Store(in: root)
+            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            let markerURL = v3StoreURL.deletingLastPathComponent()
+                .appendingPathComponent(".v2-detail-recovery-v1")
+
+            // Simulate an older/incomplete V3 store that still needs its V2
+            // detail backfill. The existing V3 store itself remains valid.
+            try FileManager.default.removeItem(at: markerURL)
+            try autoreleasepool {
+                let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+                let configuration = ModelConfiguration(
+                    "itchPocket-v3-backfill-interruption-setup",
+                    schema: schema,
+                    url: v3StoreURL
+                )
+                var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+                do {
+                    let context = container!.mainContext
+                    let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+                    for detail in details { context.delete(detail) }
+                    try context.save()
+                }
+                container = nil
+            }
+
+            XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(
+                v2StoreURL: v2StoreURL,
+                afterPhase: { phase in
+                    if phase == .backfillApplied {
+                        throw SimulatedInterruption.requested
+                    }
+                }
+            ))
+
+            // The data write completed, but the completion marker did not.
+            // A restart must replay the backfill safely rather than duplicate it.
+            XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+            XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+
+            let interruptedSnapshot = try autoreleasepool {
+                let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+                let configuration = ModelConfiguration(
+                    "itchPocket-v3-backfill-interruption-verify",
+                    schema: schema,
+                    url: v3StoreURL,
+                    allowsSave: false
+                )
+                var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+                let context = container!.mainContext
+                let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+                let snapshot = (details.count, details.first?.descriptionText)
+                container = nil
+                return snapshot
+            }
+            XCTAssertEqual(interruptedSnapshot.0, 1)
+            XCTAssertEqual(interruptedSnapshot.1, "Keep this legacy detail")
+
+            let restartedURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            XCTAssertEqual(restartedURL, v3StoreURL)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+            XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+
+            let finalSnapshot = try autoreleasepool {
+                let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+                let configuration = ModelConfiguration(
+                    "itchPocket-v3-backfill-interruption-final",
+                    schema: schema,
+                    url: restartedURL,
+                    allowsSave: false
+                )
+                var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+                let context = container!.mainContext
+                let details = try context.fetch(FetchDescriptor<DBGameDetail>())
+                let snapshot = (details.count, details.first?.descriptionText)
+                container = nil
+                return snapshot
+            }
+            XCTAssertEqual(finalSnapshot.0, 1)
+            XCTAssertEqual(finalSnapshot.1, "Keep this legacy detail")
+            try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+            try SQLiteStoreIntegrityChecker.quickCheck(at: restartedURL)
+        }
+    }
+
     @MainActor
     func testInterruptionAfterStagingValidationKeepsV2AndRetryCompletesMigration() throws {
         let root = try makeRoot()
