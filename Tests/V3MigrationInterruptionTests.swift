@@ -159,23 +159,26 @@ final class V3MigrationInterruptionTests: XCTestCase {
 
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
-            let configuration = ModelConfiguration("itchPocket-v2-interruption-fixture", schema: schema, url: storeURL)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let context = container.mainContext
-            context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-a", title: "Game A"))
-            context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
-            context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
-                gameID: "game-a",
-                descriptionText: "Keep this legacy detail",
-                galleryURLs: ["https://cdn.example/cover.png"],
-                discoveryTagsData: Data("[]".utf8)
-            ))
-            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
-                id: "favorites",
-                title: "Favorites",
-                gameIDs: ["game-b", "game-a"]
-            ))
-            try context.save()
+            let configuration = ModelConfiguration("itchPocket-v2-interruption-fixture-\(UUID().uuidString)", schema: schema, url: storeURL)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                let context = container!.mainContext
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-a", title: "Game A"))
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
+                context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
+                    gameID: "game-a",
+                    descriptionText: "Keep this legacy detail",
+                    galleryURLs: ["https://cdn.example/cover.png"],
+                    discoveryTagsData: Data("[]".utf8)
+                ))
+                context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
+                    id: "favorites",
+                    title: "Favorites",
+                    gameIDs: ["game-b", "game-a"]
+                ))
+                try context.save()
+            }
+            container = nil
         }
 
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
@@ -186,9 +189,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
     private func v2GameCount(at storeURL: URL) throws -> Int {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
-            let configuration = ModelConfiguration("itchPocket-v2-interruption-verify", schema: schema, url: storeURL, allowsSave: false)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            return try container.mainContext.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
+            let configuration = ModelConfiguration("itchPocket-v2-interruption-verify-\(UUID().uuidString)", schema: schema, url: storeURL, allowsSave: false)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            let count: Int
+            do {
+                let context = container!.mainContext
+                count = try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>())
+            }
+            container = nil
+            return count
         }
     }
 
@@ -196,9 +205,15 @@ final class V3MigrationInterruptionTests: XCTestCase {
     private func v3GameCount(at storeURL: URL) throws -> Int {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
-            let configuration = ModelConfiguration("itchPocket-v3-interruption-verify", schema: schema, url: storeURL, allowsSave: false)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            return try container.mainContext.fetchCount(FetchDescriptor<DBGame>())
+            let configuration = ModelConfiguration("itchPocket-v3-interruption-verify-\(UUID().uuidString)", schema: schema, url: storeURL, allowsSave: false)
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            let count: Int
+            do {
+                let context = container!.mainContext
+                count = try context.fetchCount(FetchDescriptor<DBGame>())
+            }
+            container = nil
+            return count
         }
     }
 }
