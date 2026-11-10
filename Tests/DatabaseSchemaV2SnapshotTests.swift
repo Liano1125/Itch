@@ -14,24 +14,27 @@ final class DatabaseSchemaV2SnapshotTests: XCTestCase {
         do {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
             let configuration = ModelConfiguration("itchPocket-v2-disk-fixture", schema: schema, url: storeURL)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let context = container.mainContext
-            context.insert(ItchPocketSchemaV2Snapshot.DBGame(
-                id: "disk-game",
-                title: "Disk Game",
-                descriptionText: "Retained legacy description",
-                galleryURLs: ["https://cdn.example/disk.png"]
-            ))
-            context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
-                gameID: "disk-game",
-                descriptionText: "Normalized description"
-            ))
-            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
-                id: "disk-collection",
-                title: "Disk Collection",
-                gameIDs: ["disk-game"]
-            ))
-            try context.save()
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                let context = container!.mainContext
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(
+                    id: "disk-game",
+                    title: "Disk Game",
+                    descriptionText: "Retained legacy description",
+                    galleryURLs: ["https://cdn.example/disk.png"]
+                ))
+                context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
+                    gameID: "disk-game",
+                    descriptionText: "Normalized description"
+                ))
+                context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollection(
+                    id: "disk-collection",
+                    title: "Disk Collection",
+                    gameIDs: ["disk-game"]
+                ))
+                try context.save()
+            }
+            container = nil
         }
 
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
@@ -40,18 +43,21 @@ final class DatabaseSchemaV2SnapshotTests: XCTestCase {
         // fixture's direct snapshot schema, and verify legacy fields survive.
         let schema = Schema(versionedSchema: ItchPocketSchemaV2.self)
         let configuration = ModelConfiguration("itchPocket-v2-disk-reopen", schema: schema, url: storeURL)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        let context = container.mainContext
-        let game = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first)
-        XCTAssertEqual(game.id, "disk-game")
-        XCTAssertEqual(game.descriptionText, "Retained legacy description")
-        XCTAssertEqual(game.galleryURLs, ["https://cdn.example/disk.png"])
-        let collection = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
-        XCTAssertEqual(collection.gameIDs, ["disk-game"])
-        let detail = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()).first)
-        XCTAssertEqual(detail.descriptionText, "Normalized description")
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 1)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
+        var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+        do {
+            let context = container!.mainContext
+            let game = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()).first)
+            XCTAssertEqual(game.id, "disk-game")
+            XCTAssertEqual(game.descriptionText, "Retained legacy description")
+            XCTAssertEqual(game.galleryURLs, ["https://cdn.example/disk.png"])
+            let collection = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollection>()).first)
+            XCTAssertEqual(collection.gameIDs, ["disk-game"])
+            let detail = try XCTUnwrap(context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()).first)
+            XCTAssertEqual(detail.descriptionText, "Normalized description")
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGame>()), 1)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBGameDetail>()), 1)
+        }
+        container = nil
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
