@@ -69,7 +69,7 @@ final class GameCalendarRepository {
     }
 
     /// Inserts or refreshes a historical Devlog row while preserving its stable database identity.
-    func upsertHistoricalUpdate(gameID: String, update: GameLibraryUpdate) throws -> String {
+    func upsertHistoricalUpdate(gameID: String, update: GameLibraryUpdate, save shouldSave: Bool = true) throws -> String {
         guard let sourceID = update.sourceID else {
             throw RepositoryError.missingHistoricalSourceID
         }
@@ -98,6 +98,7 @@ final class GameCalendarRepository {
             )
             context.insert(stored)
         }
+        if shouldSave { try database.save() }
         return stored.id
     }
 
