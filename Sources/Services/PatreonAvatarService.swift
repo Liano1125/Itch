@@ -321,12 +321,6 @@ final class PatreonAvatarService {
             .flatMap { URL(string: decodeEntities($0), relativeTo: baseURL)?.absoluteURL }
     }
 
-    private func extractPatreonURL(from html: String, baseURL: URL?) -> URL? {
-        let pattern = #"<a[^>]+href=["'](https?://(?:www\.)?patreon\.com/[^"'#? ]+|/[^"'#? ]*patreon[^"'#? ]*)["']"#
-        return firstCapture(pattern, in: html, options: [.caseInsensitive])
-            .flatMap { URL(string: decodeEntities($0), relativeTo: baseURL)?.absoluteURL }
-    }
-
     private func extractOpenGraphImage(from html: String, baseURL: URL) -> URL? {
         let patterns = [
             #"<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']"#,
