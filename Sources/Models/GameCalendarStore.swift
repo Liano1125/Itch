@@ -52,13 +52,29 @@ final class GameCalendarStore: ObservableObject {
     static let shared = GameCalendarStore()
     @Published private(set) var events: [GameCalendarEvent] = []
     private let repository: GameCalendarRepository
+    private let shouldSimulateLoadFailure: () -> Bool
+    private var didLoadEvents = false
 
-    init(repository: GameCalendarRepository? = nil) {
+    private enum LoadError: Error {
+        case simulatedFailure
+    }
+
+    init(
+        repository: GameCalendarRepository? = nil,
+        shouldSimulateLoadFailure: @escaping () -> Bool = { false }
+    ) {
         self.repository = repository ?? .shared
+        self.shouldSimulateLoadFailure = shouldSimulateLoadFailure
+        load()
+    }
+
+    /// Retries a failed initial read or refreshes the last known-good snapshot.
+    func reload() {
         load()
     }
 
     func add(_ event: GameCalendarEvent) {
+        guard didLoadEvents else { return }
         guard !events.contains(where: { $0.id == event.id }) else { return }
         events.append(event)
         events.sort { $0.date < $1.date }
@@ -80,6 +96,7 @@ final class GameCalendarStore: ObservableObject {
 
     @discardableResult
     func addDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+        guard didLoadEvents else { return 0 }
         var inserted = 0
         for update in updates {
             guard !events.contains(where: { $0.gameID == update.gameID && $0.sourceFingerprint == update.fingerprint }) else { continue }
@@ -130,6 +147,7 @@ final class GameCalendarStore: ObservableObject {
 
     @discardableResult
     func addHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate]) -> Int {
+        guard didLoadEvents else { return 0 }
         var inserted = 0
         for update in updates {
             guard let sourceID = update.sourceID else { continue }
@@ -166,6 +184,7 @@ final class GameCalendarStore: ObservableObject {
     }
 
     func update(_ event: GameCalendarEvent) {
+        guard didLoadEvents else { return }
         guard let index = events.firstIndex(where: { $0.id == event.id }) else { return }
         events[index] = event
         events.sort { $0.date < $1.date }
@@ -177,6 +196,7 @@ final class GameCalendarStore: ObservableObject {
     }
 
     func delete(_ id: String) {
+        guard didLoadEvents else { return }
         events.removeAll { $0.id == id }
         do { try repository.deleteEvent(id: id) }
         catch { print("itchPocket calendar deletion failed: \(error)") }
@@ -188,10 +208,17 @@ final class GameCalendarStore: ObservableObject {
     }
 
     private func load() {
-        do { events = try repository.events() }
-        catch {
+        do {
+            if shouldSimulateLoadFailure() {
+                throw LoadError.simulatedFailure
+            }
+            let loadedEvents = try repository.events()
+            events = loadedEvents
+            didLoadEvents = true
+        } catch {
+            // Keep the last known-good snapshot. On an initial failure,
+            // didLoadEvents remains false and every mutation stays blocked.
             print("itchPocket calendar database load failed: \(error)")
-            events = []
         }
     }
 
