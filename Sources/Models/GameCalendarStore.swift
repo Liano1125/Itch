@@ -84,7 +84,7 @@ final class GameCalendarStore: ObservableObject {
             events.sort { $0.date < $1.date }
             Task { await GameNotificationManager.shared.schedule(event) }
         } catch {
-            print("itchPocket calendar insert transaction failed: \\(error)")
+            print("itchPocket calendar insert transaction failed: \(error)")
         }
     }
 
@@ -105,12 +105,12 @@ final class GameCalendarStore: ObservableObject {
     func stageDetectedUpdates(_ updates: [DetectedGameUpdate]) throws -> [GameCalendarEvent] {
         guard didLoadEvents else { return [] }
         let existing = Set(events.compactMap { event in
-            event.sourceFingerprint.map { "\\(event.gameID)|\\($0)" }
+            event.sourceFingerprint.map { "\(event.gameID)|\($0)" }
         })
         var seen = existing
         var staged: [GameCalendarEvent] = []
         for update in updates {
-            guard seen.insert("\\(update.gameID)|\\(update.fingerprint)").inserted else { continue }
+            guard seen.insert("\(update.gameID)|\(update.fingerprint)").inserted else { continue }
             let updateID = try repository.updateID(gameID: update.gameID, detectedAt: update.detectedAt)
             let event = GameCalendarEvent(
                 gameID: update.gameID,
@@ -146,7 +146,7 @@ final class GameCalendarStore: ObservableObject {
             }
             return staged.count
         } catch {
-            print("itchPocket detected calendar transaction failed: \\(error)")
+            print("itchPocket detected calendar transaction failed: \(error)")
             return 0
         }
     }
@@ -174,7 +174,7 @@ final class GameCalendarStore: ObservableObject {
         var staged: [GameCalendarEvent] = []
         for update in updates {
             guard let sourceID = update.sourceID else { continue }
-            let fingerprint = "devlog:\\(sourceID)"
+            let fingerprint = "devlog:\(sourceID)"
             guard seen.insert(fingerprint).inserted else { continue }
             let updateID = try repository.upsertHistoricalUpdate(
                 gameID: gameID,
@@ -185,11 +185,11 @@ final class GameCalendarStore: ObservableObject {
                 gameID: gameID,
                 gameTitle: gameTitle,
                 gameURL: gameURL,
-                title: "更新：\\(update.title ?? "游戏更新")",
+                title: "更新：\(update.title ?? "游戏更新")",
                 date: update.publishedAt ?? update.detectedAt,
                 kind: .update,
                 reminderEnabled: false,
-                notes: update.summary + (update.url.map { "\\n\\($0)" } ?? "") + "\\n来源：itch.io Devlog（历史发布日期）",
+                notes: update.summary + (update.url.map { "\n\($0)" } ?? "") + "\n来源：itch.io Devlog（历史发布日期）",
                 sourceFingerprint: fingerprint
             )
             try repository.saveEvent(event, sourceUpdateID: updateID, save: false)
@@ -214,7 +214,7 @@ final class GameCalendarStore: ObservableObject {
             }
             return staged.count
         } catch {
-            print("itchPocket historical calendar transaction failed: \\(error)")
+            print("itchPocket historical calendar transaction failed: \(error)")
             return 0
         }
     }
@@ -235,16 +235,22 @@ final class GameCalendarStore: ObservableObject {
                 await GameNotificationManager.shared.schedule(event)
             }
         } catch {
-            print("itchPocket calendar update transaction failed: \\(error)")
+            print("itchPocket calendar update transaction failed: \(error)")
         }
     }
 
     func delete(_ id: String) {
         guard didLoadEvents else { return }
-        events.removeAll { $0.id == id }
-        do { try repository.deleteEvent(id: id) }
-        catch { print("itchPocket calendar deletion failed: \(error)") }
-        GameNotificationManager.shared.cancel(id)
+        guard events.contains(where: { $0.id == id }) else { return }
+        do {
+            try repository.performTransaction {
+                try repository.deleteEvent(id: id, save: false)
+            }
+            events.removeAll { $0.id == id }
+            GameNotificationManager.shared.cancel(id)
+        } catch {
+            print("itchPocket calendar deletion transaction failed: \(error)")
+        }
     }
 
     func events(on date: Date) -> [GameCalendarEvent] {
