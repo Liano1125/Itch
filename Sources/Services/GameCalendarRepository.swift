@@ -14,6 +14,17 @@ final class GameCalendarRepository {
         self.context = database.repositoryContext
     }
 
+
+    /// Executes a calendar unit of work against a clean shared context.
+    func performUnitOfWork<Value>(_ operation: () throws -> Value) throws -> Value {
+        try database.performUnitOfWork(operation)
+    }
+
+    /// Commits calendar changes atomically, rolling back on any write or save failure.
+    func performTransaction<Value>(_ operation: () throws -> Value) throws -> Value {
+        try database.performTransaction(operation)
+    }
+
     func events() throws -> [GameCalendarEvent] {
         let storedEvents = try context.fetch(FetchDescriptor<DBCalendarEvent>())
         let games = Dictionary(uniqueKeysWithValues: try context.fetch(FetchDescriptor<DBGame>()).map { ($0.id, $0) })
@@ -125,11 +136,11 @@ final class GameCalendarRepository {
         if shouldSave { try database.save() }
     }
 
-    func deleteEvent(id: String) throws {
+    func deleteEvent(id: String, save shouldSave: Bool = true) throws {
         let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == id })
         if let item = try context.fetch(descriptor).first {
             context.delete(item)
-            try database.save()
+            if shouldSave { try database.save() }
         }
     }
 
