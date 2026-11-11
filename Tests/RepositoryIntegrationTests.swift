@@ -124,4 +124,103 @@ final class RepositoryIntegrationTests: XCTestCase {
         XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBLibraryCollection>()).map(\.title), ["Allowed after recovery"])
     }
 
+
+    @MainActor
+    func testCalendarStoreBlocksWritesUntilReadSucceedsAndRetainsLastGoodSnapshot() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = GameCalendarRepository(database: database)
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let existing = GameCalendarEvent(
+            id: "existing-event",
+            gameID: "game-1",
+            gameTitle: "Game One",
+            gameURL: "https://example.com/game",
+            title: "Existing event",
+            date: date,
+            kind: .custom,
+            reminderEnabled: false,
+            sourceFingerprint: "detected-1"
+        )
+        try repository.saveEvent(existing)
+
+        var shouldFail = true
+        let store = GameCalendarStore(
+            repository: repository,
+            shouldSimulateLoadFailure: { shouldFail }
+        )
+
+        let blockedManualEvent = GameCalendarEvent(
+            id: "blocked-event",
+            gameID: "game-1",
+            gameTitle: "Game One",
+            gameURL: nil,
+            title: "Must not be written",
+            date: date,
+            kind: .custom
+        )
+        store.add(blockedManualEvent)
+
+        let detected = DetectedGameUpdate(
+            gameID: "game-1",
+            gameTitle: "Game One",
+            gameURL: "https://example.com/game",
+            summary: "Detected change",
+            fingerprint: "detected-1",
+            detectedAt: date
+        )
+        XCTAssertEqual(store.addDetectedUpdates([detected]), 0)
+
+        let historical = GameLibraryUpdate(
+            title: "Chapter 1",
+            summary: "Historical update",
+            publishedAt: date,
+            sourceID: "devlog-1",
+            isHistorical: true
+        )
+        XCTAssertEqual(
+            store.addHistoricalUpdates(
+                gameID: "game-1",
+                gameTitle: "Game One",
+                gameURL: "https://example.com/game",
+                updates: [historical]
+            ),
+            0
+        )
+        store.delete("existing-event")
+
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameUpdate>()), 0)
+
+        shouldFail = false
+        store.reload()
+        XCTAssertEqual(store.events.map(\\.id), ["existing-event"])
+        XCTAssertEqual(store.addDetectedUpdates([detected]), 0)
+        XCTAssertEqual(
+            store.addHistoricalUpdates(
+                gameID: "game-1",
+                gameTitle: "Game One",
+                gameURL: "https://example.com/game",
+                updates: [historical]
+            ),
+            1
+        )
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 2)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
+
+        shouldFail = true
+        store.reload()
+        XCTAssertEqual(Set(store.events.map(\\.id)), Set(["existing-event", store.events.last?.id ?? ""]))
+        XCTAssertEqual(
+            store.addHistoricalUpdates(
+                gameID: "game-1",
+                gameTitle: "Game One",
+                gameURL: "https://example.com/game",
+                updates: [historical]
+            ),
+            0
+        )
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 2)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
+    }
+
 }
