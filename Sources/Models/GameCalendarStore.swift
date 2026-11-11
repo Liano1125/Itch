@@ -64,6 +64,10 @@ final class GameCalendarStore: ObservableObject {
         case simulatedFailure
     }
 
+    private enum StagingError: Error {
+        case snapshotNotLoaded
+    }
+
     init(
         repository: GameCalendarRepository? = nil,
         shouldSimulateLoadFailure: @escaping () -> Bool = { false },
@@ -111,7 +115,7 @@ final class GameCalendarStore: ObservableObject {
     /// Stages detected calendar events inside the caller's current database transaction.
     /// It deliberately does not mutate the published snapshot; callers reload after commit.
     func stageDetectedUpdates(_ updates: [DetectedGameUpdate]) throws -> [GameCalendarEvent] {
-        guard didLoadEvents else { return [] }
+        guard didLoadEvents else { throw StagingError.snapshotNotLoaded }
         try throwIfWriteFailure()
         let existing = Set(events.compactMap { event in
             event.sourceFingerprint.map { "\(event.gameID)|\($0)" }
@@ -175,7 +179,7 @@ final class GameCalendarStore: ObservableObject {
 
     /// Stages historical update rows and their calendar links in the caller's transaction.
     func stageHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate]) throws -> [GameCalendarEvent] {
-        guard didLoadEvents else { return [] }
+        guard didLoadEvents else { throw StagingError.snapshotNotLoaded }
         try throwIfWriteFailure()
         let existing = Set(events.compactMap { event in
             event.gameID == gameID ? event.sourceFingerprint : nil
