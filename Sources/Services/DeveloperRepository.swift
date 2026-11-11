@@ -62,6 +62,21 @@ final class DeveloperRepository {
         if save { try database.save() }
     }
 
+    /// Persists a Patreon creator URL verified from the canonical primary author's profile.
+    /// Passing nil is intentionally unsupported so transient scrape failures never erase identity.
+    func setPatreonURL(id: String, url: String, save: Bool = true) throws {
+        let context = database.repositoryContext
+        let developerID = id
+        let descriptor = FetchDescriptor<DBDeveloper>(
+            predicate: #Predicate { $0.id == developerID }
+        )
+        guard let item = try context.fetch(descriptor).first else { return }
+        guard item.patreonURL != url else { return }
+        item.patreonURL = url
+        item.updatedAt = .now
+        if save { try database.save() }
+    }
+
     /// Updates the shared avatar cache. Pass resolvedAt to record a completed
     /// resolution attempt; omit it when changing profile presentation only.
     func setAvatar(
