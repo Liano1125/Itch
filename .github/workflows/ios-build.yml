@@ -1,6 +1,3 @@
-name: iOS Build
-
-on:
   push:
     branches:
       - main
@@ -24,8 +21,6 @@ on:
       - fix/v3-interruption-test-safe-temp-cleanup
       - fix/v3-sqlite-consistent-snapshot-copy
       - fix/v3-snapshot-open-flags
-      - fix/v3-snapshot-normalize-journal-mode
-      - fix/v3-snapshot-failure-cleanup
       - fix/v3-snapshot-normalize-journal-mode
       - fix/v3-snapshot-failure-cleanup
       - test/v3-backfill-marker-interruption-recovery
@@ -59,6 +54,8 @@ on:
       - test/v3-backfill-marker-interruption-recovery
       - fix/v3-sqlite-consistent-snapshot-copy
       - fix/v3-snapshot-open-flags
+      - fix/v3-snapshot-normalize-journal-mode
+      - fix/v3-snapshot-failure-cleanup
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
