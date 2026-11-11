@@ -39,7 +39,8 @@ enum V3StoreBootstrap {
     static func prepareStore(
         v2StoreURL: URL,
         recoverInvalidExistingV3: Bool = false,
-        afterPhase: ((PreparationPhase) throws -> Void)? = nil
+        afterPhase: ((PreparationPhase) throws -> Void)? = nil,
+        writeRecoveryMarker: ((Data, URL) throws -> Void)? = nil
     ) throws -> URL {
         let fileManager = FileManager.default
         let parent = v2StoreURL.deletingLastPathComponent().deletingLastPathComponent()
@@ -71,7 +72,8 @@ enum V3StoreBootstrap {
                     v2StoreURL: v2StoreURL,
                     v3StoreURL: finalStoreURL,
                     directory: finalDirectory,
-                    afterPhase: afterPhase
+                    afterPhase: afterPhase,
+                    writeRecoveryMarker: writeRecoveryMarker
                 )
                 return finalStoreURL
             }
@@ -98,7 +100,8 @@ enum V3StoreBootstrap {
                 v2StoreURL: v2StoreURL,
                 v3StoreURL: finalStoreURL,
                 directory: finalDirectory,
-                afterPhase: afterPhase
+                afterPhase: afterPhase,
+                writeRecoveryMarker: writeRecoveryMarker
             )
             return finalStoreURL
         } catch {
@@ -267,7 +270,8 @@ enum V3StoreBootstrap {
         v2StoreURL: URL,
         v3StoreURL: URL,
         directory: URL,
-        afterPhase: ((PreparationPhase) throws -> Void)? = nil
+        afterPhase: ((PreparationPhase) throws -> Void)? = nil,
+        writeRecoveryMarker: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let fileManager = FileManager.default
         let markerURL = directory.appendingPathComponent(recoveryMarkerName)
@@ -279,7 +283,12 @@ enum V3StoreBootstrap {
         try afterPhase?(.backfillApplied)
 
         // Write the marker only after the V3 store has been saved and validated.
-        try Data("completed".utf8).write(to: markerURL, options: .atomic)
+        let markerData = Data("completed".utf8)
+        if let writeRecoveryMarker {
+            try writeRecoveryMarker(markerData, markerURL)
+        } else {
+            try markerData.write(to: markerURL, options: .atomic)
+        }
     }
 
     private static func readV2BackfillSnapshot(at storeURL: URL) throws -> V2BackfillSnapshot {
