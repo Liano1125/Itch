@@ -219,11 +219,11 @@ final class GameUpdateMonitorStore: ObservableObject {
             for watch in notificationWatches {
                 await sendUpdateNotification(for: watch)
             }
-            statusMessage = "检查完成：\\(updated) 款游戏检测到页面更新并已写入日历，\\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
+            statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
         } catch {
             failed += pendingUpdates.count
-            statusMessage = "检查结果未能保存，数据库已回滚本轮更新：\\(error.localizedDescription)"
-            print("itchPocket update monitor transaction failed: \\(error)")
+            statusMessage = "检查结果未能保存，数据库已回滚本轮更新：\(error.localizedDescription)"
+            print("itchPocket update monitor transaction failed: \(error)")
         }
     }
 
