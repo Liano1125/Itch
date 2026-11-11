@@ -79,7 +79,18 @@ final class PatreonAvatarService {
 
         var avatar: URL?
         var avatarSource: String?
-        if let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
+        // A game's page may contain Patreon links for collaborators, publishers,
+        // or unrelated promotions. Resolve Patreon only from the canonical
+        // primary author's own itch.io profile page.
+        let authorProfilePage = PatreonCreatorLinkResolver.authorProfilePage(
+            in: pages,
+            matching: resolvedAuthorURL
+        )
+        if let authorProfilePage,
+           let patreonURL = PatreonCreatorLinkResolver.patreonURL(
+                in: authorProfilePage.1,
+                baseURL: authorProfilePage.0
+           ),
            let html = try? await fetchHTML(patreonURL) {
             let expectedName = resolvedAuthorURL.flatMap { try? developerRepository.developer(id: canonicalKey(for: $0))?.name }
             avatar = extractPatreonProfileAvatar(from: html, baseURL: patreonURL, expectedName: expectedName)
