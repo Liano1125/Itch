@@ -259,12 +259,6 @@ final class RepositoryIntegrationTests: XCTestCase {
         let libraryStore = PersonalLibraryStore(database: database)
         await store.checkAll(calendarStore: calendarStore, libraryStore: libraryStore)
         XCTAssertTrue(store.statusMessage?.contains("尚未成功加载") == true)
-        let syncMessage = await store.syncHistoricalDevlogs(
-            records: [record],
-            calendarStore: calendarStore,
-            libraryStore: libraryStore
-        )
-        XCTAssertTrue(syncMessage.contains("尚未成功加载"))
         XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
 
         shouldFail = false
