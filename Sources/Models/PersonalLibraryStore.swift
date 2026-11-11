@@ -220,7 +220,7 @@ final class PersonalLibraryStore: ObservableObject {
             }
             return try stageDetectedUpdates(updates)
         } catch {
-            print("itchPocket detected update transaction failed: \\(error)")
+            print("itchPocket detected update transaction failed: \(error)")
             return 0
         }
     }
@@ -288,7 +288,7 @@ final class PersonalLibraryStore: ObservableObject {
             }
             return try stageHistoricalUpdates(gameID: gameID, updates: incoming)
         } catch {
-            print("itchPocket historical update transaction failed: \\(error)")
+            print("itchPocket historical update transaction failed: \(error)")
             return 0
         }
     }
