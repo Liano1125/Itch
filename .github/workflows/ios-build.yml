@@ -25,6 +25,8 @@ on:
       - fix/v3-sqlite-consistent-snapshot-copy
       - fix/v3-snapshot-open-flags
       - fix/v3-snapshot-normalize-journal-mode
+      - fix/v3-snapshot-normalize-journal-mode
+      - fix/v3-snapshot-failure-cleanup
       - test/v3-backfill-marker-interruption-recovery
   pull_request:
     branches:
