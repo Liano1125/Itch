@@ -129,6 +129,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         var failed = 0
         var pendingUpdates: [DetectedGameUpdate] = []
         var notificationWatches: [GameUpdateWatch] = []
+        var proposedWatches = watches
         for target in targets {
             checkingIDs.insert(target.gameID)
             defer { checkingIDs.remove(target.gameID) }
@@ -154,7 +155,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                 let bodyHash = SHA256.hash(data: Data(normalizedBody.utf8))
                     .map { String(format: "%02x", $0) }
                     .joined()
-                guard var current = watches[target.gameID] else { continue }
+                guard var current = proposedWatches[target.gameID] else { continue }
                 if !current.hasBaseline {
                     current.entityTag = etag
                     current.lastModified = modified
@@ -200,19 +201,30 @@ final class GameUpdateMonitorStore: ObservableObject {
                     if modified != nil { current.lastModified = modified }
                     current.lastCheckedAt = Date()
                 }
-                watches[target.gameID] = current
+                proposedWatches[target.gameID] = current
             } catch {
                 failed += 1
             }
         }
-        libraryStore.recordDetectedUpdates(pendingUpdates, save: false)
-        calendarStore.addDetectedUpdates(pendingUpdates, save: false)
-        persistWatches(save: false)
-        try? database.save()
-        for watch in notificationWatches {
-            await sendUpdateNotification(for: watch)
+        do {
+            try database.performTransaction {
+                _ = try libraryStore.stageDetectedUpdates(pendingUpdates)
+                _ = try calendarStore.stageDetectedUpdates(pendingUpdates)
+                try repository.save(Array(proposedWatches.values), save: false)
+            }
+            // Publish all three snapshots only after the shared transaction commits.
+            watches = proposedWatches
+            libraryStore.reload()
+            calendarStore.reload()
+            for watch in notificationWatches {
+                await sendUpdateNotification(for: watch)
+            }
+            statusMessage = "检查完成：\\(updated) 款游戏检测到页面更新并已写入日历，\\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
+        } catch {
+            failed += pendingUpdates.count
+            statusMessage = "检查结果未能保存，数据库已回滚本轮更新：\\(error.localizedDescription)"
+            print("itchPocket update monitor transaction failed: \\(error)")
         }
-        statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
     }
 
     func syncHistoricalDevlogs(records: [LibraryRecord], calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async -> String {
@@ -263,14 +275,24 @@ final class GameUpdateMonitorStore: ObservableObject {
                         isHistorical: true
                     )
                 }
-                let libraryAdded = libraryStore.recordHistoricalUpdates(gameID: record.id, updates: candidates, save: false)
-                let calendarAdded = calendarStore.addHistoricalUpdates(
-                    gameID: record.id,
-                    gameTitle: record.title,
-                    gameURL: record.gameURL,
-                    updates: candidates
-                )
-                try? database.save()
+                var libraryAdded = 0
+                var calendarAdded = 0
+                try database.performTransaction {
+                    libraryAdded = try libraryStore.stageHistoricalUpdates(
+                        gameID: record.id,
+                        updates: candidates
+                    )
+                    calendarAdded = try calendarStore.stageHistoricalUpdates(
+                        gameID: record.id,
+                        gameTitle: record.title,
+                        gameURL: record.gameURL,
+                        updates: candidates
+                    ).count
+                }
+                if libraryAdded > 0 || calendarAdded > 0 {
+                    libraryStore.reload()
+                    calendarStore.reload()
+                }
                 let addedForGame = max(libraryAdded, calendarAdded)
                 imported += addedForGame
                 if posts.isEmpty {
