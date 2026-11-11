@@ -79,6 +79,7 @@ final class PatreonAvatarService {
 
         var avatar: URL?
         var avatarSource: String?
+        var resolvedPatreonURL: URL?
         // A game's page may contain Patreon links for collaborators, publishers,
         // or unrelated promotions. Resolve Patreon only from the canonical
         // primary author's own itch.io profile page.
@@ -90,11 +91,16 @@ final class PatreonAvatarService {
            let patreonURL = PatreonCreatorLinkResolver.patreonURL(
                 in: authorProfilePage.1,
                 baseURL: authorProfilePage.0
-           ),
-           let html = try? await fetchHTML(patreonURL) {
-            let expectedName = resolvedAuthorURL.flatMap { try? developerRepository.developer(id: canonicalKey(for: $0))?.name }
-            avatar = extractPatreonProfileAvatar(from: html, baseURL: patreonURL, expectedName: expectedName)
-            if avatar != nil { avatarSource = "patreon" }
+           ) {
+            // Persist the verified primary-author relationship independently of
+            // avatar scraping: a creator identity remains useful if Patreon is
+            // temporarily unavailable or its profile markup changes.
+            resolvedPatreonURL = patreonURL
+            if let html = try? await fetchHTML(patreonURL) {
+                let expectedName = resolvedAuthorURL.flatMap { try? developerRepository.developer(id: canonicalKey(for: $0))?.name }
+                avatar = extractPatreonProfileAvatar(from: html, baseURL: patreonURL, expectedName: expectedName)
+                if avatar != nil { avatarSource = "patreon" }
+            }
         }
 
         if avatar == nil {
@@ -123,6 +129,12 @@ final class PatreonAvatarService {
         do {
             if try developerRepository.developer(id: key) == nil {
                 try developerRepository.upsertIdentity(id: key, name: "itch.io 开发者", profileURL: identity.absoluteString)
+            }
+            if let resolvedPatreonURL {
+                try developerRepository.setPatreonURL(
+                    id: key,
+                    url: resolvedPatreonURL.absoluteString
+                )
             }
             guard let avatar else {
                 try appStateRepository.setDate(Date(), for: "avatarFailure.\(key)")
