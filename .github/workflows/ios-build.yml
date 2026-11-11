@@ -27,6 +27,7 @@ on:
       - fix/v3-snapshot-normalize-journal-mode
       - fix/v3-snapshot-failure-cleanup
       - test/v3-backfill-marker-interruption-recovery
+      - fix/patreon-primary-author-link-persistence
   pull_request:
     branches:
       - main
