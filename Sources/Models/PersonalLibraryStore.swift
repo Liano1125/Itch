@@ -239,20 +239,6 @@ final class PersonalLibraryStore: ObservableObject {
         return recordHistoricalUpdates(gameID: gameID, updates: [update]) > 0
     }
 
-    @discardableResult
-    func recordHistoricalUpdate(gameID: String, title: String, summary: String, publishedAt: Date, url: String?, sourceID: String) -> Bool {
-        let update = GameLibraryUpdate(
-            title: title,
-            summary: summary,
-            detectedAt: Date(),
-            publishedAt: publishedAt,
-            url: url,
-            sourceID: sourceID,
-            isHistorical: true
-        )
-        return recordHistoricalUpdates(gameID: gameID, updates: [update]) > 0
-    }
-
     /// Stages historical update rows and the matching library snapshot in the caller's transaction.
     func stageHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate]) throws -> Int {
         guard didLoadLibrarySnapshots,
