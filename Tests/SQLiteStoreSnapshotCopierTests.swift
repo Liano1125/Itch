@@ -53,6 +53,21 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
     }
 
+    func testExistingDestinationIsPreservedWhenCopyIsRejected() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourceURL = root.appendingPathComponent("source.store")
+        let destinationURL = root.appendingPathComponent("snapshot.store")
+        let originalContents = Data("do-not-overwrite".utf8)
+        try originalContents.write(to: destinationURL)
+
+        XCTAssertThrowsError(try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL))
+        XCTAssertEqual(try Data(contentsOf: destinationURL), originalContents)
+    }
+
     private func execute(_ sql: String, on database: OpaquePointer) throws {
         var errorMessage: UnsafeMutablePointer<CChar>?
         let result = sqlite3_exec(database, sql, nil, nil, &errorMessage)
