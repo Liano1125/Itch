@@ -225,4 +225,53 @@ final class RepositoryIntegrationTests: XCTestCase {
         XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
     }
 
+
+    @MainActor
+    func testUpdateMonitorBlocksMutationsUntilWatchSnapshotLoads() async throws {
+        let database = try AppDatabase(inMemory: true)
+        var shouldFail = false
+        let store = GameUpdateMonitorStore(
+            database: database,
+            shouldSimulateLoadFailure: { shouldFail }
+        )
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let record = LibraryRecord(
+            id: "game-1",
+            title: "Game One",
+            status: .playing,
+            isFavorite: false,
+            notes: "",
+            addedAt: now,
+            updatedAt: now
+        )
+
+        store.setEnabled(true, for: record)
+        XCTAssertNotNil(store.watch(for: record.id))
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
+
+        shouldFail = true
+        store.reload()
+        store.setEnabled(false, for: record)
+        XCTAssertNotNil(store.watch(for: record.id))
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
+
+        let calendarStore = GameCalendarStore(repository: GameCalendarRepository(database: database))
+        let libraryStore = PersonalLibraryStore(database: database)
+        await store.checkAll(calendarStore: calendarStore, libraryStore: libraryStore)
+        XCTAssertTrue(store.statusMessage?.contains("尚未成功加载") == true)
+        let syncMessage = await store.syncHistoricalDevlogs(
+            records: [record],
+            calendarStore: calendarStore,
+            libraryStore: libraryStore
+        )
+        XCTAssertTrue(syncMessage.contains("尚未成功加载"))
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
+
+        shouldFail = false
+        store.reload()
+        store.setEnabled(false, for: record)
+        XCTAssertNil(store.watch(for: record.id))
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 0)
+    }
+
 }
