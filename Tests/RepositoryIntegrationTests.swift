@@ -193,7 +193,7 @@ final class RepositoryIntegrationTests: XCTestCase {
 
         shouldFail = false
         store.reload()
-        XCTAssertEqual(store.events.map(\\.id), ["existing-event"])
+        XCTAssertEqual(store.events.map(\.id), ["existing-event"])
         XCTAssertEqual(store.addDetectedUpdates([detected]), 0)
         XCTAssertEqual(
             store.addHistoricalUpdates(
@@ -209,7 +209,9 @@ final class RepositoryIntegrationTests: XCTestCase {
 
         shouldFail = true
         store.reload()
-        XCTAssertEqual(Set(store.events.map(\\.id)), Set(["existing-event", store.events.last?.id ?? ""]))
+        XCTAssertEqual(store.events.count, 2)
+        XCTAssertTrue(store.events.contains { $0.id == "existing-event" })
+        XCTAssertTrue(store.events.contains { $0.sourceFingerprint == "devlog:devlog-1" })
         XCTAssertEqual(
             store.addHistoricalUpdates(
                 gameID: "game-1",
