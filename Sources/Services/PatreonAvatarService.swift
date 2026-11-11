@@ -79,7 +79,18 @@ final class PatreonAvatarService {
 
         var avatar: URL?
         var avatarSource: String?
-        if let patreonURL = pages.lazy.compactMap({ self.extractPatreonURL(from: $0.1, baseURL: $0.0) }).first,
+        // A game's page may contain Patreon links for collaborators, publishers,
+        // or unrelated promotions. Resolve Patreon only from the canonical
+        // primary author's own itch.io profile page.
+        let authorProfilePage = PatreonCreatorLinkResolver.authorProfilePage(
+            in: pages,
+            matching: resolvedAuthorURL
+        )
+        if let authorProfilePage,
+           let patreonURL = PatreonCreatorLinkResolver.patreonURL(
+                in: authorProfilePage.1,
+                baseURL: authorProfilePage.0
+           ),
            let html = try? await fetchHTML(patreonURL) {
             let expectedName = resolvedAuthorURL.flatMap { try? developerRepository.developer(id: canonicalKey(for: $0))?.name }
             avatar = extractPatreonProfileAvatar(from: html, baseURL: patreonURL, expectedName: expectedName)
@@ -307,12 +318,6 @@ final class PatreonAvatarService {
     private func extractAuthorURL(from html: String, baseURL: URL?) -> URL? {
         let pattern = #"(?:class=["'][^"']*game_author[^"']*["'][^>]*>.*?<a[^>]+href=["']([^"']+))"#
         return firstCapture(pattern, in: html, options: [.caseInsensitive, .dotMatchesLineSeparators])
-            .flatMap { URL(string: decodeEntities($0), relativeTo: baseURL)?.absoluteURL }
-    }
-
-    private func extractPatreonURL(from html: String, baseURL: URL?) -> URL? {
-        let pattern = #"<a[^>]+href=["'](https?://(?:www\.)?patreon\.com/[^"'#? ]+|/[^"'#? ]*patreon[^"'#? ]*)["']"#
-        return firstCapture(pattern, in: html, options: [.caseInsensitive])
             .flatMap { URL(string: decodeEntities($0), relativeTo: baseURL)?.absoluteURL }
     }
 
