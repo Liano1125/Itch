@@ -28,11 +28,12 @@ enum AppCacheManager {
 
     static func clearRebuildableCaches() async throws {
         let database = AppDatabase.shared
-        try CacheRepository.shared.clearRebuildableCaches(save: false)
-        try AppStateRepository(database: database)
-            .removeAll(matchingKeyPrefix: "avatarFailure.", save: false)
-        try DeveloperRepository(database: database).invalidateAvatarCaches(save: false)
-        try database.save()
+        try database.performTransaction {
+            try CacheRepository.shared.clearRebuildableCaches(save: false)
+            try AppStateRepository(database: database)
+                .removeAll(matchingKeyPrefix: "avatarFailure.", save: false)
+            try DeveloperRepository(database: database).invalidateAvatarCaches(save: false)
+        }
 
         await PersistentImageCache.shared.clear()
         URLCache.shared.removeAllCachedResponses()
