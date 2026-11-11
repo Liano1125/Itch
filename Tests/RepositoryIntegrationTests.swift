@@ -326,4 +326,68 @@ final class RepositoryIntegrationTests: XCTestCase {
     }
 
 
+
+    @MainActor
+    func testCrossStoreDetectedUpdateTransactionRollsBackEveryStoreOnCalendarFailure() throws {
+        let database = try AppDatabase(inMemory: true)
+        let baseline = Date(timeIntervalSince1970: 1_800_000_000)
+        database.context.insert(DBGame(
+            id: "cross-store-game",
+            title: "Cross Store Game",
+            gameURL: "https://example.com/cross-store"
+        ))
+        database.context.insert(DBLibraryEntry(
+            gameID: "cross-store-game",
+            status: LibraryStatus.playing.rawValue,
+            addedAt: baseline,
+            updatedAt: baseline
+        ))
+        try database.save()
+
+        let libraryStore = PersonalLibraryStore(database: database)
+        var shouldFailCalendarStage = true
+        let calendarStore = GameCalendarStore(
+            repository: GameCalendarRepository(database: database),
+            shouldSimulateWriteFailure: { shouldFailCalendarStage }
+        )
+        let update = DetectedGameUpdate(
+            gameID: "cross-store-game",
+            gameTitle: "Cross Store Game",
+            gameURL: "https://example.com/cross-store",
+            summary: "A detected update",
+            fingerprint: "cross-store-fingerprint",
+            detectedAt: baseline.addingTimeInterval(60)
+        )
+
+        XCTAssertNotNil(libraryStore.record(for: "cross-store-game"))
+        XCTAssertTrue(calendarStore.events.isEmpty)
+
+        XCTAssertThrowsError(try database.performTransaction {
+            _ = try libraryStore.stageDetectedUpdates([update])
+            _ = try calendarStore.stageDetectedUpdates([update])
+        })
+
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameUpdate>()), 0)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 0)
+        let persistedEntry = try XCTUnwrap(
+            database.context.fetch(FetchDescriptor<DBLibraryEntry>()).first
+        )
+        XCTAssertEqual(persistedEntry.updatedAt, baseline)
+        XCTAssertTrue(libraryStore.updates(for: "cross-store-game").isEmpty)
+        XCTAssertTrue(calendarStore.events.isEmpty)
+
+        shouldFailCalendarStage = false
+        try database.performTransaction {
+            _ = try libraryStore.stageDetectedUpdates([update])
+            _ = try calendarStore.stageDetectedUpdates([update])
+        }
+        libraryStore.reload()
+        calendarStore.reload()
+
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+        XCTAssertEqual(libraryStore.updates(for: "cross-store-game").count, 1)
+        XCTAssertEqual(calendarStore.events.count, 1)
+    }
+
 }
