@@ -216,11 +216,6 @@ final class GameUpdateMonitorStore: ObservableObject {
     }
 
     func syncHistoricalDevlogs(records: [LibraryRecord], calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async -> String {
-        guard didLoadWatches else {
-            let message = "更新监控数据尚未成功加载，暂不执行历史 Devlog 同步。"
-            statusMessage = message
-            return message
-        }
         guard !isSyncingHistoricalDevlogs else {
             return lastHistoricalSyncMessage ?? "历史更新同步正在进行中。"
         }
