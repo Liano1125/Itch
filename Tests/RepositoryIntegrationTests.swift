@@ -268,4 +268,62 @@ final class RepositoryIntegrationTests: XCTestCase {
         XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 0)
     }
 
+
+    @MainActor
+    func testCalendarStorePublishesChangesOnlyAfterSuccessfulWrites() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = GameCalendarRepository(database: database)
+        var shouldFailWrites = false
+        let store = GameCalendarStore(
+            repository: repository,
+            shouldSimulateWriteFailure: { shouldFailWrites }
+        )
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let original = GameCalendarEvent(
+            id: "write-guard-event",
+            gameID: "game-write-guard",
+            gameTitle: "Write Guard Game",
+            gameURL: nil,
+            title: "Original title",
+            date: date,
+            kind: .custom,
+            reminderEnabled: false
+        )
+        store.add(original)
+        XCTAssertEqual(store.events.map(\\.title), ["Original title"])
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+
+        shouldFailWrites = true
+        let added = GameCalendarEvent(
+            id: "write-guard-added",
+            gameID: "game-write-guard",
+            gameTitle: "Write Guard Game",
+            gameURL: nil,
+            title: "Must not appear",
+            date: date,
+            kind: .custom
+        )
+        store.add(added)
+        var edited = original
+        edited.title = "Uncommitted edit"
+        store.update(edited)
+        store.delete(original.id)
+
+        XCTAssertEqual(store.events.count, 1)
+        XCTAssertEqual(store.events.first?.title, "Original title")
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+        let persisted = try XCTUnwrap(repository.events().first)
+        XCTAssertEqual(persisted.title, "Original title")
+
+        shouldFailWrites = false
+        edited.title = "Committed edit"
+        store.update(edited)
+        XCTAssertEqual(store.events.first?.title, "Committed edit")
+        XCTAssertEqual(try repository.events().first?.title, "Committed edit")
+        store.delete(original.id)
+        XCTAssertTrue(store.events.isEmpty)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 0)
+    }
+
+
 }
