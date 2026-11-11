@@ -290,7 +290,7 @@ final class RepositoryIntegrationTests: XCTestCase {
             reminderEnabled: false
         )
         store.add(original)
-        XCTAssertEqual(store.events.map(\\.title), ["Original title"])
+        XCTAssertEqual(store.events.map(\.title), ["Original title"])
         XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
 
         shouldFailWrites = true
