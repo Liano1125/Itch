@@ -54,6 +54,48 @@ final class DeveloperRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testPatreonURLUpdatePersistsWithoutChangingOtherCreatorIdentityFields() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = DeveloperRepository(database: database)
+        try repository.upsertIdentity(
+            id: "author",
+            name: "Primary Author",
+            profileURL: "https://itch.io/profile/primary"
+        )
+
+        try repository.setPatreonURL(
+            id: "author",
+            url: "https://www.patreon.com/primary_creator"
+        )
+
+        let stored = try XCTUnwrap(repository.developer(id: "author"))
+        XCTAssertEqual(stored.name, "Primary Author")
+        XCTAssertEqual(stored.profileURL, "https://itch.io/profile/primary")
+        XCTAssertEqual(stored.patreonURL, "https://www.patreon.com/primary_creator")
+    }
+
+    @MainActor
+    func testPatreonURLUpdateCanDeferSave() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = DeveloperRepository(database: database)
+        try repository.upsertIdentity(id: "author", name: "Primary Author")
+
+        try repository.setPatreonURL(
+            id: "author",
+            url: "https://www.patreon.com/primary_creator",
+            save: false
+        )
+
+        XCTAssertTrue(database.context.hasChanges)
+        XCTAssertEqual(
+            try repository.developer(id: "author")?.patreonURL,
+            "https://www.patreon.com/primary_creator"
+        )
+        try database.save()
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
+    @MainActor
     func testAvatarUpdateCanDeferSaveAndPreserveResolutionTimestamp() throws {
         let database = try AppDatabase(inMemory: true)
         let repository = DeveloperRepository(database: database)
