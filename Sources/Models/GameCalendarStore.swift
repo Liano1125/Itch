@@ -100,50 +100,51 @@ final class GameCalendarStore: ObservableObject {
         _ = addDetectedUpdates([update])
     }
 
+    /// Stages detected calendar events inside the caller's current database transaction.
+    /// It deliberately does not mutate the published snapshot; callers reload after commit.
+    func stageDetectedUpdates(_ updates: [DetectedGameUpdate]) throws -> [GameCalendarEvent] {
+        guard didLoadEvents else { return [] }
+        let existing = Set(events.compactMap { event in
+            event.sourceFingerprint.map { "\\(event.gameID)|\\($0)" }
+        })
+        var seen = existing
+        var staged: [GameCalendarEvent] = []
+        for update in updates {
+            guard seen.insert("\\(update.gameID)|\\(update.fingerprint)").inserted else { continue }
+            let updateID = try repository.updateID(gameID: update.gameID, detectedAt: update.detectedAt)
+            let event = GameCalendarEvent(
+                gameID: update.gameID,
+                gameTitle: update.gameTitle,
+                gameURL: update.gameURL,
+                title: "检测到游戏页面更新",
+                date: update.detectedAt,
+                kind: .update,
+                reminderEnabled: false,
+                notes: "由更新监控自动记录。此日期是页面变化的检测日期，并非经确认的官方发布日期。",
+                sourceFingerprint: update.fingerprint
+            )
+            try repository.saveEvent(event, sourceUpdateID: updateID, save: false)
+            staged.append(event)
+        }
+        return staged
+    }
+
     @discardableResult
     func addDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
         guard didLoadEvents else { return 0 }
-        let existingFingerprints = Set(events.compactMap { event in
-            event.sourceFingerprint.map { "\\(event.gameID)|\\($0)" }
-        })
-        var candidates: [DetectedGameUpdate] = []
-        var seen = existingFingerprints
-        for update in updates {
-            let key = "\\(update.gameID)|\\(update.fingerprint)"
-            guard seen.insert(key).inserted else { continue }
-            candidates.append(update)
-        }
-        guard !candidates.isEmpty else { return 0 }
-
-        var insertedEvents: [GameCalendarEvent] = []
-        let write = {
-            for update in candidates {
-                let updateID = try self.repository.updateID(gameID: update.gameID, detectedAt: update.detectedAt)
-                let event = GameCalendarEvent(
-                    gameID: update.gameID,
-                    gameTitle: update.gameTitle,
-                    gameURL: update.gameURL,
-                    title: "检测到游戏页面更新",
-                    date: update.detectedAt,
-                    kind: .update,
-                    reminderEnabled: false,
-                    notes: "由更新监控自动记录。此日期是页面变化的检测日期，并非经确认的官方发布日期。",
-                    sourceFingerprint: update.fingerprint
-                )
-                try self.repository.saveEvent(event, sourceUpdateID: updateID, save: false)
-                insertedEvents.append(event)
-            }
-        }
-
         do {
+            let staged: [GameCalendarEvent]
             if shouldSave {
-                try repository.performTransaction(write)
+                staged = try repository.performTransaction {
+                    try stageDetectedUpdates(updates)
+                }
+                events.append(contentsOf: staged)
+                events.sort { $0.date < $1.date }
             } else {
-                try repository.performUnitOfWork(write)
+                // Deferred callers own the surrounding transaction and refresh snapshots after commit.
+                staged = try stageDetectedUpdates(updates)
             }
-            events.append(contentsOf: insertedEvents)
-            events.sort { $0.date < $1.date }
-            return insertedEvents.count
+            return staged.count
         } catch {
             print("itchPocket detected calendar transaction failed: \\(error)")
             return 0
@@ -163,57 +164,55 @@ final class GameCalendarStore: ObservableObject {
         return addHistoricalUpdates(gameID: gameID, gameTitle: gameTitle, gameURL: gameURL, updates: [update]) > 0
     }
 
-    @discardableResult
-    func addHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
-        guard didLoadEvents else { return 0 }
-        let existingFingerprints = Set(events.compactMap { event in
+    /// Stages historical update rows and their calendar links in the caller's transaction.
+    func stageHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate]) throws -> [GameCalendarEvent] {
+        guard didLoadEvents else { return [] }
+        let existing = Set(events.compactMap { event in
             event.gameID == gameID ? event.sourceFingerprint : nil
         })
-        var candidates: [GameLibraryUpdate] = []
-        var seen = existingFingerprints
+        var seen = existing
+        var staged: [GameCalendarEvent] = []
         for update in updates {
             guard let sourceID = update.sourceID else { continue }
             let fingerprint = "devlog:\\(sourceID)"
             guard seen.insert(fingerprint).inserted else { continue }
-            candidates.append(update)
+            let updateID = try repository.upsertHistoricalUpdate(
+                gameID: gameID,
+                update: update,
+                save: false
+            )
+            let event = GameCalendarEvent(
+                gameID: gameID,
+                gameTitle: gameTitle,
+                gameURL: gameURL,
+                title: "更新：\\(update.title ?? "游戏更新")",
+                date: update.publishedAt ?? update.detectedAt,
+                kind: .update,
+                reminderEnabled: false,
+                notes: update.summary + (update.url.map { "\\n\\($0)" } ?? "") + "\\n来源：itch.io Devlog（历史发布日期）",
+                sourceFingerprint: fingerprint
+            )
+            try repository.saveEvent(event, sourceUpdateID: updateID, save: false)
+            staged.append(event)
         }
-        guard !candidates.isEmpty else { return 0 }
+        return staged
+    }
 
-        var insertedEvents: [GameCalendarEvent] = []
-        let write = {
-            for update in candidates {
-                guard let sourceID = update.sourceID else { continue }
-                let fingerprint = "devlog:\\(sourceID)"
-                let updateID = try self.repository.upsertHistoricalUpdate(
-                    gameID: gameID,
-                    update: update,
-                    save: false
-                )
-                let event = GameCalendarEvent(
-                    gameID: gameID,
-                    gameTitle: gameTitle,
-                    gameURL: gameURL,
-                    title: "更新：\\(update.title ?? "游戏更新")",
-                    date: update.publishedAt ?? update.detectedAt,
-                    kind: .update,
-                    reminderEnabled: false,
-                    notes: update.summary + (update.url.map { "\\n\\($0)" } ?? "") + "\\n来源：itch.io Devlog（历史发布日期）",
-                    sourceFingerprint: fingerprint
-                )
-                try self.repository.saveEvent(event, sourceUpdateID: updateID, save: false)
-                insertedEvents.append(event)
-            }
-        }
-
+    @discardableResult
+    func addHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
+        guard didLoadEvents else { return 0 }
         do {
+            let staged: [GameCalendarEvent]
             if shouldSave {
-                try repository.performTransaction(write)
+                staged = try repository.performTransaction {
+                    try stageHistoricalUpdates(gameID: gameID, gameTitle: gameTitle, gameURL: gameURL, updates: updates)
+                }
+                events.append(contentsOf: staged)
+                events.sort { $0.date < $1.date }
             } else {
-                try repository.performUnitOfWork(write)
+                staged = try stageHistoricalUpdates(gameID: gameID, gameTitle: gameTitle, gameURL: gameURL, updates: updates)
             }
-            events.append(contentsOf: insertedEvents)
-            events.sort { $0.date < $1.date }
-            return insertedEvents.count
+            return staged.count
         } catch {
             print("itchPocket historical calendar transaction failed: \\(error)")
             return 0
