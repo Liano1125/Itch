@@ -53,18 +53,25 @@ final class GameCalendarStore: ObservableObject {
     @Published private(set) var events: [GameCalendarEvent] = []
     private let repository: GameCalendarRepository
     private let shouldSimulateLoadFailure: () -> Bool
+    private let shouldSimulateWriteFailure: () -> Bool
     private var didLoadEvents = false
 
     private enum LoadError: Error {
         case simulatedFailure
     }
 
+    private enum WriteError: Error {
+        case simulatedFailure
+    }
+
     init(
         repository: GameCalendarRepository? = nil,
-        shouldSimulateLoadFailure: @escaping () -> Bool = { false }
+        shouldSimulateLoadFailure: @escaping () -> Bool = { false },
+        shouldSimulateWriteFailure: @escaping () -> Bool = { false }
     ) {
         self.repository = repository ?? .shared
         self.shouldSimulateLoadFailure = shouldSimulateLoadFailure
+        self.shouldSimulateWriteFailure = shouldSimulateWriteFailure
         load()
     }
 
@@ -78,6 +85,7 @@ final class GameCalendarStore: ObservableObject {
         guard !events.contains(where: { $0.id == event.id }) else { return }
         do {
             try repository.performTransaction {
+                try throwIfWriteFailure()
                 try repository.saveEvent(event, save: false)
             }
             events.append(event)
@@ -104,6 +112,7 @@ final class GameCalendarStore: ObservableObject {
     /// It deliberately does not mutate the published snapshot; callers reload after commit.
     func stageDetectedUpdates(_ updates: [DetectedGameUpdate]) throws -> [GameCalendarEvent] {
         guard didLoadEvents else { return [] }
+        try throwIfWriteFailure()
         let existing = Set(events.compactMap { event in
             event.sourceFingerprint.map { "\(event.gameID)|\($0)" }
         })
@@ -167,6 +176,7 @@ final class GameCalendarStore: ObservableObject {
     /// Stages historical update rows and their calendar links in the caller's transaction.
     func stageHistoricalUpdates(gameID: String, gameTitle: String, gameURL: String?, updates: [GameLibraryUpdate]) throws -> [GameCalendarEvent] {
         guard didLoadEvents else { return [] }
+        try throwIfWriteFailure()
         let existing = Set(events.compactMap { event in
             event.gameID == gameID ? event.sourceFingerprint : nil
         })
@@ -224,6 +234,7 @@ final class GameCalendarStore: ObservableObject {
         guard events.contains(where: { $0.id == event.id }) else { return }
         do {
             try repository.performTransaction {
+                try throwIfWriteFailure()
                 try repository.saveEvent(event, save: false)
             }
             if let index = events.firstIndex(where: { $0.id == event.id }) {
@@ -244,6 +255,7 @@ final class GameCalendarStore: ObservableObject {
         guard events.contains(where: { $0.id == id }) else { return }
         do {
             try repository.performTransaction {
+                try throwIfWriteFailure()
                 try repository.deleteEvent(id: id, save: false)
             }
             events.removeAll { $0.id == id }
@@ -255,6 +267,12 @@ final class GameCalendarStore: ObservableObject {
 
     func events(on date: Date) -> [GameCalendarEvent] {
         events.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }.sorted { $0.date < $1.date }
+    }
+
+    private func throwIfWriteFailure() throws {
+        if shouldSimulateWriteFailure() {
+            throw WriteError.simulatedFailure
+        }
     }
 
     private func load() {
