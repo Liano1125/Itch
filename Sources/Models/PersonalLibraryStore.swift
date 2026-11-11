@@ -129,6 +129,10 @@ final class PersonalLibraryStore: ObservableObject {
     private let shouldSimulateLibraryLoadFailure: () -> Bool
     private var didLoadLibrarySnapshots = false
 
+    private enum StagingError: Error {
+        case snapshotNotLoaded
+    }
+
     init(
         database: AppDatabase? = nil,
         shouldSimulateLibraryLoadFailure: @escaping () -> Bool = { false }
@@ -184,7 +188,7 @@ final class PersonalLibraryStore: ObservableObject {
 
     /// Stages detected-update persistence in the caller's transaction without publishing memory state.
     func stageDetectedUpdates(_ updates: [DetectedGameUpdate]) throws -> Int {
-        guard didLoadLibrarySnapshots else { return 0 }
+        guard didLoadLibrarySnapshots else { throw StagingError.snapshotNotLoaded }
         var proposedRecords = records
         var changedIndices = Set<Int>()
         var inserted = 0
@@ -241,9 +245,8 @@ final class PersonalLibraryStore: ObservableObject {
 
     /// Stages historical update rows and the matching library snapshot in the caller's transaction.
     func stageHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate]) throws -> Int {
-        guard didLoadLibrarySnapshots,
-              let index = records.firstIndex(where: { $0.id == gameID }),
-              !incoming.isEmpty else { return 0 }
+        guard didLoadLibrarySnapshots else { throw StagingError.snapshotNotLoaded }
+        guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
         let original = records[index]
         let insertedUpdates = try gameUpdateRepository.appendHistoricalUpdates(
             incoming,
