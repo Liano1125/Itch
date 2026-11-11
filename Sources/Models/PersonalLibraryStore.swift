@@ -182,13 +182,12 @@ final class PersonalLibraryStore: ObservableObject {
         ])
     }
 
-    @discardableResult
-    func recordDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+    /// Stages detected-update persistence in the caller's transaction without publishing memory state.
+    func stageDetectedUpdates(_ updates: [DetectedGameUpdate]) throws -> Int {
         guard didLoadLibrarySnapshots else { return 0 }
         var proposedRecords = records
         var changedIndices = Set<Int>()
         var inserted = 0
-
         for update in updates {
             guard let index = proposedRecords.firstIndex(where: { $0.id == update.gameID }) else { continue }
             var updated = proposedRecords[index]
@@ -201,23 +200,27 @@ final class PersonalLibraryStore: ObservableObject {
             changedIndices.insert(index)
             inserted += 1
         }
-
         guard inserted > 0 else { return 0 }
-        let write = {
-            for index in changedIndices.sorted() {
-                try self.persist(proposedRecords[index], save: false)
-            }
+        for index in changedIndices.sorted() {
+            try persist(proposedRecords[index], save: false)
         }
+        return inserted
+    }
+
+    @discardableResult
+    func recordDetectedUpdates(_ updates: [DetectedGameUpdate], save shouldSave: Bool = true) -> Int {
+        guard didLoadLibrarySnapshots else { return 0 }
         do {
             if shouldSave {
-                try database.performTransaction(write)
-            } else {
-                try database.performUnitOfWork(write)
+                let inserted = try database.performTransaction {
+                    try stageDetectedUpdates(updates)
+                }
+                if inserted > 0 { load() }
+                return inserted
             }
-            records = proposedRecords
-            return inserted
+            return try stageDetectedUpdates(updates)
         } catch {
-            print("itchPocket detected update transaction failed: \(error)")
+            print("itchPocket detected update transaction failed: \\(error)")
             return 0
         }
     }
@@ -237,39 +240,55 @@ final class PersonalLibraryStore: ObservableObject {
     }
 
     @discardableResult
+    func recordHistoricalUpdate(gameID: String, title: String, summary: String, publishedAt: Date, url: String?, sourceID: String) -> Bool {
+        let update = GameLibraryUpdate(
+            title: title,
+            summary: summary,
+            detectedAt: Date(),
+            publishedAt: publishedAt,
+            url: url,
+            sourceID: sourceID,
+            isHistorical: true
+        )
+        return recordHistoricalUpdates(gameID: gameID, updates: [update]) > 0
+    }
+
+    /// Stages historical update rows and the matching library snapshot in the caller's transaction.
+    func stageHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate]) throws -> Int {
+        guard didLoadLibrarySnapshots,
+              let index = records.firstIndex(where: { $0.id == gameID }),
+              !incoming.isEmpty else { return 0 }
+        let original = records[index]
+        let insertedUpdates = try gameUpdateRepository.appendHistoricalUpdates(
+            incoming,
+            for: gameID,
+            save: false
+        )
+        guard !insertedUpdates.isEmpty else { return 0 }
+        var updated = original
+        var history = updated.gameUpdates ?? []
+        history.append(contentsOf: insertedUpdates)
+        history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
+        updated.gameUpdates = Array(history.prefix(200))
+        updated.updatedAt = Date()
+        try persist(updated, save: false)
+        return insertedUpdates.count
+    }
+
+    @discardableResult
     func recordHistoricalUpdates(gameID: String, updates incoming: [GameLibraryUpdate], save shouldSave: Bool = true) -> Int {
         guard didLoadLibrarySnapshots else { return 0 }
-        guard let index = records.firstIndex(where: { $0.id == gameID }), !incoming.isEmpty else { return 0 }
-        let original = records[index]
-
-        let write = { () throws -> (Int, LibraryRecord) in
-            let insertedUpdates = try self.gameUpdateRepository.appendHistoricalUpdates(
-                incoming,
-                for: gameID,
-                save: false
-            )
-            guard !insertedUpdates.isEmpty else { return (0, original) }
-            var updated = original
-            var history = updated.gameUpdates ?? []
-            history.append(contentsOf: insertedUpdates)
-            history.sort { ($0.publishedAt ?? $0.detectedAt) > ($1.publishedAt ?? $1.detectedAt) }
-            updated.gameUpdates = Array(history.prefix(200))
-            updated.updatedAt = Date()
-            try self.persist(updated, save: false)
-            return (insertedUpdates.count, updated)
-        }
-
         do {
-            let result: (Int, LibraryRecord)
             if shouldSave {
-                result = try database.performTransaction(write)
-            } else {
-                result = try database.performUnitOfWork(write)
+                let inserted = try database.performTransaction {
+                    try stageHistoricalUpdates(gameID: gameID, updates: incoming)
+                }
+                if inserted > 0 { load() }
+                return inserted
             }
-            if result.0 > 0 { records[index] = result.1 }
-            return result.0
+            return try stageHistoricalUpdates(gameID: gameID, updates: incoming)
         } catch {
-            print("itchPocket historical update transaction failed: \(error)")
+            print("itchPocket historical update transaction failed: \\(error)")
             return 0
         }
     }
