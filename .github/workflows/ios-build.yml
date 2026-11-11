@@ -57,6 +57,7 @@
       - fix/v3-snapshot-open-flags
       - fix/v3-snapshot-normalize-journal-mode
       - fix/v3-snapshot-failure-cleanup
+      - fix/v3-snapshot-pr-ci-filters
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
