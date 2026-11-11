@@ -13,7 +13,7 @@ enum PatreonCreatorLinkResolver {
     }
 
     static func patreonURL(in html: String, baseURL: URL) -> URL? {
-        let pattern = #"<a[^>]+href=["'](https?://(?:www\\.)?patreon\\.com/[^"'#? ]+|/[^"'#? ]*patreon[^"'#? ]*)["']"#
+        let pattern = #"<a[^>]+href=["'](https?://(?:www\.)?patreon\.com/[^"'#? ]+|/[^"'#? ]*patreon[^"'#? ]*)["']"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return nil
         }
