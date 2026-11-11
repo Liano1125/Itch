@@ -53,6 +53,33 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
     }
 
+    func testExistingDestinationIsPreservedWhenCopyIsRejected() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourceURL = root.appendingPathComponent("source.store")
+        let destinationURL = root.appendingPathComponent("snapshot.store")
+        var source: OpaquePointer?
+        let sourceResult = sqlite3_open_v2(
+            sourceURL.path,
+            &source,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+            nil
+        )
+        XCTAssertEqual(sourceResult, SQLITE_OK)
+        let sourceDB = try XCTUnwrap(source)
+        try execute("CREATE TABLE records (id INTEGER PRIMARY KEY);", on: sourceDB)
+        sqlite3_close_v2(sourceDB)
+
+        let originalContents = Data("do-not-overwrite".utf8)
+        try originalContents.write(to: destinationURL)
+
+        XCTAssertThrowsError(try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL))
+        XCTAssertEqual(try Data(contentsOf: destinationURL), originalContents)
+    }
+
     private func execute(_ sql: String, on database: OpaquePointer) throws {
         var errorMessage: UnsafeMutablePointer<CChar>?
         let result = sqlite3_exec(database, sql, nil, nil, &errorMessage)

@@ -63,7 +63,17 @@ enum SQLiteStoreSnapshotCopier {
             if let destination { sqlite3_close_v2(destination) }
             throw CopyError.destinationOpenFailed(detail)
         }
-        defer { sqlite3_close_v2(destination) }
+        var destinationCompleted = false
+        defer {
+            // Finalize any outstanding SQLite statements before this defer,
+            // then close the connection before removing an incomplete store.
+            sqlite3_close_v2(destination)
+            if !destinationCompleted {
+                for suffix in ["", "-wal", "-shm", "-journal"] {
+                    try? FileManager.default.removeItem(atPath: destinationURL.path + suffix)
+                }
+            }
+        }
         sqlite3_extended_result_codes(destination, 1)
         sqlite3_busy_timeout(destination, 5_000)
 
@@ -121,5 +131,6 @@ enum SQLiteStoreSnapshotCopier {
                 "SQLite error \(modeStepResult), returned mode: \(journalMode ?? "nil")"
             )
         }
+        destinationCompleted = true
     }
 }
