@@ -35,7 +35,7 @@ final class AppDatabaseTransactionTests: XCTestCase {
             database.context.insert(DBAppState(key: "save.recovered", stringValue: "persist"))
         }
         XCTAssertEqual(
-            try database.context.fetch(FetchDescriptor<DBAppState>()).map(\\.key),
+            try database.context.fetch(FetchDescriptor<DBAppState>()).map(\.key),
             ["save.recovered"]
         )
     }
