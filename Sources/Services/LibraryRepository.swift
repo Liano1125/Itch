@@ -176,7 +176,7 @@ final class LibraryRepository {
         }
     }
 
-        func deleteCollection(id: String) throws {
+    func deleteCollection(id: String) throws {
         try database.performTransaction {
             let context = database.repositoryContext
             let descriptor = FetchDescriptor<DBLibraryCollection>(
@@ -192,7 +192,7 @@ final class LibraryRepository {
         }
     }
 
-        @discardableResult
+    @discardableResult
     func toggleGame(_ gameID: String, in collectionID: String, now: Date = .now) throws -> PersonalGameCollection {
         try database.performTransaction {
             let context = database.repositoryContext
@@ -224,7 +224,7 @@ final class LibraryRepository {
         }
     }
 
-        /// Removes the active library entry, Spark snapshot, and collection membership.
+    /// Removes the active library entry, Spark snapshot, and collection membership.
     /// Game metadata, Devlog history, calendar events, and status history intentionally survive.
     /// Status history is a game timeline, not disposable state owned by the active library entry.
     func removeGameFromLibrary(gameID: String) throws {
@@ -263,7 +263,7 @@ final class LibraryRepository {
         }
     }
 
-        private func membershipIDs(for collection: DBLibraryCollection) throws -> [String] {
+    private func membershipIDs(for collection: DBLibraryCollection) throws -> [String] {
         let collectionID = collection.id
         let descriptor = FetchDescriptor<DBLibraryCollectionItem>(
             predicate: #Predicate { $0.collectionID == collectionID }
