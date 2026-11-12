@@ -6,6 +6,8 @@ final class CalendarRepositoryTests: XCTestCase {
     @MainActor
     func testUpsertAndLoadPreserveCompleteCalendarSnapshot() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
         let repository = CalendarRepository(database: database)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -38,6 +40,8 @@ final class CalendarRepositoryTests: XCTestCase {
     @MainActor
     func testUpsertPreservesExistingSourceUpdateLinkWhenIncomingLinkIsOmitted() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
         let repository = CalendarRepository(database: database)
         let event = StoredCalendarEvent(id: "event-a", gameID: "game-a", title: "Update", kind: "游戏更新")
 
@@ -56,6 +60,8 @@ final class CalendarRepositoryTests: XCTestCase {
     @MainActor
     func testSourceUpdateLinkCanBeReplacedOrExplicitlyCleared() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
         let repository = CalendarRepository(database: database)
         let event = StoredCalendarEvent(id: "event-a", gameID: "game-a", kind: "游戏更新")
 
@@ -70,6 +76,8 @@ final class CalendarRepositoryTests: XCTestCase {
     @MainActor
     func testUpsertCanDeferSaveForCallerBatching() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
         let repository = CalendarRepository(database: database)
 
         try repository.upsert(StoredCalendarEvent(
@@ -88,6 +96,8 @@ final class CalendarRepositoryTests: XCTestCase {
     @MainActor
     func testDeleteRemovesOnlyRequestedCalendarEvent() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
         let repository = CalendarRepository(database: database)
         try repository.upsert(StoredCalendarEvent(id: "keep", gameID: "game-a", kind: "其他"))
         try repository.upsert(StoredCalendarEvent(id: "remove", gameID: "game-a", kind: "其他"))
@@ -95,5 +105,35 @@ final class CalendarRepositoryTests: XCTestCase {
         try repository.delete(id: "remove")
 
         XCTAssertEqual(try repository.loadEvents().map(\.id), ["keep"])
+    }
+
+    @MainActor
+    func testUpsertRejectsMissingGameBeforeMutatingContext() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = CalendarRepository(database: database)
+        let event = StoredCalendarEvent(id: "orphan", gameID: "missing-game", kind: "其他")
+
+        XCTAssertThrowsError(try repository.upsert(event)) { error in
+            XCTAssertEqual(error as? DatabaseReferenceValidator.ValidationError, .missingGame("missing-game"))
+        }
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBCalendarEvent>()).isEmpty)
+    }
+
+    @MainActor
+    func testUpsertRejectsSourceUpdateOwnedByAnotherGameBeforeMutation() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
+        database.context.insert(DBGameUpdate(id: "update-b", gameID: "game-b"))
+        try database.save()
+        let repository = CalendarRepository(database: database)
+        let event = StoredCalendarEvent(id: "event-a", gameID: "game-a", kind: "游戏更新")
+
+        XCTAssertThrowsError(try repository.upsert(event, sourceUpdateID: "update-b")) { error in
+            XCTAssertEqual(error as? DatabaseReferenceValidator.ValidationError, .calendarUpdateGameMismatch(eventGameID: "game-a", updateID: "update-b", updateGameID: "game-b"))
+        }
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBCalendarEvent>()).isEmpty)
     }
 }
