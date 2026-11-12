@@ -28,6 +28,7 @@ on:
       - fix/v3-snapshot-failure-cleanup
       - test/v3-backfill-marker-interruption-recovery
       - fix/patreon-primary-author-link-persistence
+      - fix/calendar-store-read-failure-guard
   pull_request:
     branches:
       - main
@@ -61,6 +62,8 @@ on:
       - fix/v3-snapshot-failure-cleanup
       - fix/v3-snapshot-pr-ci-filters
       - fix/patreon-primary-author-link-source
+      - fix/patreon-primary-author-link-persistence
+      - fix/calendar-store-read-failure-guard
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.

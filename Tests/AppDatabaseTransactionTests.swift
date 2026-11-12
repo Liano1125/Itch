@@ -21,6 +21,26 @@ final class AppDatabaseTransactionTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedDirectSaveRollsBackContextAndAllowsLaterTransactions() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBAppState(key: "save.failure", stringValue: "discard"))
+        database.simulatedSaveError = { TestError.simulatedFailure }
+
+        XCTAssertThrowsError(try database.save())
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBAppState>()).isEmpty)
+
+        database.simulatedSaveError = nil
+        try database.performTransaction {
+            database.context.insert(DBAppState(key: "save.recovered", stringValue: "persist"))
+        }
+        XCTAssertEqual(
+            try database.context.fetch(FetchDescriptor<DBAppState>()).map(\.key),
+            ["save.recovered"]
+        )
+    }
+
+    @MainActor
     func testTransactionRefusesToRollbackPreexistingPendingChanges() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBAppState(key: "unrelated.pending", stringValue: "preserve"))

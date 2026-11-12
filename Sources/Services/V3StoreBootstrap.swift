@@ -28,6 +28,7 @@ enum V3StoreBootstrap {
     static let stagingDirectoryName = "itchPocket-v3.staging"
     static let storeFileName = "itchPocket-v3.store"
     private static let recoveryMarkerName = ".v2-detail-recovery-v1"
+    private static let developerRecoveryMarkerName = ".v2-developer-recovery-v1"
 
     enum PreparationPhase: Equatable {
         case sourceCopiedToStaging
@@ -39,7 +40,8 @@ enum V3StoreBootstrap {
     static func prepareStore(
         v2StoreURL: URL,
         recoverInvalidExistingV3: Bool = false,
-        afterPhase: ((PreparationPhase) throws -> Void)? = nil
+        afterPhase: ((PreparationPhase) throws -> Void)? = nil,
+        writeRecoveryMarker: ((Data, URL) throws -> Void)? = nil
     ) throws -> URL {
         let fileManager = FileManager.default
         let parent = v2StoreURL.deletingLastPathComponent().deletingLastPathComponent()
@@ -52,7 +54,7 @@ enum V3StoreBootstrap {
                 guard fileManager.fileExists(atPath: finalStoreURL.path) else {
                     throw BootstrapError.incompleteDestination(finalStoreURL)
                 }
-                try validateV3Store(at: finalStoreURL)
+                try validateV3Store(at: finalStoreURL, allowMissingDeveloperReferences: true)
             } catch {
                 guard recoverInvalidExistingV3 else { throw error }
                 let quarantine = parent.appendingPathComponent(
@@ -71,8 +73,10 @@ enum V3StoreBootstrap {
                     v2StoreURL: v2StoreURL,
                     v3StoreURL: finalStoreURL,
                     directory: finalDirectory,
-                    afterPhase: afterPhase
+                    afterPhase: afterPhase,
+                    writeRecoveryMarker: writeRecoveryMarker
                 )
+                try validateV3Store(at: finalStoreURL)
                 return finalStoreURL
             }
         }
@@ -98,7 +102,8 @@ enum V3StoreBootstrap {
                 v2StoreURL: v2StoreURL,
                 v3StoreURL: finalStoreURL,
                 directory: finalDirectory,
-                afterPhase: afterPhase
+                afterPhase: afterPhase,
+                writeRecoveryMarker: writeRecoveryMarker
             )
             return finalStoreURL
         } catch {
@@ -205,7 +210,10 @@ enum V3StoreBootstrap {
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
-    private static func validateV3Store(at storeURL: URL) throws {
+    private static func validateV3Store(
+        at storeURL: URL,
+        allowMissingDeveloperReferences: Bool = false
+    ) throws {
         // Reject non-SQLite or structurally corrupt files before SwiftData /
         // CoreData attempts to attach a persistent store. A failed CoreData
         // open can leave SQLite sidecar descriptors alive while recovery
@@ -221,7 +229,10 @@ enum V3StoreBootstrap {
             )
             var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
             do {
-                try validate(context: container!.mainContext)
+                try validate(
+                    context: container!.mainContext,
+                    allowMissingDeveloperReferences: allowMissingDeveloperReferences
+                )
             }
             container = nil
         }
@@ -246,6 +257,7 @@ enum V3StoreBootstrap {
 
         struct Developer {
             let id: String
+            let name: String
             let profileURL: String?
             let patreonURL: String?
             let discordURL: String?
@@ -267,19 +279,33 @@ enum V3StoreBootstrap {
         v2StoreURL: URL,
         v3StoreURL: URL,
         directory: URL,
-        afterPhase: ((PreparationPhase) throws -> Void)? = nil
+        afterPhase: ((PreparationPhase) throws -> Void)? = nil,
+        writeRecoveryMarker: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let fileManager = FileManager.default
-        let markerURL = directory.appendingPathComponent(recoveryMarkerName)
-        guard !fileManager.fileExists(atPath: markerURL.path),
-              fileManager.fileExists(atPath: v2StoreURL.path) else { return }
+        let detailMarkerURL = directory.appendingPathComponent(recoveryMarkerName)
+        let developerMarkerURL = directory.appendingPathComponent(developerRecoveryMarkerName)
+        guard fileManager.fileExists(atPath: v2StoreURL.path) else { return }
+        let needsDetailRecovery = !fileManager.fileExists(atPath: detailMarkerURL.path)
+        let needsDeveloperRecovery = !fileManager.fileExists(atPath: developerMarkerURL.path)
+        guard needsDetailRecovery || needsDeveloperRecovery else { return }
 
         let snapshot = try readV2BackfillSnapshot(at: v2StoreURL)
         try applyBackfill(snapshot, to: v3StoreURL)
         try afterPhase?(.backfillApplied)
 
-        // Write the marker only after the V3 store has been saved and validated.
-        try Data("completed".utf8).write(to: markerURL, options: .atomic)
+        // Each recovery generation has its own marker. This lets an app that
+        // already completed the detail backfill still repair missing developer
+        // identities after this newer recovery pass is introduced.
+        let markerData = Data("completed".utf8)
+        for markerURL in [detailMarkerURL, developerMarkerURL]
+        where !fileManager.fileExists(atPath: markerURL.path) {
+            if let writeRecoveryMarker {
+                try writeRecoveryMarker(markerData, markerURL)
+            } else {
+                try markerData.write(to: markerURL, options: .atomic)
+            }
+        }
     }
 
     private static func readV2BackfillSnapshot(at storeURL: URL) throws -> V2BackfillSnapshot {
@@ -320,6 +346,7 @@ enum V3StoreBootstrap {
             let developerValues = developers.map {
                 V2BackfillSnapshot.Developer(
                     id: $0.id,
+                    name: $0.name,
                     profileURL: $0.profileURL,
                     patreonURL: $0.patreonURL,
                     discordURL: $0.discordURL,
@@ -372,7 +399,7 @@ enum V3StoreBootstrap {
                     uniquingKeysWith: { first, _ in first }
                 )
                 let currentDevelopers = try context.fetch(FetchDescriptor<DBDeveloper>())
-                let currentDevelopersByID = Dictionary(
+                var currentDevelopersByID = Dictionary(
                     currentDevelopers.map { ($0.id, $0) },
                     uniquingKeysWith: { first, _ in first }
                 )
@@ -423,8 +450,23 @@ enum V3StoreBootstrap {
                     }
 
                     if let developerID = game.developerID,
-                       let oldDeveloper = snapshot.developersByID[developerID],
-                       let developer = currentDevelopersByID[developerID] {
+                       let oldDeveloper = snapshot.developersByID[developerID] {
+                        let developer: DBDeveloper
+                        if let existing = currentDevelopersByID[developerID] {
+                            developer = existing
+                        } else {
+                            // Restore only identities proven by the retained V2
+                            // backup; never synthesize a developer from a bare ID.
+                            let restored = DBDeveloper(id: oldDeveloper.id, name: oldDeveloper.name)
+                            context.insert(restored)
+                            currentDevelopersByID[developerID] = restored
+                            developer = restored
+                            changed = true
+                        }
+                        if developer.name.isEmpty, !oldDeveloper.name.isEmpty {
+                            developer.name = oldDeveloper.name
+                            changed = true
+                        }
                         if !hasText(developer.profileURL), hasText(oldDeveloper.profileURL) {
                             developer.profileURL = oldDeveloper.profileURL
                             changed = true
@@ -470,9 +512,23 @@ enum V3StoreBootstrap {
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private static func validate(context: ModelContext) throws {
+    private static func validate(
+        context: ModelContext,
+        allowMissingDeveloperReferences: Bool = false
+    ) throws {
         let games = try context.fetch(FetchDescriptor<DBGame>())
         let gameIDs = Set(games.map(\.id))
+        let developers = try context.fetch(FetchDescriptor<DBDeveloper>())
+        let developerIDs = Set(developers.map(\.id))
+        if !allowMissingDeveloperReferences {
+            for game in games {
+                if let developerID = game.developerID, !developerIDs.contains(developerID) {
+                    throw BootstrapError.validationFailed(
+                        "Game \(game.id) references missing developer: \(developerID)."
+                    )
+                }
+            }
+        }
 
         let details = try context.fetch(FetchDescriptor<DBGameDetail>())
         for detail in details where !gameIDs.contains(detail.gameID) {

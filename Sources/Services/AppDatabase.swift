@@ -48,6 +48,7 @@ final class AppDatabase {
     #if DEBUG
     /// Test-only escape hatch for persistence fixtures. Not present in Release.
     var context: ModelContext { modelContext }
+    var simulatedSaveError: (() -> Error?)?
     #endif
 
     static var hasLegacyStoreForRecovery: Bool {
@@ -140,7 +141,17 @@ final class AppDatabase {
 
     func save() throws {
         guard modelContext.hasChanges else { return }
-        try modelContext.save()
+        do {
+            #if DEBUG
+            if let error = simulatedSaveError?() { throw error }
+            #endif
+            try modelContext.save()
+        } catch {
+            // A failed direct repository save must not strand pending mutations
+            // in the shared context and block every later transaction.
+            modelContext.rollback()
+            throw error
+        }
     }
 
     enum TransactionError: LocalizedError {
@@ -172,15 +183,12 @@ final class AppDatabase {
     }
 
     /// Runs a clean-context unit of work and commits it with one save.
+    /// Operation failures are rolled back by performUnitOfWork; save failures
+    /// are rolled back by save(), keeping rollback ownership in one place.
     func performTransaction<Value>(_ operation: () throws -> Value) throws -> Value {
         let value = try performUnitOfWork(operation)
-        do {
-            try save()
-            return value
-        } catch {
-            modelContext.rollback()
-            throw error
-        }
+        try save()
+        return value
     }
 
     /// Clears every persisted app-data model as one atomic unit of work.

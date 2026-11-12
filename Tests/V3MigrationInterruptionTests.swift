@@ -314,6 +314,120 @@ final class V3MigrationInterruptionTests: XCTestCase {
     }
 
     @MainActor
+    func testPromotionFailureKeepsV2AndRemovesIncompleteStagingDirectory() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try autoreleasepool {
+            let v2StoreURL = try makeV2Store(in: root)
+            let stagingDirectory = root.appendingPathComponent(
+                V3StoreBootstrap.stagingDirectoryName,
+                isDirectory: true
+            )
+            let finalDirectory = root.appendingPathComponent(
+                V3StoreBootstrap.directoryName,
+                isDirectory: true
+            )
+
+            XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(
+                v2StoreURL: v2StoreURL,
+                afterPhase: { phase in
+                    if phase == .stagingMigratedAndValidated {
+                        // Simulate another process winning the destination
+                        // directory race immediately before promotion.
+                        try FileManager.default.createDirectory(
+                            at: finalDirectory,
+                            withIntermediateDirectories: true
+                        )
+                    }
+                }
+            ))
+
+            XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+            XCTAssertFalse(FileManager.default.fileExists(
+                atPath: finalDirectory.appendingPathComponent(V3StoreBootstrap.storeFileName).path
+            ))
+            try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+            XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+
+            try FileManager.default.removeItem(at: finalDirectory)
+            let recoveredURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: recoveredURL.path))
+            XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+            XCTAssertEqual(try v3GameCount(at: recoveredURL), 2)
+            try SQLiteStoreIntegrityChecker.quickCheck(at: recoveredURL)
+        }
+    }
+
+    @MainActor
+    func testRecoveryMarkerWriteFailureKeepsValidV3AndRetriesCleanly() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try autoreleasepool {
+            let v2StoreURL = try makeV2Store(in: root)
+            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            let v3Directory = v3StoreURL.deletingLastPathComponent()
+            let markerURL = v3Directory.appendingPathComponent(".v2-detail-recovery-v1")
+            try FileManager.default.removeItem(at: markerURL)
+
+            XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(
+                v2StoreURL: v2StoreURL,
+                writeRecoveryMarker: { _, _ in
+                    throw SimulatedInterruption.requested
+                }
+            ))
+
+            XCTAssertTrue(FileManager.default.fileExists(atPath: v3StoreURL.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+            try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+            try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
+            XCTAssertEqual(try v3GameCount(at: v3StoreURL), 2)
+
+            // The data backfill may already be committed, but without the
+            // marker startup must safely replay it and then write the marker.
+            let restartedURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            XCTAssertEqual(restartedURL, v3StoreURL)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+            XCTAssertEqual(try v2GameCount(at: v2StoreURL), 2)
+            XCTAssertEqual(try v3GameCount(at: restartedURL), 2)
+            try SQLiteStoreIntegrityChecker.quickCheck(at: restartedURL)
+        }
+    }
+
+    @MainActor
+    func testCorruptV2BackupDoesNotQuarantineAlreadyValidV3Store() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try autoreleasepool {
+            let v2StoreURL = try makeV2Store(in: root)
+            let v3StoreURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+            let markerURL = v3StoreURL.deletingLastPathComponent()
+                .appendingPathComponent(".v2-detail-recovery-v1")
+            try FileManager.default.removeItem(at: markerURL)
+
+            // Simulate a damaged retained backup after V3 has already been
+            // promoted and validated. Recovery must surface the backup error
+            // without moving the authoritative V3 directory to quarantine.
+            try Data("corrupt backup".utf8).write(to: v2StoreURL, options: .atomic)
+
+            XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: v3StoreURL.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+            try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
+            XCTAssertEqual(try v3GameCount(at: v3StoreURL), 2)
+
+            let quarantines = try FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            ).filter { $0.lastPathComponent.hasPrefix("itchPocket-v3.quarantine-") }
+            XCTAssertTrue(quarantines.isEmpty)
+        }
+    }
+
+    @MainActor
     private func makeRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-interruption-\(UUID().uuidString)", isDirectory: true)

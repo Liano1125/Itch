@@ -25,9 +25,20 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         try execute("PRAGMA journal_mode=WAL;", on: source)
         try execute("CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT NOT NULL);", on: source)
         try execute("INSERT INTO records (id, value) VALUES (1, 'committed-in-wal');", on: source)
+        try execute("BEGIN IMMEDIATE;", on: source)
+        try execute("INSERT INTO records (id, value) VALUES (2, 'uncommitted-at-snapshot-time');", on: source)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path + "-wal"))
         try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL)
+        try execute("COMMIT;", on: source)
+
+        let leftoverSidecars = ["-wal", "-shm", "-journal"].filter {
+            FileManager.default.fileExists(atPath: destinationURL.path + $0)
+        }
+        XCTAssertTrue(
+            leftoverSidecars.isEmpty,
+            "Snapshot left behind sidecars: \(leftoverSidecars.joined(separator: ", "))"
+        )
 
         var snapshot: OpaquePointer?
         let snapshotResult = sqlite3_open_v2(
@@ -51,11 +62,53 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         let value = sqlite3_column_text(query, 0).map { String(cString: $0) }
         XCTAssertEqual(value, "committed-in-wal")
         XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
+
+        var countStatement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(snapshotDB, "SELECT COUNT(*) FROM records;", -1, &countStatement, nil),
+            SQLITE_OK
+        )
+        let countQuery = try XCTUnwrap(countStatement)
+        defer { sqlite3_finalize(countQuery) }
+        XCTAssertEqual(sqlite3_step(countQuery), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int(countQuery, 0), 1)
+
+        var modeStatement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(snapshotDB, "PRAGMA journal_mode;", -1, &modeStatement, nil),
+            SQLITE_OK
+        )
+        let modeQuery = try XCTUnwrap(modeStatement)
+        defer { sqlite3_finalize(modeQuery) }
+        XCTAssertEqual(sqlite3_step(modeQuery), SQLITE_ROW)
+        let mode = sqlite3_column_text(modeQuery, 0).map { String(cString: $0) }
+        XCTAssertEqual(mode?.lowercased(), "delete")
+
+    }
+
+    func testFailedBackupRemovesPartialDestinationAndSidecars() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-sqlite-snapshot-failure-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourceURL = root.appendingPathComponent("corrupt-source.store")
+        let destinationURL = root.appendingPathComponent("snapshot.store")
+        try Data("not a SQLite database".utf8).write(to: sourceURL)
+
+        XCTAssertThrowsError(try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL))
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: destinationURL.path + suffix),
+                "Failed snapshot left behind destination suffix: \(suffix)"
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: sourceURL), Data("not a SQLite database".utf8))
     }
 
     func testExistingDestinationIsPreservedWhenCopyIsRejected() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 

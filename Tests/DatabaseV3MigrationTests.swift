@@ -264,6 +264,61 @@ final class DatabaseV3MigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testExistingV3StoreRestoresMissingDeveloperFromV2Backup() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-developer-backfill-\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: v3Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+        let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+
+        // Simulate a V3 store whose game still points to a developer that
+        // disappeared during an earlier migration/cutover.
+        // Simulate an older installation that already completed the detail
+        // recovery generation; the developer recovery must still run once.
+        try Data("completed".utf8).write(
+            to: v3Directory.appendingPathComponent(".v2-detail-recovery-v1"),
+            options: .atomic
+        )
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-missing-developer", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            context.insert(DBGame(id: "game-a", title: "Game A", developerID: "developer-a"))
+            context.insert(DBGame(id: "game-b", title: "Game B"))
+            try context.save()
+        }
+
+        _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: v3Directory.appendingPathComponent(".v2-developer-recovery-v1").path
+        ))
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-restored-developer-verify", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let game = try XCTUnwrap(context.fetch(FetchDescriptor<DBGame>()).first { $0.id == "game-a" })
+            XCTAssertEqual(game.developerID, "developer-a")
+            let developer = try XCTUnwrap(context.fetch(FetchDescriptor<DBDeveloper>()).first { $0.id == "developer-a" })
+            XCTAssertEqual(developer.name, "Legacy Developer")
+            XCTAssertEqual(developer.profileURL, "https://itch.io/profile/legacy-developer")
+            XCTAssertEqual(developer.patreonURL, "https://patreon.com/legacycreator")
+        }
+
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
+    }
+
+    @MainActor
     func testV3MigrationRejectsOrphanedGameReferencesWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-orphaned-references-\(UUID().uuidString)", isDirectory: true)
@@ -329,6 +384,63 @@ final class DatabaseV3MigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testV3MigrationRejectsDuplicateNormalizedCollectionMembersWithoutChangingV2() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-duplicate-members-\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-duplicate-members-fixture", schema: schema, url: v2StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            // The V2 join model only has a unique row ID, not a composite
+            // (collectionID, gameID) constraint. Two distinct row IDs can
+            // therefore represent the corrupt duplicate that preflight must reject.
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
+                id: "legacy-duplicate-membership-row-1",
+                collectionID: "favorites",
+                gameID: "game-a",
+                sortOrder: 2
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
+                id: "legacy-duplicate-membership-row-2",
+                collectionID: "favorites",
+                gameID: "game-a",
+                sortOrder: 3
+            ))
+            try context.save()
+        }
+
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)) { error in
+            guard let migrationError = error as? ItchPocketMigrationPlan.MigrationError,
+                  case .duplicateCollectionMember("favorites") = migrationError else {
+                return XCTFail("Expected duplicate normalized membership to be rejected, got \(error)")
+            }
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: v3Directory.path))
+        let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-duplicate-members-verify", schema: schema, url: v2StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let items = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
+                .filter { $0.collectionID == "favorites" }
+            XCTAssertEqual(items.filter { $0.gameID == "game-a" }.count, 2)
+        }
+    }
+
+    @MainActor
     func testV3MigrationRejectsConflictingMembershipWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-conflict-\(UUID().uuidString)", isDirectory: true)
@@ -359,12 +471,19 @@ final class DatabaseV3MigrationTests: XCTestCase {
             let configuration = ModelConfiguration("itchPocket-v2-fixture", schema: schema, url: storeURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
             let context = container.mainContext
+            context.insert(ItchPocketSchemaV2Snapshot.DBDeveloper(
+                id: "developer-a",
+                name: "Legacy Developer",
+                profileURL: "https://itch.io/profile/legacy-developer",
+                patreonURL: "https://patreon.com/legacycreator"
+            ))
             context.insert(ItchPocketSchemaV2Snapshot.DBGame(
                 id: "game-a",
                 title: "Game A",
                 descriptionText: "Legacy description",
                 galleryURLs: ["https://cdn.example/a.png"],
-                discoveryTagsData: Data("[]".utf8)
+                discoveryTagsData: Data("[]".utf8),
+                developerID: "developer-a"
             ))
             context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
             context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(

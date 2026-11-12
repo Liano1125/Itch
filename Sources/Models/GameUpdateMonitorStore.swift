@@ -48,15 +48,21 @@ final class GameUpdateMonitorStore: ObservableObject {
     private let repository: GameUpdateMonitorRepository
     private let appStateRepository: AppStateRepository
     private var didLoadWatches = false
+    private let shouldSimulateLoadFailure: () -> Bool
     private let historicalSyncDateKey = "devlogSync.lastDate"
     private let historicalSyncMessageKey = "devlogSync.lastMessage"
     private let historicalSyncResultsKey = "devlogSync.lastResults"
 
-    init(database: AppDatabase? = nil, repository: GameUpdateMonitorRepository? = nil) {
+    init(
+        database: AppDatabase? = nil,
+        repository: GameUpdateMonitorRepository? = nil,
+        shouldSimulateLoadFailure: @escaping () -> Bool = { false }
+    ) {
         let resolvedDatabase = database ?? .shared
         self.database = resolvedDatabase
         self.repository = repository ?? GameUpdateMonitorRepository(database: resolvedDatabase)
         self.appStateRepository = AppStateRepository(database: resolvedDatabase)
+        self.shouldSimulateLoadFailure = shouldSimulateLoadFailure
         load()
         do {
             lastHistoricalSyncAt = try self.appStateRepository.state(for: historicalSyncDateKey)?.dateValue
@@ -72,9 +78,14 @@ final class GameUpdateMonitorStore: ObservableObject {
     func watch(for gameID: String) -> GameUpdateWatch? { watches[gameID] }
 
     func setEnabled(_ enabled: Bool, for record: LibraryRecord) {
+        guard didLoadWatches else {
+            statusMessage = "更新监控数据尚未成功加载，请稍后重试。"
+            return
+        }
+
         if enabled {
             let existing = watches[record.id]
-            watches[record.id] = GameUpdateWatch(
+            let updated = GameUpdateWatch(
                 gameID: record.id,
                 gameTitle: record.title,
                 gameURL: record.gameURL ?? "",
@@ -85,21 +96,30 @@ final class GameUpdateMonitorStore: ObservableObject {
                 hasBaseline: existing?.hasBaseline ?? false,
                 isEnabled: true
             )
-            persistWatch(watches[record.id])
-        } else {
-            watches.removeValue(forKey: record.id)
             do {
-                if didLoadWatches {
-                    try repository.remove(gameID: record.id)
-                }
+                try repository.save(updated)
+                watches[record.id] = updated
             } catch {
+                statusMessage = "开启更新监控失败：\(error.localizedDescription)"
+                print("itchPocket update watch save failed: \(error)")
+            }
+        } else {
+            do {
+                try repository.remove(gameID: record.id)
+                watches.removeValue(forKey: record.id)
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationID(record.id)])
+            } catch {
+                statusMessage = "关闭更新监控失败：\(error.localizedDescription)"
                 print("itchPocket update watch removal failed: \(error)")
             }
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationID(record.id)])
         }
     }
 
     func checkAll(calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async {
+        guard didLoadWatches else {
+            statusMessage = "更新监控数据尚未成功加载，请先重新加载后再检查。"
+            return
+        }
         let targets = watches.values.filter(\.isEnabled)
         guard !targets.isEmpty else {
             statusMessage = "还没有开启监控的游戏。"
@@ -109,6 +129,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         var failed = 0
         var pendingUpdates: [DetectedGameUpdate] = []
         var notificationWatches: [GameUpdateWatch] = []
+        var proposedWatches = watches
         for target in targets {
             checkingIDs.insert(target.gameID)
             defer { checkingIDs.remove(target.gameID) }
@@ -134,7 +155,7 @@ final class GameUpdateMonitorStore: ObservableObject {
                 let bodyHash = SHA256.hash(data: Data(normalizedBody.utf8))
                     .map { String(format: "%02x", $0) }
                     .joined()
-                guard var current = watches[target.gameID] else { continue }
+                guard var current = proposedWatches[target.gameID] else { continue }
                 if !current.hasBaseline {
                     current.entityTag = etag
                     current.lastModified = modified
@@ -180,19 +201,30 @@ final class GameUpdateMonitorStore: ObservableObject {
                     if modified != nil { current.lastModified = modified }
                     current.lastCheckedAt = Date()
                 }
-                watches[target.gameID] = current
+                proposedWatches[target.gameID] = current
             } catch {
                 failed += 1
             }
         }
-        libraryStore.recordDetectedUpdates(pendingUpdates, save: false)
-        calendarStore.addDetectedUpdates(pendingUpdates, save: false)
-        persistWatches(save: false)
-        try? database.save()
-        for watch in notificationWatches {
-            await sendUpdateNotification(for: watch)
+        do {
+            try database.performTransaction {
+                _ = try libraryStore.stageDetectedUpdates(pendingUpdates)
+                _ = try calendarStore.stageDetectedUpdates(pendingUpdates)
+                try repository.save(Array(proposedWatches.values), save: false)
+            }
+            // Publish all three snapshots only after the shared transaction commits.
+            watches = proposedWatches
+            libraryStore.reload()
+            calendarStore.reload()
+            for watch in notificationWatches {
+                await sendUpdateNotification(for: watch)
+            }
+            statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
+        } catch {
+            failed += pendingUpdates.count
+            statusMessage = "检查结果未能保存，数据库已回滚本轮更新：\(error.localizedDescription)"
+            print("itchPocket update monitor transaction failed: \(error)")
         }
-        statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
     }
 
     func syncHistoricalDevlogs(records: [LibraryRecord], calendarStore: GameCalendarStore, libraryStore: PersonalLibraryStore) async -> String {
@@ -243,14 +275,24 @@ final class GameUpdateMonitorStore: ObservableObject {
                         isHistorical: true
                     )
                 }
-                let libraryAdded = libraryStore.recordHistoricalUpdates(gameID: record.id, updates: candidates, save: false)
-                let calendarAdded = calendarStore.addHistoricalUpdates(
-                    gameID: record.id,
-                    gameTitle: record.title,
-                    gameURL: record.gameURL,
-                    updates: candidates
-                )
-                try? database.save()
+                var libraryAdded = 0
+                var calendarAdded = 0
+                try database.performTransaction {
+                    libraryAdded = try libraryStore.stageHistoricalUpdates(
+                        gameID: record.id,
+                        updates: candidates
+                    )
+                    calendarAdded = try calendarStore.stageHistoricalUpdates(
+                        gameID: record.id,
+                        gameTitle: record.title,
+                        gameURL: record.gameURL,
+                        updates: candidates
+                    ).count
+                }
+                if libraryAdded > 0 || calendarAdded > 0 {
+                    libraryStore.reload()
+                    calendarStore.reload()
+                }
                 let addedForGame = max(libraryAdded, calendarAdded)
                 imported += addedForGame
                 if posts.isEmpty {
@@ -310,6 +352,9 @@ final class GameUpdateMonitorStore: ObservableObject {
 
     private func load() {
         do {
+            if shouldSimulateLoadFailure() {
+                throw UpdateMonitorStoreLoadError.simulatedFailure
+            }
             let loaded = try repository.watches()
             watches = Dictionary(uniqueKeysWithValues: loaded.map { ($0.gameID, $0) })
             didLoadWatches = true
@@ -441,4 +486,9 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
         }
         return ISO8601DateFormatter().date(from: value)
     }
+}
+
+
+private enum UpdateMonitorStoreLoadError: Error {
+    case simulatedFailure
 }
