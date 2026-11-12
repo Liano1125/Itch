@@ -4,6 +4,7 @@ import SwiftData
 /// Shared write-time checks for the logical foreign keys represented by stable IDs.
 /// SwiftData's scalar ID fields are intentionally not modeled as cascading relationships,
 /// so every repository must validate references before mutating the shared context.
+@MainActor
 enum DatabaseReferenceValidator {
     enum ValidationError: LocalizedError, Equatable {
         case missingGame(String)
