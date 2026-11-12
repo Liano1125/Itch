@@ -70,6 +70,7 @@ final class LibraryRepository {
         let gameID = entry.gameID
         let descriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
         let context = database.repositoryContext
+        try DatabaseReferenceValidator.requireGame(gameID, in: context)
         let matches = try context.fetch(descriptor)
         guard matches.count <= 1 else { throw RepositoryError.duplicateLibraryEntry(gameID) }
         let row: DBLibraryEntry
