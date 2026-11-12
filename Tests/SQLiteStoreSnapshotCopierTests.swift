@@ -55,6 +55,16 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         XCTAssertEqual(value, "committed-in-wal")
         XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
 
+        var countStatement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(snapshotDB, "SELECT COUNT(*) FROM records;", -1, &countStatement, nil),
+            SQLITE_OK
+        )
+        let countQuery = try XCTUnwrap(countStatement)
+        defer { sqlite3_finalize(countQuery) }
+        XCTAssertEqual(sqlite3_step(countQuery), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int(countQuery, 0), 1)
+
         var modeStatement: OpaquePointer?
         XCTAssertEqual(
             sqlite3_prepare_v2(snapshotDB, "PRAGMA journal_mode;", -1, &modeStatement, nil),
