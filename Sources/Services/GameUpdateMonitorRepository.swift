@@ -38,6 +38,7 @@ final class GameUpdateMonitorRepository {
 
     func save(_ watch: GameUpdateWatch, save shouldSave: Bool = true) throws {
         let context = database.repositoryContext
+        try DatabaseReferenceValidator.requireGame(watch.gameID, in: context)
         let gameID = watch.gameID
         let descriptor = FetchDescriptor<DBUpdateWatch>(
             predicate: #Predicate { $0.gameID == gameID }
