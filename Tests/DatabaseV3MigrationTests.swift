@@ -279,6 +279,13 @@ final class DatabaseV3MigrationTests: XCTestCase {
 
         // Simulate a V3 store whose game still points to a developer that
         // disappeared during an earlier migration/cutover.
+        // Simulate an older installation that already completed the detail
+        // recovery generation; the developer recovery must still run once.
+        try Data("completed".utf8).write(
+            to: v3Directory.appendingPathComponent(".v2-detail-recovery-v1"),
+            options: .atomic
+        )
+
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
             let configuration = ModelConfiguration("itchPocket-v3-missing-developer", schema: schema, url: v3StoreURL)
@@ -290,6 +297,9 @@ final class DatabaseV3MigrationTests: XCTestCase {
         }
 
         _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: v3Directory.appendingPathComponent(".v2-developer-recovery-v1").path
+        ))
 
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
