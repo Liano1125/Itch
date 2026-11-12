@@ -128,6 +128,8 @@ final class RepositoryIntegrationTests: XCTestCase {
     @MainActor
     func testCalendarStoreBlocksWritesUntilReadSucceedsAndRetainsLastGoodSnapshot() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        try database.save()
         let repository = GameCalendarRepository(database: database)
         let date = Date(timeIntervalSince1970: 1_800_000_000)
         let existing = GameCalendarEvent(
@@ -272,6 +274,8 @@ final class RepositoryIntegrationTests: XCTestCase {
     @MainActor
     func testCalendarStorePublishesChangesOnlyAfterSuccessfulWrites() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-write-guard", title: "Write Guard Game"))
+        try database.save()
         let repository = GameCalendarRepository(database: database)
         var shouldFailWrites = false
         let store = GameCalendarStore(
