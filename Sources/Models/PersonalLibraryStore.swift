@@ -444,7 +444,6 @@ final class PersonalLibraryStore: ObservableObject {
         do {
             try libraryRepository.removeGameFromLibrary(gameID: id)
             records.removeAll { $0.id == id }
-            statusEvents.removeValue(forKey: id)
             do {
                 collections = try libraryRepository.collections()
             } catch {
