@@ -92,9 +92,31 @@ final class SparkRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testBatchUpsertRejectsMissingGameBeforeAnyMutation() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
+        let repository = SparkRepository(database: database)
+
+        XCTAssertThrowsError(try repository.upsert([
+            StoredSparkMetadata(gameID: "game-a", runtimeSeconds: 10),
+            StoredSparkMetadata(gameID: "missing-game", runtimeSeconds: 20)
+        ])) { error in
+            XCTAssertEqual(
+                error as? DatabaseReferenceValidator.ValidationError,
+                .missingGame("missing-game")
+            )
+        }
+
+        XCTAssertTrue(try repository.loadByGameID().isEmpty)
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
+    @MainActor
     func testBatchUpsertOnlyChangesIncludedGames() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBGame(id: "existing", title: "Existing"))
         let repository = SparkRepository(database: database)
         try repository.upsert([
