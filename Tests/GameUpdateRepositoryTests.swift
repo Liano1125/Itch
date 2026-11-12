@@ -6,6 +6,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testLoadUpdatesGroupsByGameAndPreservesValues() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         let firstDate = Date(timeIntervalSince1970: 1_700_000_000)
         let secondDate = firstDate.addingTimeInterval(60)
         database.context.insert(DBGameUpdate(
@@ -40,6 +42,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testPartialSynchronizationNeverDeletesOmittedUpdates() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBGameUpdate(id: "keep-a", gameID: "game-a", summary: "A"))
         database.context.insert(DBGameUpdate(id: "keep-b", gameID: "game-a", summary: "B"))
         try database.save()
@@ -57,6 +61,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testCompleteSnapshotDeletesOnlyOmittedUpdatesForThatGame() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBGameUpdate(id: "keep-a", gameID: "game-a", summary: "A"))
         database.context.insert(DBGameUpdate(id: "remove-a", gameID: "game-a", summary: "Old"))
         database.context.insert(DBGameUpdate(id: "keep-b", gameID: "game-b", summary: "Other game"))
@@ -74,6 +80,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testUpdateIDConflictFailsBeforeMutatingExistingRow() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBGameUpdate(id: "shared", gameID: "game-a", summary: "Original"))
         try database.save()
 
@@ -93,6 +101,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testHistoricalUpsertPreservesStableIDAndRefreshesMetadata() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         let detectedAt = Date(timeIntervalSince1970: 1_700_000_000)
         database.context.insert(DBGameUpdate(
             id: "stable-id",
@@ -130,6 +140,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testHistoricalAppendDeduplicatesAgainstDatabaseAndWithinBatch() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBGameUpdate(
             id: "existing",
             gameID: "game-a",
@@ -155,6 +167,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testHistoricalAppendRejectsSameGameIDCollisionWithoutOverwriting() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBGameUpdate(
             id: "collision",
             gameID: "game-a",
@@ -190,6 +204,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testDetectedUpdateLookupIsScopedToGameAndTimestamp() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         database.context.insert(DBGameUpdate(id: "detected", gameID: "game-a", summary: "Changed", detectedAt: date))
         database.context.insert(DBGameUpdate(id: "other-game", gameID: "game-b", summary: "Changed", detectedAt: date))
@@ -203,6 +219,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
     @MainActor
     func testSynchronizeCanDeferSave() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         let repository = GameUpdateRepository(database: database)
 
         try repository.synchronize([
