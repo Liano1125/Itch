@@ -57,6 +57,7 @@ final class GameRepository {
         save shouldSave: Bool = true
     ) throws {
         let context = database.repositoryContext
+        if let developerID { try DatabaseReferenceValidator.requireDeveloper(developerID, in: context) }
         let gameID = id
         let descriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == gameID }
