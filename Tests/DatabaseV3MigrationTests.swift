@@ -266,7 +266,7 @@ final class DatabaseV3MigrationTests: XCTestCase {
     @MainActor
     func testExistingV3StoreRestoresMissingDeveloperFromV2Backup() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v3-developer-backfill-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v3-developer-backfill-\(UUID().uuidString)", isDirectory: true)
         let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
         let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
         try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
