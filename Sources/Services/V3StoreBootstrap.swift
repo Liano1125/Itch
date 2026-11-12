@@ -53,7 +53,7 @@ enum V3StoreBootstrap {
                 guard fileManager.fileExists(atPath: finalStoreURL.path) else {
                     throw BootstrapError.incompleteDestination(finalStoreURL)
                 }
-                try validateV3Store(at: finalStoreURL)
+                try validateV3Store(at: finalStoreURL, allowMissingDeveloperReferences: true)
             } catch {
                 guard recoverInvalidExistingV3 else { throw error }
                 let quarantine = parent.appendingPathComponent(
@@ -75,6 +75,7 @@ enum V3StoreBootstrap {
                     afterPhase: afterPhase,
                     writeRecoveryMarker: writeRecoveryMarker
                 )
+                try validateV3Store(at: finalStoreURL)
                 return finalStoreURL
             }
         }
@@ -208,7 +209,10 @@ enum V3StoreBootstrap {
         try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
     }
 
-    private static func validateV3Store(at storeURL: URL) throws {
+    private static func validateV3Store(
+        at storeURL: URL,
+        allowMissingDeveloperReferences: Bool = false
+    ) throws {
         // Reject non-SQLite or structurally corrupt files before SwiftData /
         // CoreData attempts to attach a persistent store. A failed CoreData
         // open can leave SQLite sidecar descriptors alive while recovery
@@ -224,7 +228,10 @@ enum V3StoreBootstrap {
             )
             var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
             do {
-                try validate(context: container!.mainContext)
+                try validate(
+                    context: container!.mainContext,
+                    allowMissingDeveloperReferences: allowMissingDeveloperReferences
+                )
             }
             container = nil
         }
@@ -249,6 +256,7 @@ enum V3StoreBootstrap {
 
         struct Developer {
             let id: String
+            let name: String
             let profileURL: String?
             let patreonURL: String?
             let discordURL: String?
@@ -329,6 +337,7 @@ enum V3StoreBootstrap {
             let developerValues = developers.map {
                 V2BackfillSnapshot.Developer(
                     id: $0.id,
+                    name: $0.name,
                     profileURL: $0.profileURL,
                     patreonURL: $0.patreonURL,
                     discordURL: $0.discordURL,
@@ -381,7 +390,7 @@ enum V3StoreBootstrap {
                     uniquingKeysWith: { first, _ in first }
                 )
                 let currentDevelopers = try context.fetch(FetchDescriptor<DBDeveloper>())
-                let currentDevelopersByID = Dictionary(
+                var currentDevelopersByID = Dictionary(
                     currentDevelopers.map { ($0.id, $0) },
                     uniquingKeysWith: { first, _ in first }
                 )
@@ -432,8 +441,23 @@ enum V3StoreBootstrap {
                     }
 
                     if let developerID = game.developerID,
-                       let oldDeveloper = snapshot.developersByID[developerID],
-                       let developer = currentDevelopersByID[developerID] {
+                       let oldDeveloper = snapshot.developersByID[developerID] {
+                        let developer: DBDeveloper
+                        if let existing = currentDevelopersByID[developerID] {
+                            developer = existing
+                        } else {
+                            // Restore only identities proven by the retained V2
+                            // backup; never synthesize a developer from a bare ID.
+                            let restored = DBDeveloper(id: oldDeveloper.id, name: oldDeveloper.name)
+                            context.insert(restored)
+                            currentDevelopersByID[developerID] = restored
+                            developer = restored
+                            changed = true
+                        }
+                        if developer.name.isEmpty, !oldDeveloper.name.isEmpty {
+                            developer.name = oldDeveloper.name
+                            changed = true
+                        }
                         if !hasText(developer.profileURL), hasText(oldDeveloper.profileURL) {
                             developer.profileURL = oldDeveloper.profileURL
                             changed = true
@@ -479,9 +503,23 @@ enum V3StoreBootstrap {
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private static func validate(context: ModelContext) throws {
+    private static func validate(
+        context: ModelContext,
+        allowMissingDeveloperReferences: Bool = false
+    ) throws {
         let games = try context.fetch(FetchDescriptor<DBGame>())
         let gameIDs = Set(games.map(\.id))
+        let developers = try context.fetch(FetchDescriptor<DBDeveloper>())
+        let developerIDs = Set(developers.map(\.id))
+        if !allowMissingDeveloperReferences {
+            for game in games {
+                if let developerID = game.developerID, !developerIDs.contains(developerID) {
+                    throw BootstrapError.validationFailed(
+                        "Game \(game.id) references missing developer: \(developerID)."
+                    )
+                }
+            }
+        }
 
         let details = try context.fetch(FetchDescriptor<DBGameDetail>())
         for detail in details where !gameIDs.contains(detail.gameID) {
