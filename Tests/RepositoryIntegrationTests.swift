@@ -390,4 +390,41 @@ final class RepositoryIntegrationTests: XCTestCase {
         XCTAssertEqual(calendarStore.events.count, 1)
     }
 
+
+    @MainActor
+    func testPersonalLibraryRemovalRetainsStatusTimelineInMemoryAndAfterReload() throws {
+        let database = try AppDatabase(inMemory: true)
+        let changedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        database.context.insert(DBGame(id: "history-game", title: "History Game"))
+        database.context.insert(DBLibraryEntry(
+            gameID: "history-game",
+            status: LibraryStatus.playing.rawValue,
+            addedAt: changedAt,
+            updatedAt: changedAt
+        ))
+        database.context.insert(DBLibraryStatusEvent(
+            id: "history-event",
+            gameID: "history-game",
+            fromStatus: nil,
+            toStatus: LibraryStatus.playing.rawValue,
+            changedAt: changedAt
+        ))
+        try database.save()
+
+        let store = PersonalLibraryStore(database: database)
+        XCTAssertEqual(store.history(for: "history-game").map(\.id), ["history-event"])
+
+        store.remove("history-game")
+
+        XCTAssertNil(store.record(for: "history-game"))
+        XCTAssertEqual(store.history(for: "history-game").map(\.id), ["history-event"])
+        XCTAssertEqual(
+            try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).map(\.id),
+            ["history-event"]
+        )
+
+        store.reload()
+        XCTAssertEqual(store.history(for: "history-game").map(\.id), ["history-event"])
+    }
+
 }

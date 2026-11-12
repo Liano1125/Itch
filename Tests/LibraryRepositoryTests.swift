@@ -149,7 +149,9 @@ final class LibraryRepositoryTests: XCTestCase {
         XCTAssertEqual(calendar.gameTitleSnapshot, "Game A")
         XCTAssertTrue(try context.fetch(FetchDescriptor<DBLibraryEntry>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<DBSparkMetadata>()).isEmpty)
-        XCTAssertTrue(try context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).isEmpty)
+        let preservedStatusEvents = try context.fetch(FetchDescriptor<DBLibraryStatusEvent>())
+        XCTAssertEqual(preservedStatusEvents.map(\.id), ["status-a"])
+        XCTAssertEqual(preservedStatusEvents.first?.toStatus, "在玩")
         XCTAssertTrue(try context.fetch(FetchDescriptor<DBLibraryCollectionItem>()).isEmpty)
     }
 
