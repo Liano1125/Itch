@@ -125,7 +125,7 @@ final class CalendarRepositoryTests: XCTestCase {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
         database.context.insert(DBGame(id: "game-b", title: "Game B"))
-        database.context.insert(DBGameUpdate(id: "update-b", gameID: "game-b"))
+        database.context.insert(DBGameUpdate(id: "update-b", gameID: "game-b", summary: ""))
         try database.save()
         let repository = CalendarRepository(database: database)
         let event = StoredCalendarEvent(id: "event-a", gameID: "game-a", kind: "游戏更新")
