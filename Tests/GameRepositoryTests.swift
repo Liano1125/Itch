@@ -137,4 +137,29 @@ final class GameRepositoryTests: XCTestCase {
         XCTAssertNotNil(try repository.game(id: "game-b"))
         XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGame>()).count, 2)
     }
+
+    @MainActor
+    func testMetadataUpsertRejectsMissingDeveloperBeforeMutatingGame() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Original"))
+        try database.save()
+
+        let repository = GameRepository(database: database)
+        XCTAssertThrowsError(try repository.upsertMetadata(
+            id: "game-a",
+            title: "Must not persist",
+            developerID: "missing-developer",
+            save: false
+        )) { error in
+            XCTAssertEqual(
+                error as? DatabaseReferenceValidator.ValidationError,
+                .missingDeveloper("missing-developer")
+            )
+        }
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertEqual(try repository.game(id: "game-a")?.title, "Original")
+        XCTAssertNil(try repository.game(id: "new-game"))
+    }
+
 }
