@@ -331,7 +331,7 @@ final class DatabaseV3MigrationTests: XCTestCase {
     @MainActor
     func testV3MigrationRejectsDuplicateNormalizedCollectionMembersWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v3-duplicate-members-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v3-duplicate-members-\(UUID().uuidString)", isDirectory: true)
         let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
         try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -343,11 +343,20 @@ final class DatabaseV3MigrationTests: XCTestCase {
             let configuration = ModelConfiguration("itchPocket-v2-duplicate-members-fixture", schema: schema, url: v2StoreURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
             let context = container.mainContext
+            // The V2 join model only has a unique row ID, not a composite
+            // (collectionID, gameID) constraint. Two distinct row IDs can
+            // therefore represent the corrupt duplicate that preflight must reject.
             context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
-                id: "legacy-duplicate-membership-row",
+                id: "legacy-duplicate-membership-row-1",
                 collectionID: "favorites",
                 gameID: "game-a",
                 sortOrder: 2
+            ))
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
+                id: "legacy-duplicate-membership-row-2",
+                collectionID: "favorites",
+                gameID: "game-a",
+                sortOrder: 3
             ))
             try context.save()
         }
@@ -356,7 +365,7 @@ final class DatabaseV3MigrationTests: XCTestCase {
         XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)) { error in
             guard let migrationError = error as? ItchPocketMigrationPlan.MigrationError,
                   case .duplicateCollectionMember("favorites") = migrationError else {
-                return XCTFail("Expected duplicate normalized membership to be rejected, got \\(error)")
+                return XCTFail("Expected duplicate normalized membership to be rejected, got \(error)")
             }
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
