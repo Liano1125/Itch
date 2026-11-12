@@ -28,6 +28,7 @@ enum V3StoreBootstrap {
     static let stagingDirectoryName = "itchPocket-v3.staging"
     static let storeFileName = "itchPocket-v3.store"
     private static let recoveryMarkerName = ".v2-detail-recovery-v1"
+    private static let developerRecoveryMarkerName = ".v2-developer-recovery-v1"
 
     enum PreparationPhase: Equatable {
         case sourceCopiedToStaging
@@ -282,20 +283,28 @@ enum V3StoreBootstrap {
         writeRecoveryMarker: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let fileManager = FileManager.default
-        let markerURL = directory.appendingPathComponent(recoveryMarkerName)
-        guard !fileManager.fileExists(atPath: markerURL.path),
-              fileManager.fileExists(atPath: v2StoreURL.path) else { return }
+        let detailMarkerURL = directory.appendingPathComponent(recoveryMarkerName)
+        let developerMarkerURL = directory.appendingPathComponent(developerRecoveryMarkerName)
+        guard fileManager.fileExists(atPath: v2StoreURL.path) else { return }
+        let needsDetailRecovery = !fileManager.fileExists(atPath: detailMarkerURL.path)
+        let needsDeveloperRecovery = !fileManager.fileExists(atPath: developerMarkerURL.path)
+        guard needsDetailRecovery || needsDeveloperRecovery else { return }
 
         let snapshot = try readV2BackfillSnapshot(at: v2StoreURL)
         try applyBackfill(snapshot, to: v3StoreURL)
         try afterPhase?(.backfillApplied)
 
-        // Write the marker only after the V3 store has been saved and validated.
+        // Each recovery generation has its own marker. This lets an app that
+        // already completed the detail backfill still repair missing developer
+        // identities after this newer recovery pass is introduced.
         let markerData = Data("completed".utf8)
-        if let writeRecoveryMarker {
-            try writeRecoveryMarker(markerData, markerURL)
-        } else {
-            try markerData.write(to: markerURL, options: .atomic)
+        for markerURL in [detailMarkerURL, developerMarkerURL]
+        where !fileManager.fileExists(atPath: markerURL.path) {
+            if let writeRecoveryMarker {
+                try writeRecoveryMarker(markerData, markerURL)
+            } else {
+                try markerData.write(to: markerURL, options: .atomic)
+            }
         }
     }
 
