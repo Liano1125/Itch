@@ -306,4 +306,97 @@ final class LibraryRepositoryTests: XCTestCase {
         XCTAssertFalse(database.context.hasChanges)
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryEntry>()).isEmpty)
     }
+
+    @MainActor
+    func testUpdateCollectionSaveFailureRollsBackTitleAndMemberships() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        database.context.insert(DBGame(id: "game-b", title: "B"))
+        try database.save()
+        let repository = LibraryRepository(database: database)
+        let collection = try repository.createCollection(title: "Original")
+        var initial = collection
+        initial.gameIDs = ["game-a"]
+        _ = try repository.updateCollection(initial)
+
+        var changed = collection
+        changed.title = "Changed"
+        changed.gameIDs = ["game-b"]
+        database.simulatedSaveError = { NSError(domain: "test", code: 1) }
+
+        XCTAssertThrowsError(try repository.updateCollection(changed))
+        database.simulatedSaveError = nil
+
+        let stored = try XCTUnwrap(repository.collections().first)
+        XCTAssertEqual(stored.title, "Original")
+        XCTAssertEqual(stored.gameIDs, ["game-a"])
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
+    @MainActor
+    func testToggleGameSaveFailureRollsBackMembershipChanges() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        database.context.insert(DBGame(id: "game-b", title: "B"))
+        try database.save()
+        let repository = LibraryRepository(database: database)
+        let collection = try repository.createCollection(title: "Collection")
+        var initial = collection
+        initial.gameIDs = ["game-a"]
+        _ = try repository.updateCollection(initial)
+
+        database.simulatedSaveError = { NSError(domain: "test", code: 2) }
+        XCTAssertThrowsError(try repository.toggleGame("game-b", in: collection.id))
+        database.simulatedSaveError = nil
+
+        XCTAssertEqual(try repository.collections().first?.gameIDs, ["game-a"])
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
+    @MainActor
+    func testDeleteCollectionSaveFailureRestoresCollectionAndMemberships() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        try database.save()
+        let repository = LibraryRepository(database: database)
+        let collection = try repository.createCollection(title: "Keep")
+        var initial = collection
+        initial.gameIDs = ["game-a"]
+        _ = try repository.updateCollection(initial)
+
+        database.simulatedSaveError = { NSError(domain: "test", code: 3) }
+        XCTAssertThrowsError(try repository.deleteCollection(id: collection.id))
+        database.simulatedSaveError = nil
+
+        XCTAssertEqual(try repository.collections().first?.id, collection.id)
+        XCTAssertEqual(try repository.collections().first?.gameIDs, ["game-a"])
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
+    @MainActor
+    func testRemoveGameSaveFailureRestoresLibrarySparkAndCollectionRows() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        database.context.insert(DBLibraryEntry(gameID: "game-a", status: "在玩"))
+        database.context.insert(DBSparkMetadata(gameID: "game-a", runtimeSeconds: 120))
+        database.context.insert(DBLibraryCollection(id: "collection-a", title: "Keep"))
+        database.context.insert(DBLibraryCollectionItem(
+            id: DBLibraryCollectionItem.stableID(collectionID: "collection-a", gameID: "game-a"),
+            collectionID: "collection-a",
+            gameID: "game-a",
+            sortOrder: 0
+        ))
+        try database.save()
+
+        let repository = LibraryRepository(database: database)
+        database.simulatedSaveError = { NSError(domain: "test", code: 4) }
+        XCTAssertThrowsError(try repository.removeGameFromLibrary(gameID: "game-a"))
+        database.simulatedSaveError = nil
+
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBSparkMetadata>()), 1)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 1)
+        XCTAssertEqual(try database.context.fetchCount(FetchDescriptor<DBLibraryCollection>()), 1)
+        XCTAssertFalse(database.context.hasChanges)
+    }
 }
