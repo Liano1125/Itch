@@ -61,7 +61,7 @@ enum SQLiteStoreSnapshotCopier {
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
             nil
         )
-        guard destinationResult == SQLITE_OK, let destination else {
+        guard destinationResult == SQLITE_OK, let destinationHandle = destination else {
             let detail = destination.map { String(cString: sqlite3_errmsg($0)) } ?? "No SQLite connection"
             if let destination { sqlite3_close_v2(destination) }
             throw CopyError.destinationOpenFailed(detail)
@@ -77,11 +77,11 @@ enum SQLiteStoreSnapshotCopier {
                 }
             }
         }
-        sqlite3_extended_result_codes(destination, 1)
-        sqlite3_busy_timeout(destination, 5_000)
+        sqlite3_extended_result_codes(destinationHandle, 1)
+        sqlite3_busy_timeout(destinationHandle, 5_000)
 
-        guard let backup = sqlite3_backup_init(destination, "main", source, "main") else {
-            throw CopyError.backupInitializationFailed(String(cString: sqlite3_errmsg(destination)))
+        guard let backup = sqlite3_backup_init(destinationHandle, "main", source, "main") else {
+            throw CopyError.backupInitializationFailed(String(cString: sqlite3_errmsg(destinationHandle)))
         }
 
         let deadline = Date().addingTimeInterval(5)
@@ -127,9 +127,9 @@ enum SQLiteStoreSnapshotCopier {
             if let journalModeStatement { sqlite3_finalize(journalModeStatement) }
         }
 
-        let modeStepResult = sqlite3_step(journalModeStatement)
+        let modeStepResult = sqlite3_step(journalModeHandle)
         let journalMode = modeStepResult == SQLITE_ROW
-            ? sqlite3_column_text(journalModeStatement, 0).map { String(cString: $0) }
+            ? sqlite3_column_text(journalModeHandle, 0).map { String(cString: $0) }
             : nil
         guard modeStepResult == SQLITE_ROW, journalMode?.lowercased() == "delete" else {
             throw CopyError.journalModeNormalizationFailed(
@@ -140,7 +140,7 @@ enum SQLiteStoreSnapshotCopier {
         // inspecting sidecars. SQLite may keep the WAL shared-memory mapping
         // alive until the final connection is closed, even after switching
         // the database back to DELETE journal mode.
-        let finalizeResult = sqlite3_finalize(journalModeStatement)
+        let finalizeResult = sqlite3_finalize(journalModeHandle)
         journalModeStatement = nil
         guard finalizeResult == SQLITE_OK else {
             throw CopyError.journalModeNormalizationFailed(
@@ -148,7 +148,7 @@ enum SQLiteStoreSnapshotCopier {
             )
         }
 
-        let closeResult = sqlite3_close(destination)
+        let closeResult = sqlite3_close(destinationHandle)
         guard closeResult == SQLITE_OK else {
             throw CopyError.destinationCloseFailed(
                 "SQLite error \(closeResult)"
