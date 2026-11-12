@@ -230,6 +230,9 @@ final class LibraryRepositoryTests: XCTestCase {
     func testLibraryEntryUpsertInsertsAndUpdatesOnlyRequestedGame() throws {
         let database = try AppDatabase(inMemory: true)
         let context = database.context
+        context.insert(DBGame(id: "game-a", title: "Game A"))
+        context.insert(DBGame(id: "game-b", title: "Game B"))
+        context.insert(DBGame(id: "game-c", title: "Game C"))
         context.insert(DBLibraryEntry(gameID: "game-a", status: "在玩", notes: "old"))
         context.insert(DBLibraryEntry(gameID: "game-b", status: "已完成", notes: "untouched"))
         try database.save()
@@ -257,6 +260,8 @@ final class LibraryRepositoryTests: XCTestCase {
     @MainActor
     func testLibraryEntryUpsertCanDeferSave() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
         let repository = LibraryRepository(database: database)
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -288,4 +293,17 @@ final class LibraryRepositoryTests: XCTestCase {
         }
     }
 
+
+    @MainActor
+    func testLibraryEntryUpsertRejectsMissingGameBeforeMutation() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = LibraryRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        XCTAssertThrowsError(try repository.upsertEntry(StoredLibraryEntry(gameID: "missing-game", status: "在玩", isFavorite: false, notes: "", addedAt: now, updatedAt: now))) { error in
+            XCTAssertEqual(error as? DatabaseReferenceValidator.ValidationError, .missingGame("missing-game"))
+        }
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryEntry>()).isEmpty)
+    }
 }
