@@ -11,6 +11,7 @@ enum SQLiteStoreSnapshotCopier {
         case backupFailed(String)
         case backupFinalizeFailed(String)
         case journalModeNormalizationFailed(String)
+        case destinationCloseFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -26,6 +27,8 @@ enum SQLiteStoreSnapshotCopier {
                 return "SQLite snapshot could not be finalized: \(detail)"
             case .journalModeNormalizationFailed(let detail):
                 return "SQLite snapshot journal mode could not be normalized: \(detail)"
+            case .destinationCloseFailed(let detail):
+                return "SQLite snapshot destination could not be closed cleanly: \(detail)"
             }
         }
     }
@@ -67,7 +70,7 @@ enum SQLiteStoreSnapshotCopier {
         defer {
             // Finalize any outstanding SQLite statements before this defer,
             // then close the connection before removing an incomplete store.
-            sqlite3_close_v2(destination)
+            if let destination { sqlite3_close_v2(destination) }
             if !destinationCompleted {
                 for suffix in ["", "-wal", "-shm", "-journal"] {
                     try? FileManager.default.removeItem(atPath: destinationURL.path + suffix)
@@ -120,7 +123,9 @@ enum SQLiteStoreSnapshotCopier {
                 "SQLite error \(prepareResult): \(String(cString: sqlite3_errmsg(destination)))"
             )
         }
-        defer { sqlite3_finalize(journalModeStatement) }
+        defer {
+            if let journalModeStatement { sqlite3_finalize(journalModeStatement) }
+        }
 
         let modeStepResult = sqlite3_step(journalModeStatement)
         let journalMode = modeStepResult == SQLITE_ROW
@@ -131,6 +136,41 @@ enum SQLiteStoreSnapshotCopier {
                 "SQLite error \(modeStepResult), returned mode: \(journalMode ?? "nil")"
             )
         }
+        // Finalize the PRAGMA statement and close the destination before
+        // inspecting sidecars. SQLite may keep the WAL shared-memory mapping
+        // alive until the final connection is closed, even after switching
+        // the database back to DELETE journal mode.
+        let finalizeResult = sqlite3_finalize(journalModeStatement)
+        journalModeStatement = nil
+        guard finalizeResult == SQLITE_OK else {
+            throw CopyError.journalModeNormalizationFailed(
+                "SQLite statement finalize error \(finalizeResult)"
+            )
+        }
+
+        let closeResult = sqlite3_close(destination)
+        guard closeResult == SQLITE_OK else {
+            throw CopyError.destinationCloseFailed(
+                "SQLite error \(closeResult)"
+            )
+        }
+        destination = nil
+
+        // Only after the destination connection is fully closed and DELETE
+        // mode has been confirmed may any stale sidecars be removed.
+        for suffix in ["-wal", "-shm", "-journal"] {
+            let sidecarPath = destinationURL.path + suffix
+            if FileManager.default.fileExists(atPath: sidecarPath) {
+                do {
+                    try FileManager.default.removeItem(atPath: sidecarPath)
+                } catch {
+                    throw CopyError.journalModeNormalizationFailed(
+                        "Could not remove stale \(suffix) sidecar: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+
         destinationCompleted = true
     }
 }
