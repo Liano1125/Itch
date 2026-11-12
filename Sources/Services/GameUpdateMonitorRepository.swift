@@ -60,6 +60,10 @@ final class GameUpdateMonitorRepository {
     }
 
     func save(_ watches: [GameUpdateWatch], save shouldSave: Bool = true) throws {
+        let context = database.repositoryContext
+        for watch in watches {
+            try DatabaseReferenceValidator.requireGame(watch.gameID, in: context)
+        }
         for watch in watches {
             try save(watch, save: false)
         }
