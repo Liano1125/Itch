@@ -6,6 +6,8 @@ final class SparkRepositoryTests: XCTestCase {
     @MainActor
     func testUpsertAndLoadPreserveAllSparkMetadata() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "existing", title: "Existing"))
         let repository = SparkRepository(database: database)
         let lastSaveAt = Date(timeIntervalSince1970: 1_800_000_000)
         let scannedAt = Date(timeIntervalSince1970: 1_800_000_100)
@@ -33,6 +35,8 @@ final class SparkRepositoryTests: XCTestCase {
     @MainActor
     func testUpsertUpdatesExistingGameWithoutCreatingAnotherRow() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "existing", title: "Existing"))
         let repository = SparkRepository(database: database)
         try repository.upsert([
             StoredSparkMetadata(gameID: "game-a", runtimeSeconds: 100, renpyVersion: "8.2")
@@ -50,6 +54,8 @@ final class SparkRepositoryTests: XCTestCase {
     @MainActor
     func testDuplicateGameIDsAreRejectedBeforeAnyMutation() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "existing", title: "Existing"))
         let repository = SparkRepository(database: database)
         try repository.upsert([
             StoredSparkMetadata(gameID: "existing", runtimeSeconds: 10)
@@ -71,6 +77,8 @@ final class SparkRepositoryTests: XCTestCase {
     @MainActor
     func testBatchUpsertCanDeferSaveForCallerBatching() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "existing", title: "Existing"))
         let repository = SparkRepository(database: database)
 
         try repository.upsert([
@@ -86,6 +94,8 @@ final class SparkRepositoryTests: XCTestCase {
     @MainActor
     func testBatchUpsertOnlyChangesIncludedGames() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "existing", title: "Existing"))
         let repository = SparkRepository(database: database)
         try repository.upsert([
             StoredSparkMetadata(gameID: "game-a", runtimeSeconds: 10),
