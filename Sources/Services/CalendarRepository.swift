@@ -115,11 +115,7 @@ final class CalendarRepository {
         row.notes = event.notes
         row.sourceFingerprint = event.sourceFingerprint
         row.gameTitleSnapshot = event.gameTitleSnapshot
-        row.sourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
-            existing: row.sourceUpdateID,
-            incoming: sourceUpdateID,
-            clear: clearSourceUpdateLink
-        )
+        row.sourceUpdateID = resolvedSourceUpdateID
 
         if shouldSave { try database.save() }
     }
