@@ -73,6 +73,7 @@ final class GameCalendarRepository {
         guard let sourceID = update.sourceID else {
             throw RepositoryError.missingHistoricalSourceID
         }
+        try DatabaseReferenceValidator.requireGame(gameID, in: context)
         let descriptor = FetchDescriptor<DBGameUpdate>(
             predicate: #Predicate { $0.gameID == gameID && $0.sourceID == sourceID }
         )
@@ -108,9 +109,23 @@ final class GameCalendarRepository {
         clearSourceUpdateLink: Bool = false,
         save shouldSave: Bool = true
     ) throws {
+        try DatabaseReferenceValidator.requireGame(event.gameID, in: context)
         let descriptor = FetchDescriptor<DBCalendarEvent>(predicate: #Predicate { $0.id == event.id })
+        let existing = try context.fetch(descriptor).first
+        // A missing incoming link means "keep the existing link"; clearing is always explicit.
+        let resolvedSourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
+            existing: existing?.sourceUpdateID,
+            incoming: sourceUpdateID,
+            clear: clearSourceUpdateLink
+        )
+        try DatabaseReferenceValidator.validateCalendarUpdateLink(
+            resolvedSourceUpdateID,
+            eventGameID: event.gameID,
+            in: context
+        )
+
         let item: DBCalendarEvent
-        if let existing = try context.fetch(descriptor).first {
+        if let existing {
             item = existing
         } else {
             item = DBCalendarEvent(
@@ -125,12 +140,7 @@ final class GameCalendarRepository {
         item.reminderEnabled = event.reminderEnabled
         item.reminderMinutes = event.reminderMinutes
         item.sourceFingerprint = event.sourceFingerprint
-        // A missing incoming link means "keep the existing link"; clearing is always explicit.
-        item.sourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
-            existing: item.sourceUpdateID,
-            incoming: sourceUpdateID,
-            clear: clearSourceUpdateLink
-        )
+        item.sourceUpdateID = resolvedSourceUpdateID
         item.title = event.title
         item.date = event.date
         item.notes = event.notes
