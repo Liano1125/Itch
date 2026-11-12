@@ -25,9 +25,12 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         try execute("PRAGMA journal_mode=WAL;", on: source)
         try execute("CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT NOT NULL);", on: source)
         try execute("INSERT INTO records (id, value) VALUES (1, 'committed-in-wal');", on: source)
+        try execute("BEGIN IMMEDIATE;", on: source)
+        try execute("INSERT INTO records (id, value) VALUES (2, 'uncommitted-at-snapshot-time');", on: source)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path + "-wal"))
         try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL)
+        try execute("COMMIT;", on: source)
 
         var snapshot: OpaquePointer?
         let snapshotResult = sqlite3_open_v2(
@@ -51,6 +54,21 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         let value = sqlite3_column_text(query, 0).map { String(cString: $0) }
         XCTAssertEqual(value, "committed-in-wal")
         XCTAssertEqual(sqlite3_step(query), SQLITE_DONE)
+
+        var modeStatement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(snapshotDB, "PRAGMA journal_mode;", -1, &modeStatement, nil),
+            SQLITE_OK
+        )
+        let modeQuery = try XCTUnwrap(modeStatement)
+        defer { sqlite3_finalize(modeQuery) }
+        XCTAssertEqual(sqlite3_step(modeQuery), SQLITE_ROW)
+        let mode = sqlite3_column_text(modeQuery, 0).map { String(cString: $0) }
+        XCTAssertEqual(mode?.lowercased(), "delete")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-wal"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-shm"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-journal"))
     }
 
     func testExistingDestinationIsPreservedWhenCopyIsRejected() throws {
