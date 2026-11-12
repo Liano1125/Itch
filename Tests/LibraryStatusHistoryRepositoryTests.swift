@@ -114,4 +114,27 @@ final class LibraryStatusHistoryRepositoryTests: XCTestCase {
             ["pending-event"]
         )
     }
+
+    @MainActor
+    func testAppendRejectsMissingGameBeforeInsertingHistory() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        try database.save()
+
+        let repository = LibraryStatusHistoryRepository(database: database)
+        XCTAssertThrowsError(try repository.append(
+            LibraryStatusEvent(id: "orphan-event", fromStatus: nil, toStatus: .playing),
+            for: "missing-game",
+            save: false
+        )) { error in
+            XCTAssertEqual(
+                error as? DatabaseReferenceValidator.ValidationError,
+                .missingGame("missing-game")
+            )
+        }
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).isEmpty)
+    }
+
 }
