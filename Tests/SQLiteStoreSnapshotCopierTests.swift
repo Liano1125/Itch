@@ -73,7 +73,7 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
 
     func testFailedBackupRemovesPartialDestinationAndSidecars() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-sqlite-snapshot-failure-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-sqlite-snapshot-failure-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -85,7 +85,7 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         for suffix in ["", "-wal", "-shm", "-journal"] {
             XCTAssertFalse(
                 FileManager.default.fileExists(atPath: destinationURL.path + suffix),
-                "Failed snapshot left behind destination suffix: \\(suffix)"
+                "Failed snapshot left behind destination suffix: \(suffix)"
             )
         }
         XCTAssertEqual(try Data(contentsOf: sourceURL), Data("not a SQLite database".utf8))
@@ -93,7 +93,7 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
 
     func testExistingDestinationIsPreservedWhenCopyIsRejected() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
