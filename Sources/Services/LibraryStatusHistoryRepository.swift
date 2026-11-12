@@ -40,6 +40,7 @@ final class LibraryStatusHistoryRepository {
     /// from a caller's in-memory cache.
     func append(_ event: LibraryStatusEvent, for gameID: String, save shouldSave: Bool = true) throws {
         let context = database.repositoryContext
+        try DatabaseReferenceValidator.requireGame(gameID, in: context)
         let eventID = event.id
         let descriptor = FetchDescriptor<DBLibraryStatusEvent>(
             predicate: #Predicate { $0.id == eventID }
