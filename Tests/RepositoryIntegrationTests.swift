@@ -231,6 +231,8 @@ final class RepositoryIntegrationTests: XCTestCase {
     @MainActor
     func testUpdateMonitorBlocksMutationsUntilWatchSnapshotLoads() async throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        try database.save()
         var shouldFail = false
         let store = GameUpdateMonitorStore(
             database: database,
