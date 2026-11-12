@@ -225,8 +225,9 @@ final class LibraryRepository {
         )
     }
 
-    /// Removes only library-owned records and collection membership.
-    /// Game metadata, update history, and calendar events intentionally survive.
+    /// Removes the active library entry, Spark snapshot, and collection membership.
+    /// Game metadata, Devlog history, calendar events, and status history intentionally survive.
+    /// Status history is a game timeline, not disposable state owned by the active library entry.
     func removeGameFromLibrary(gameID: String) throws {
         let context = database.repositoryContext
 
@@ -244,10 +245,6 @@ final class LibraryRepository {
         let sparkRows = try context.fetch(FetchDescriptor<DBSparkMetadata>(
             predicate: #Predicate { $0.gameID == gameID }
         ))
-        let statusRows = try context.fetch(FetchDescriptor<DBLibraryStatusEvent>(
-            predicate: #Predicate { $0.gameID == gameID }
-        ))
-
         let affectedCollections = collections.compactMap { collection -> (DBLibraryCollection, [String], [DBLibraryCollectionItem])? in
             guard let currentIDs = membershipsByCollection[collection.id],
                   currentIDs.contains(gameID) else { return nil }
@@ -258,7 +255,6 @@ final class LibraryRepository {
 
         for item in entries { context.delete(item) }
         for item in sparkRows { context.delete(item) }
-        for item in statusRows { context.delete(item) }
         for item in allMembershipRows where item.gameID == gameID {
             context.delete(item)
         }
