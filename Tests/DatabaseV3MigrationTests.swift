@@ -264,6 +264,51 @@ final class DatabaseV3MigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testExistingV3StoreRestoresMissingDeveloperFromV2Backup() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-developer-backfill-\\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: v3Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+        let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+
+        // Simulate a V3 store whose game still points to a developer that
+        // disappeared during an earlier migration/cutover.
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-missing-developer", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            context.insert(DBGame(id: "game-a", title: "Game A", developerID: "developer-a"))
+            context.insert(DBGame(id: "game-b", title: "Game B"))
+            try context.save()
+        }
+
+        _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV3.self)
+            let configuration = ModelConfiguration("itchPocket-v3-restored-developer-verify", schema: schema, url: v3StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let game = try XCTUnwrap(context.fetch(FetchDescriptor<DBGame>()).first { $0.id == "game-a" })
+            XCTAssertEqual(game.developerID, "developer-a")
+            let developer = try XCTUnwrap(context.fetch(FetchDescriptor<DBDeveloper>()).first { $0.id == "developer-a" })
+            XCTAssertEqual(developer.name, "Legacy Developer")
+            XCTAssertEqual(developer.profileURL, "https://itch.io/profile/legacy-developer")
+            XCTAssertEqual(developer.patreonURL, "https://patreon.com/legacycreator")
+        }
+
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
+    }
+
+    @MainActor
     func testV3MigrationRejectsOrphanedGameReferencesWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-orphaned-references-\(UUID().uuidString)", isDirectory: true)
@@ -416,12 +461,19 @@ final class DatabaseV3MigrationTests: XCTestCase {
             let configuration = ModelConfiguration("itchPocket-v2-fixture", schema: schema, url: storeURL)
             let container = try ModelContainer(for: schema, configurations: [configuration])
             let context = container.mainContext
+            context.insert(ItchPocketSchemaV2Snapshot.DBDeveloper(
+                id: "developer-a",
+                name: "Legacy Developer",
+                profileURL: "https://itch.io/profile/legacy-developer",
+                patreonURL: "https://patreon.com/legacycreator"
+            ))
             context.insert(ItchPocketSchemaV2Snapshot.DBGame(
                 id: "game-a",
                 title: "Game A",
                 descriptionText: "Legacy description",
                 galleryURLs: ["https://cdn.example/a.png"],
-                discoveryTagsData: Data("[]".utf8)
+                discoveryTagsData: Data("[]".utf8),
+                developerID: "developer-a"
             ))
             context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-b", title: "Game B"))
             context.insert(ItchPocketSchemaV2Snapshot.DBGameDetail(
