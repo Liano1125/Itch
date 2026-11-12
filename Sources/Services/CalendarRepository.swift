@@ -81,11 +81,25 @@ final class CalendarRepository {
         save shouldSave: Bool = true
     ) throws {
         let context = database.repositoryContext
+        try DatabaseReferenceValidator.requireGame(event.gameID, in: context)
+
         let eventID = event.id
         let descriptor = FetchDescriptor<DBCalendarEvent>(
             predicate: #Predicate { $0.id == eventID }
         )
-        let row = try context.fetch(descriptor).first ?? DBCalendarEvent(
+        let existingRow = try context.fetch(descriptor).first
+        let resolvedSourceUpdateID = CalendarSourceUpdateLinkPolicy.resolvedValue(
+            existing: existingRow?.sourceUpdateID,
+            incoming: sourceUpdateID,
+            clear: clearSourceUpdateLink
+        )
+        try DatabaseReferenceValidator.validateCalendarUpdateLink(
+            resolvedSourceUpdateID,
+            eventGameID: event.gameID,
+            in: context
+        )
+
+        let row = existingRow ?? DBCalendarEvent(
             id: event.id,
             gameID: event.gameID,
             kind: event.kind
