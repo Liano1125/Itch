@@ -329,6 +329,54 @@ final class DatabaseV3MigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testV3MigrationRejectsDuplicateNormalizedCollectionMembersWithoutChangingV2() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-duplicate-members-\\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        try FileManager.default.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+
+        try createV2Fixture(at: v2StoreURL, conflictingCollection: false)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-duplicate-members-fixture", schema: schema, url: v2StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            context.insert(ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem(
+                id: "legacy-duplicate-membership-row",
+                collectionID: "favorites",
+                gameID: "game-a",
+                sortOrder: 2
+            ))
+            try context.save()
+        }
+
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)) { error in
+            guard let migrationError = error as? ItchPocketMigrationPlan.MigrationError,
+                  case .duplicateCollectionMember("favorites") = migrationError else {
+                return XCTFail("Expected duplicate normalized membership to be rejected, got \\(error)")
+            }
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: v2StoreURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: v3Directory.path))
+        let stagingDirectory = root.appendingPathComponent(V3StoreBootstrap.stagingDirectoryName, isDirectory: true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v2StoreURL)
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration("itchPocket-v2-duplicate-members-verify", schema: schema, url: v2StoreURL)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let items = try context.fetch(FetchDescriptor<ItchPocketSchemaV2Snapshot.DBLibraryCollectionItem>())
+                .filter { $0.collectionID == "favorites" }
+            XCTAssertEqual(items.filter { $0.gameID == "game-a" }.count, 2)
+        }
+    }
+
+    @MainActor
     func testV3MigrationRejectsConflictingMembershipWithoutChangingV2() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-v3-conflict-\(UUID().uuidString)", isDirectory: true)
