@@ -57,6 +57,11 @@ final class UpdateMonitorRepository {
         }
 
         let context = database.repositoryContext
+        // Validate every incoming reference before reading or mutating persisted rows.
+        for gameID in desiredByID.keys {
+            try DatabaseReferenceValidator.requireGame(gameID, in: context)
+        }
+
         let existing = try context.fetch(FetchDescriptor<DBUpdateWatch>())
         var existingByID: [String: DBUpdateWatch] = [:]
         for row in existing {
