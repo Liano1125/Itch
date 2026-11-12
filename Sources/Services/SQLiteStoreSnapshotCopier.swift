@@ -97,12 +97,12 @@ enum SQLiteStoreSnapshotCopier {
         let finishResult = sqlite3_backup_finish(backup)
         guard stepResult == SQLITE_DONE else {
             throw CopyError.backupFailed(
-                "SQLite error \(stepResult): \(String(cString: sqlite3_errmsg(destination)))"
+                "SQLite error \(stepResult): \(String(cString: sqlite3_errmsg(destinationHandle)))"
             )
         }
         guard finishResult == SQLITE_OK else {
             throw CopyError.backupFinalizeFailed(
-                "SQLite error \(finishResult): \(String(cString: sqlite3_errmsg(destination)))"
+                "SQLite error \(finishResult): \(String(cString: sqlite3_errmsg(destinationHandle)))"
             )
         }
 
@@ -112,15 +112,15 @@ enum SQLiteStoreSnapshotCopier {
         // rollback-journal mode before handing it to SwiftData.
         var journalModeStatement: OpaquePointer?
         let prepareResult = sqlite3_prepare_v2(
-            destination,
+            destinationHandle,
             "PRAGMA journal_mode=DELETE;",
             -1,
             &journalModeStatement,
             nil
         )
-        guard prepareResult == SQLITE_OK, let journalModeStatement else {
+        guard prepareResult == SQLITE_OK, let journalModeHandle = journalModeStatement else {
             throw CopyError.journalModeNormalizationFailed(
-                "SQLite error \(prepareResult): \(String(cString: sqlite3_errmsg(destination)))"
+                "SQLite error \(prepareResult): \(String(cString: sqlite3_errmsg(destinationHandle)))"
             )
         }
         defer {
