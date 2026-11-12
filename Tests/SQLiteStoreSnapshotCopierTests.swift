@@ -32,9 +32,13 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL)
         try execute("COMMIT;", on: source)
 
-        for suffix in ["-wal", "-shm", "-journal"] {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + suffix))
+        let leftoverSidecars = ["-wal", "-shm", "-journal"].filter {
+            FileManager.default.fileExists(atPath: destinationURL.path + $0)
         }
+        XCTAssertTrue(
+            leftoverSidecars.isEmpty,
+            "Snapshot left behind sidecars: \(leftoverSidecars.joined(separator: ", "))"
+        )
 
         var snapshot: OpaquePointer?
         let snapshotResult = sqlite3_open_v2(
