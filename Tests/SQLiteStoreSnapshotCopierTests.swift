@@ -32,6 +32,10 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL)
         try execute("COMMIT;", on: source)
 
+        for suffix in ["-wal", "-shm", "-journal"] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + suffix))
+        }
+
         var snapshot: OpaquePointer?
         let snapshotResult = sqlite3_open_v2(
             destinationURL.path,
@@ -76,9 +80,6 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         let mode = sqlite3_column_text(modeQuery, 0).map { String(cString: $0) }
         XCTAssertEqual(mode?.lowercased(), "delete")
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-wal"))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-shm"))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-journal"))
     }
 
     func testFailedBackupRemovesPartialDestinationAndSidecars() throws {
