@@ -232,4 +232,26 @@ final class GameUpdateRepositoryTests: XCTestCase {
         XCTAssertFalse(database.context.hasChanges)
         XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGameUpdate>()).map(\.id), ["pending"])
     }
+
+    @MainActor
+    func testSynchronizeRejectsMissingGameBeforeInsertingUpdates() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        try database.save()
+
+        let repository = GameUpdateRepository(database: database)
+        XCTAssertThrowsError(try repository.synchronize([
+            GameLibraryUpdate(id: "orphan-update", summary: "Must not persist")
+        ], for: "missing-game", save: false)) { error in
+            XCTAssertEqual(
+                error as? DatabaseReferenceValidator.ValidationError,
+                .missingGame("missing-game")
+            )
+        }
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBGameUpdate>()).isEmpty)
+        XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGame>()).first?.title, "A")
+    }
+
 }
