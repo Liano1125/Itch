@@ -6,6 +6,8 @@ final class LibraryStatusHistoryRepositoryTests: XCTestCase {
     @MainActor
     func testLoadEventsGroupsRowsByGameAndPreservesEventValues() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         let context = database.context
         let firstDate = Date(timeIntervalSince1970: 1_700_000_000)
         let secondDate = firstDate.addingTimeInterval(60)
@@ -45,6 +47,8 @@ final class LibraryStatusHistoryRepositoryTests: XCTestCase {
     @MainActor
     func testAppendingOneEventNeverDeletesOtherGamesHistory() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBLibraryStatusEvent(
             id: "existing-event",
             gameID: "game-b",
@@ -67,6 +71,8 @@ final class LibraryStatusHistoryRepositoryTests: XCTestCase {
     @MainActor
     func testEventIDConflictFailsBeforeMutatingExistingHistory() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         database.context.insert(DBLibraryStatusEvent(
             id: "shared-event",
             gameID: "game-a",
@@ -90,6 +96,8 @@ final class LibraryStatusHistoryRepositoryTests: XCTestCase {
     @MainActor
     func testAppendCanDeferSaveForCallerBatching() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
         let repository = LibraryStatusHistoryRepository(database: database)
 
         try repository.append(
