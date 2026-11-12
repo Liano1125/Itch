@@ -70,6 +70,9 @@ final class SparkRepository {
         }
 
         let context = database.repositoryContext
+        for snapshot in snapshots {
+            try DatabaseReferenceValidator.requireGame(snapshot.gameID, in: context)
+        }
         // Resolve every existing row before mutating the shared context so a
         // fetch failure cannot leave a partially applied batch.
         var existingByGameID: [String: DBSparkMetadata] = [:]
