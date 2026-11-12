@@ -412,19 +412,19 @@ final class RepositoryIntegrationTests: XCTestCase {
         try database.save()
 
         let store = PersonalLibraryStore(database: database)
-        XCTAssertEqual(store.history(for: "history-game").map(\\.id), ["history-event"])
+        XCTAssertEqual(store.history(for: "history-game").map(\.id), ["history-event"])
 
         store.remove("history-game")
 
         XCTAssertNil(store.record(for: "history-game"))
-        XCTAssertEqual(store.history(for: "history-game").map(\\.id), ["history-event"])
+        XCTAssertEqual(store.history(for: "history-game").map(\.id), ["history-event"])
         XCTAssertEqual(
-            try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).map(\\.id),
+            try database.context.fetch(FetchDescriptor<DBLibraryStatusEvent>()).map(\.id),
             ["history-event"]
         )
 
         store.reload()
-        XCTAssertEqual(store.history(for: "history-game").map(\\.id), ["history-event"])
+        XCTAssertEqual(store.history(for: "history-game").map(\.id), ["history-event"])
     }
 
 }
