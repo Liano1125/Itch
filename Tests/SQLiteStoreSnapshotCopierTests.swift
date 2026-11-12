@@ -71,6 +71,26 @@ final class SQLiteStoreSnapshotCopierTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path + "-journal"))
     }
 
+    func testFailedBackupRemovesPartialDestinationAndSidecars() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-sqlite-snapshot-failure-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourceURL = root.appendingPathComponent("corrupt-source.store")
+        let destinationURL = root.appendingPathComponent("snapshot.store")
+        try Data("not a SQLite database".utf8).write(to: sourceURL)
+
+        XCTAssertThrowsError(try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: destinationURL))
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: destinationURL.path + suffix),
+                "Failed snapshot left behind destination suffix: \\(suffix)"
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: sourceURL), Data("not a SQLite database".utf8))
+    }
+
     func testExistingDestinationIsPreservedWhenCopyIsRejected() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("itchPocket-sqlite-snapshot-existing-\\(UUID().uuidString)", isDirectory: true)
