@@ -86,6 +86,13 @@ final class GameCalendarRepository {
             stored.url = update.url
             stored.isHistorical = true
         } else {
+            let updateID = update.id
+            let idDescriptor = FetchDescriptor<DBGameUpdate>(
+                predicate: #Predicate { $0.id == updateID }
+            )
+            guard try context.fetch(idDescriptor).first == nil else {
+                throw RepositoryError.updateIDAlreadyExists(updateID)
+            }
             stored = DBGameUpdate(
                 id: update.id,
                 gameID: gameID,
@@ -159,7 +166,8 @@ final class GameCalendarRepository {
         try database.save()
     }
 
-    enum RepositoryError: Error {
+    enum RepositoryError: Error, Equatable {
         case missingHistoricalSourceID
+        case updateIDAlreadyExists(String)
     }
 }
