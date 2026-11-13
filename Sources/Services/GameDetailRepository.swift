@@ -250,11 +250,7 @@ struct GameDetailPageSnapshot {
     let tagsResolved: Bool
 
     var isComplete: Bool {
-        GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: descriptionResolved,
-            galleryResolved: galleryResolved,
-            tagsResolved: tagsResolved
-        )
+        GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: descriptionResolved)
     }
 }
 
@@ -270,11 +266,7 @@ enum GameDetailSnapshotPolicy {
     /// A successfully parsed game description is the required detail payload.
     /// Gallery and discovery tags are optional on itch.io and must not keep an
     /// otherwise valid page in the partial/retry state when those sections are absent.
-    static func shouldMarkComplete(
-        descriptionResolved: Bool,
-        galleryResolved: Bool,
-        tagsResolved: Bool
-    ) -> Bool {
+    static func hasRequiredDescription(descriptionResolved: Bool) -> Bool {
         descriptionResolved
     }
 }
