@@ -261,8 +261,8 @@ enum GameDescriptionContentPolicy {
     static func cleaned(_ source: String?) -> String? {
         guard let source else { return nil }
         let normalized = source
-            .replacingOccurrences(of: "\\r\\n", with: "\\n")
-            .replacingOccurrences(of: "\\r", with: "\\n")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
         let lines = normalized.components(separatedBy: .newlines)
         let excludedHeadings: Set<String> = [
             "about me", "关于我",
@@ -298,7 +298,7 @@ enum GameDescriptionContentPolicy {
                 continue
             }
 
-            let compact = line.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\\t", with: "")
+            let compact = line.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\t", with: "")
             if compact.count >= 4 && compact.allSatisfy({ $0 == "_" || $0 == "-" || $0 == "—" || $0 == "–" || $0 == "=" }) {
                 continue
             }
@@ -323,8 +323,8 @@ enum GameDescriptionContentPolicy {
             }
         }
 
-        let result = output.joined(separator: "\\n")
-            .replacingOccurrences(of: "\\n{3,}", with: "\\n\\n", options: .regularExpression)
+        let result = output.joined(separator: "\n")
+            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return result.isEmpty ? source.trimmingCharacters(in: .whitespacesAndNewlines) : result
     }
