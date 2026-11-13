@@ -60,6 +60,13 @@ final class GameUpdateMonitorRepository {
     }
 
     func save(_ watches: [GameUpdateWatch], save shouldSave: Bool = true) throws {
+        if shouldSave {
+            try database.performTransaction {
+                try save(watches, save: false)
+            }
+            return
+        }
+
         let context = database.repositoryContext
         for watch in watches {
             try DatabaseReferenceValidator.requireGame(watch.gameID, in: context)
@@ -67,7 +74,6 @@ final class GameUpdateMonitorRepository {
         for watch in watches {
             try save(watch, save: false)
         }
-        if shouldSave { try database.save() }
     }
 
     func remove(gameID: String, save shouldSave: Bool = true) throws {
