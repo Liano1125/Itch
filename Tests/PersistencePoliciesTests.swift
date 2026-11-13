@@ -31,6 +31,53 @@ final class PersistencePoliciesTests: XCTestCase {
         )
     }
 
+    func testGameDescriptionKeepsWelcomeAndPlotButRemovesAuxiliarySections() {
+        let source = """
+        PATREON | SUBSCRIBESTAR
+        ____________________________________
+
+        Welcome!
+        I'm creating Eternum, a choice-based visual novel.
+
+        Plot
+        You move to Kredon and discover Eternum.
+        The game has a darker side.
+
+        About me
+        The game has 11,000 renders.
+        Check out my Patreon.
+
+        Android installation
+        Read this installation guide.
+
+        About translations
+        Translations are fan-made.
+
+        Featured mods
+        Bonus features mod.
+
+        Comments section
+        Comments are temporarily disabled.
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("Welcome!"))
+        XCTAssertTrue(result.contains("Plot"))
+        XCTAssertTrue(result.contains("You move to Kredon"))
+        XCTAssertFalse(result.contains("PATREON | SUBSCRIBESTAR"))
+        XCTAssertFalse(result.contains("About me"))
+        XCTAssertFalse(result.contains("11,000 renders"))
+        XCTAssertFalse(result.contains("Android installation"))
+        XCTAssertFalse(result.contains("fan-made"))
+        XCTAssertFalse(result.contains("Featured mods"))
+        XCTAssertFalse(result.contains("Comments section"))
+    }
+
+    func testGameDescriptionPolicyPreservesUnrecognizedGameContent() {
+        let source = "Welcome!\\n\\nCombat and exploration are important mechanics."
+        XCTAssertEqual(GameDescriptionContentPolicy.cleaned(source), source)
+    }
+
     func testUnresolvedDescriptionPreservesCachedValue() {
         XCTAssertEqual(
             GameDetailSnapshotPolicy.resolvedValue(
