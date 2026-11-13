@@ -1,11 +1,6 @@
 import SwiftUI
 import WebKit
 
-@MainActor
-private enum DiscoveryInitialLoadGate {
-    static var didStart = false
-}
-
 private struct DiscoveryTagRecommendation: Identifiable {
     let id: String
     let name: String
@@ -98,47 +93,6 @@ struct DiscoverView: View {
             .background(Color(uiColor: .systemBackground))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .overlay {
-                GeometryReader { proxy in
-                    VStack(spacing: 0) {
-                        if shouldLoadCurated {
-                            CuratedDiscoveryFeedReader(
-                                feeds: DiscoveryFeed.curated,
-                                reloadToken: curatedReloadToken,
-                                onLoad: { feedID, games in
-                                    // Keep the raw response; filtering belongs to the UI.
-                                    if !games.isEmpty || curatedGames[feedID] == nil {
-                                        curatedGames[feedID] = games
-                                        persistCuratedCache()
-                                    }
-                                    if !games.isEmpty { curatedError = nil }
-                                },
-                                onError: { curatedError = $0 },
-                                onStart: { isLoadingCurated = true; curatedError = nil },
-                                onFinish: {
-                                    isLoadingCurated = false
-                                    shouldLoadCurated = false
-                                }
-                            )
-                            // Preserve a real iPhone viewport so itch.io responsive
-                            // layouts and lazy-loaded cover images behave normally.
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                        }
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                }
-                .opacity(0)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-            .task {
-                guard !DiscoveryInitialLoadGate.didStart, curatedGames.isEmpty else { return }
-                // Let SwiftUI render the cached/placeholder screen before WebKit starts.
-                try? await Task.sleep(nanoseconds: 600_000_000)
-                guard !Task.isCancelled, !DiscoveryInitialLoadGate.didStart else { return }
-                DiscoveryInitialLoadGate.didStart = true
-                shouldLoadCurated = true
-            }
             .navigationDestination(isPresented: $showSearchResults) {
                 ItchSearchResultsView(query: submittedQuery)
             }
@@ -222,7 +176,6 @@ struct DiscoverView: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button {
-                        DiscoveryInitialLoadGate.didStart = true
                         shouldLoadCurated = true
                         curatedReloadToken = UUID()
                     } label: {
@@ -311,8 +264,13 @@ struct DiscoverView: View {
                 }
                 .padding(.vertical, 8)
             } else {
-                Text("暂时没有可展示的作品")
-                    .font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("暂时没有缓存作品")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("点击上方刷新后，作品会在后台读取并缓存。")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 8)
             }
         }
     }
