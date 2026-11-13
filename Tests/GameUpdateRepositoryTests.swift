@@ -262,8 +262,8 @@ final class GameUpdateRepositoryTests: XCTestCase {
         try database.save()
         let repository = GameUpdateRepository(database: database)
         let updates = [
-            GameLibraryUpdate(id: "historical-a", title: "A", sourceID: "source-a", isHistorical: true),
-            GameLibraryUpdate(id: "historical-b", title: "B", sourceID: "source-b", isHistorical: true)
+            GameLibraryUpdate(id: "historical-a", title: "A", summary: "", sourceID: "source-a", isHistorical: true),
+            GameLibraryUpdate(id: "historical-b", title: "B", summary: "", sourceID: "source-b", isHistorical: true)
         ]
         database.simulatedSaveError = { NSError(domain: "test", code: 1) }
 
