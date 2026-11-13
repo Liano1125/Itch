@@ -39,10 +39,6 @@ final class CacheRepositoryTests: XCTestCase {
         XCTAssertEqual(try repository.counts().translations, 1)
     }
 
-
-
-}
-
     @MainActor
     func testTranslationCacheEvictsOldestEntriesWhenCapacityIsExceeded() throws {
         let database = try AppDatabase(inMemory: true)
