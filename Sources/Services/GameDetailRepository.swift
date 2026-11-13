@@ -1,6 +1,21 @@
 import Foundation
 import SwiftData
 
+enum GameDeveloperReferencePolicy {
+    static func resolvedID(
+        candidateID: String?,
+        hasUsableName: Bool,
+        existingDeveloperExists: Bool
+    ) -> String? {
+        guard let candidateID,
+              !candidateID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return hasUsableName || existingDeveloperExists ? candidateID : nil
+    }
+}
+
+
 /// The detail cache still uses DBGame's legacy columns in this phase.
 /// GameRepository owns those columns; this repository owns detail semantics
 /// and the associated fetch-status AppState keys.
