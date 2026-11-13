@@ -3,6 +3,40 @@ import SwiftData
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
+    func testDiscoverySnapshotCanServeStaleDataUntilHardRetentionLimit() {
+        let savedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(DiscoverySnapshotPolicy.isUsable(
+            savedAt: savedAt,
+            now: savedAt.addingTimeInterval(13 * 60 * 60),
+            maximumAge: 30 * 24 * 60 * 60
+        ))
+        XCTAssertFalse(DiscoverySnapshotPolicy.isUsable(
+            savedAt: savedAt,
+            now: savedAt.addingTimeInterval(31 * 24 * 60 * 60),
+            maximumAge: 30 * 24 * 60 * 60
+        ))
+        XCTAssertFalse(DiscoverySnapshotPolicy.isUsable(
+            savedAt: savedAt,
+            now: savedAt.addingTimeInterval(-1),
+            maximumAge: 30 * 24 * 60 * 60
+        ))
+    }
+
+    func testDiscoverySnapshotRefreshThresholdDoesNotControlStaleDisplay() {
+        let savedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let now = savedAt.addingTimeInterval(13 * 60 * 60)
+        XCTAssertTrue(DiscoverySnapshotPolicy.needsRefresh(
+            savedAt: savedAt,
+            now: now,
+            refreshAfter: 12 * 60 * 60
+        ))
+        XCTAssertFalse(DiscoverySnapshotPolicy.needsRefresh(
+            savedAt: savedAt,
+            now: now,
+            refreshAfter: 24 * 60 * 60
+        ))
+    }
+
     func testDisplayedDescriptionPrefersFreshValueThenCachedThenFallback() {
         XCTAssertEqual(
             GameDetailSnapshotPolicy.displayedDescription(
