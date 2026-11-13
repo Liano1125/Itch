@@ -32,6 +32,19 @@ final class DiscoveryFeedClientTests: XCTestCase {
         XCTAssertTrue((card["coverURL"] as? String)?.contains("img.itch.zone") == true)
     }
 
+    func testCleanTextNormalizesSpacesBeforePunctuation() throws {
+        let html = """
+        <div class="game_cell" data-game_id="punctuation">
+          <div class="game_title"><a class="title" href="/punctuation">Punctuation</a></div>
+          <div class="game_text"><p>English <strong>description</strong> . 中文 <em>简介</em> ，继续！</p></div>
+        </div>
+        """
+        let baseURL = try XCTUnwrap(URL(string: "https://itch.io/games"))
+        let cards = DiscoveryFeedClient.extractGameCards(from: html, baseURL: baseURL)
+
+        XCTAssertEqual(cards.first?["description"] as? String, "English description. 中文 简介，继续！")
+    }
+
     func testDeduplicatesRepeatedGameCardsByStableGameID() throws {
         let card = """
         <div class="game_cell" data-game_id="123">
