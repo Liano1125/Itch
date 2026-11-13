@@ -941,7 +941,9 @@ private struct CuratedDiscoveryFeedReader: UIViewRepresentable {
         private var index = 0
         private var page = 1
         private var pageGames: [PublicCollectionGame] = []
-        private let maximumPages = 4
+        // The discovery UI only presents the first 24 cards; loading extra pages adds
+        // several full navigations without improving the visible first screen.
+        private let maximumPages = 1
 
         init(parent: CuratedDiscoveryFeedReader) {
             self.parent = parent
