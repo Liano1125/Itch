@@ -205,7 +205,7 @@ final class AppDatabaseTransactionTests: XCTestCase {
         ))
         context.insert(DBSparkMetadata(gameID: "game-a", runtimeSeconds: 10))
         context.insert(DBCalendarEvent(id: "calendar-a", gameID: "game-a", kind: "custom"))
-        context.insert(DBGameUpdate(id: "update-a", gameID: "game-a", detectedAt: .now))
+        context.insert(DBGameUpdate(id: "update-a", gameID: "game-a", summary: "Update", detectedAt: .now))
         context.insert(DBAppState(key: "state-a", stringValue: "keep"))
         try database.save()
 
