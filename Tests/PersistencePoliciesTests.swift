@@ -112,8 +112,8 @@ final class PersistencePoliciesTests: XCTestCase {
             XCTAssertTrue(script.contains("data-game-description"))
         }
 
-        XCTAssertTrue(renpyScript.contains("parserProfile = \\"adultRenPy\\""))
-        XCTAssertTrue(adult3DScript.contains("parserProfile = \\"adult3D\\""))
+        XCTAssertTrue(renpyScript.contains("parserProfile = \"adultRenPy\""))
+        XCTAssertTrue(adult3DScript.contains("parserProfile = \"adult3D\""))
         XCTAssertFalse(adult3DScript.contains("main article"))
         XCTAssertTrue(renpyScript.contains("Ren'Py"))
     }
