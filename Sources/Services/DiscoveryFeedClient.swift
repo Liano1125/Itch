@@ -264,9 +264,9 @@ final class DiscoveryFeedClient {
             .replacingOccurrences(of: #"(?is)<style[^>]*>.*?</style>"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"(?is)<[^>]+>"#, with: " ", options: .regularExpression)
         let decoded = decodeEntities(withoutScripts)
-        let whitespaceNormalized = decoded.replacingOccurrences(of: #"\\s+"#, with: " ", options: .regularExpression)
+        let whitespaceNormalized = decoded.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
         let punctuationNormalized = whitespaceNormalized.replacingOccurrences(
-            of: #"\\s+([.,!?;:，。！？；：、])"#,
+            of: #"\s+([.,!?;:，。！？；：、])"#,
             with: "$1",
             options: .regularExpression
         )
