@@ -92,8 +92,6 @@ final class TranslationCacheRepository {
                     removed += 1
                 }
             }
-            try database.save()
-    
         }
     }
 
