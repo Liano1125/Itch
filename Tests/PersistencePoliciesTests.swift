@@ -75,19 +75,11 @@ final class PersistencePoliciesTests: XCTestCase {
     }
 
     func testOptionalGalleryAndTagsDoNotPreventAResolvedPageFromBeingComplete() {
-        XCTAssertTrue(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: true,
-            galleryResolved: false,
-            tagsResolved: false
-        ))
+        XCTAssertTrue(GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: true))
     }
 
     func testPageRemainsPartialWhenRequiredDescriptionWasNotResolved() {
-        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: false,
-            galleryResolved: true,
-            tagsResolved: true
-        ))
+        XCTAssertFalse(GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: false))
     }
 
     func testDeveloperNameResolutionPreservesExistingNameWhenPageOmitsIt() {
