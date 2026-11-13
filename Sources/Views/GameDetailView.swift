@@ -7,6 +7,7 @@ import Foundation
 private struct GamePagePayload: Decodable {
     /// Confirms page identity only; it does not imply every detail section was parsed.
     let isCompleteSnapshot: Bool?
+    let ageGateRequired: Bool?
     let description: String?
     let descriptionResolved: Bool?
     let developer: String?
@@ -706,6 +707,18 @@ struct GameDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if message.contains("18+"), let url = game.url {
+                NavigationLink {
+                    ItchSearchResultsView(query: game.title, customURL: url.absoluteString)
+                } label: {
+                    Label("在应用内确认 18+ 年龄", systemImage: "checkmark.shield")
+                        .font(.subheadline.weight(.medium))
+                }
+                Text("完成确认后返回此页面，再点击重新读取。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Button("重新读取", action: reloadDetail)
                 .font(.subheadline.weight(.medium))
         }
@@ -1014,12 +1027,23 @@ private enum GamePageScript {
                     || (document.title || "").replace(/\\s*[|–-]\\s*itch\\.io\\s*$/i, "").trim();
                 const hasGameRoot = Boolean(gameRoot);
                 const hasGameTitle = pageTitle.length > 0 && pageTitle.toLowerCase() !== "itch.io";
+                const bodyText = document.body?.innerText || "";
+                // Adult game pages can return an age-gate document at the same
+                // one-segment URL as the actual game. Never treat that document
+                // as a successfully parsed game snapshot.
+                const ageGateRequired = !hasGameRoot
+                    && /You must be 18\\+ to view this content|Date of Birth:/i.test(bodyText);
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
-                // Some valid itch.io layouts omit the historical .game_page wrapper.
+                const hasGameContent = Boolean(document.querySelector(
+                    ".formatted_description, .game_description, #game_description, .game_author, meta[property='og:image']"
+                ));
+                // Some valid itch.io layouts omit the historical .game_page wrapper,
+                // but must still contain at least one real game-content marker.
                 const isCompleteSnapshot = isItchHost
-                    && pathParts.length > 0
+                    && !ageGateRequired
+                    && pathParts.length === 1
                     && hasGameTitle
-                    && (hasGameRoot || pathParts.length === 1);
+                    && (hasGameRoot || hasGameContent);
 
                 let description = null;
                 let descriptionResolved = false;
@@ -1198,6 +1222,7 @@ private enum GamePageScript {
 
                 return JSON.stringify({
                     isCompleteSnapshot,
+                    ageGateRequired,
                     description,
                     descriptionResolved,
                     developer,
@@ -1522,6 +1547,11 @@ private struct DetailPageReader: UIViewRepresentable {
 
                 if let scriptError = payload.scriptError {
                     self.fail("游戏主页 JavaScript 错误：\(scriptError)")
+                    return
+                }
+
+                if payload.ageGateRequired == true {
+                    self.fail("itch.io 要求先完成 18+ 年龄确认。请打开下方的 itch.io 页面，在应用内确认年龄后返回，再点“重新读取”。")
                     return
                 }
 
