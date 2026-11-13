@@ -1061,7 +1061,9 @@ private enum GamePageScript {
                 }
 
                 if (!description) {
-                    const descriptionMeta = document.querySelector('meta[name="description"]');
+                    const descriptionMeta = document.querySelector(
+                        'meta[name="description"], meta[property="og:description"]'
+                    );
                     const metaDescription = (descriptionMeta?.getAttribute("content") || "").trim();
                     if (metaDescription.length > 0) {
                         descriptionResolved = true;
@@ -1133,7 +1135,7 @@ private enum GamePageScript {
                     if (candidate) galleryCandidates.push(candidate);
                 }
                 const screenshotImages = Array.from(document.querySelectorAll(
-                    'img.screenshot, .screenshot_list img, .screenshot_container img, .screenshot img, #game_screenshots img, .game_page_screenshots img'
+                    'img.screenshot, .screenshot_list img, .screenshot_container img, .screenshot img, #game_screenshots img, .game_page_screenshots img, .formatted_description img, .game_description img, #game_description img'
                 ));
                 for (const image of screenshotImages) {
                     const source = absolute(
