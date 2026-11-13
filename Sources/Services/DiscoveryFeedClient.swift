@@ -117,16 +117,17 @@ final class DiscoveryFeedClient {
 
         var seen = Set<String>()
         return cards.compactMap { card in
-            guard let attributes = firstTagAttributes("div", in: card),
-                  let titleAnchor = anchors(in: card).first(where: {
-                      let classes = $0.classes
-                      return classes.contains("game_title") || classes.contains("game_link") || classes.contains("title")
-                  }) ?? anchors(in: card).first(where: { $0.href != nil }),
-                  let title = cleanText(titleAnchor.html), !title.isEmpty else {
-                return nil
-            }
+            guard let attributes = firstTagAttributes("div", in: card) else { return nil }
+            let allAnchors = anchors(in: card)
+            let titleContainer = innerHTML(className: "game_title", in: card)
+            let titleAnchor = allAnchors.first(where: {
+                $0.classes.contains("game_link") || $0.classes.contains("title")
+            }) ?? titleContainer.flatMap { anchors(in: $0).first } ?? allAnchors.first(where: { $0.href != nil })
+            let title = titleAnchor.flatMap { cleanText($0.html) }
+                ?? titleContainer.flatMap(cleanText)
+            guard let title, !title.isEmpty else { return nil }
 
-            let link = titleAnchor.href.flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL.absoluteString }
+            let link = titleAnchor?.href.flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL.absoluteString }
             let id = attribute("data-game_id", in: attributes) ?? link ?? title
             guard seen.insert(id).inserted else { return nil }
 
@@ -142,11 +143,14 @@ final class DiscoveryFeedClient {
             }
             let cover = imageValue.flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL.absoluteString }
 
-            let allAnchors = anchors(in: card)
-            let developerAnchor = allAnchors.first(where: {
-                $0.classes.contains("game_author") || $0.classes.contains("author")
-            })
+            let developerContainer = innerHTML(className: "game_author", in: card)
+                ?? innerHTML(className: "author", in: card)
+            let developerAnchor = developerContainer.flatMap { anchors(in: $0).first }
+                ?? allAnchors.first(where: {
+                    $0.classes.contains("game_author") || $0.classes.contains("author")
+                })
             let developer = developerAnchor.flatMap { cleanText($0.html) }
+                ?? developerContainer.flatMap(cleanText)
             let developerURL = developerAnchor?.href.flatMap {
                 URL(string: $0, relativeTo: baseURL)?.absoluteURL.absoluteString
             }
