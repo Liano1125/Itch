@@ -48,6 +48,55 @@ enum GameDetailParserProfile: String {
     case standard
     case adultRenPy
     case adult3D
+
+    var descriptionSelectors: [String] {
+        let common = [
+            ".formatted_description", ".game_description", "#game_description",
+            ".game_page_content", ".game_page_text", "#description", ".description",
+            "[itemprop='description']", "[data-game-description]"
+        ]
+        switch self {
+        case .standard:
+            return common
+        case .adultRenPy:
+            return [
+                ".formatted_description", ".game_description", "#game_description",
+                ".game_page_content", ".game_page_text", "#description",
+                "[itemprop='description']", "[data-game-description]"
+            ]
+        case .adult3D:
+            return [
+                ".formatted_description", ".game_description", "#game_description",
+                ".game_page_content", ".game_page_text", "#description",
+                "[itemprop='description']", "[data-game-description]"
+            ]
+        }
+    }
+
+    var galleryContainerSelectors: [String] {
+        [
+            ".screenshot_list", ".screenshot_container", ".game_page_screenshots",
+            "#game_screenshots", ".screenshot"
+        ]
+    }
+
+    var galleryImageSelectors: [String] {
+        let descriptionImages = descriptionSelectors.map { "\($0) img" }
+        return [
+            "img.screenshot", ".screenshot_list img", ".screenshot_container img",
+            ".screenshot img", "#game_screenshots img", ".game_page_screenshots img"
+        ] + descriptionImages
+    }
+
+    var galleryAnchorSelectors: [String] {
+        let descriptionLinks = descriptionSelectors.map { "\($0) a" }
+        return [
+            ".screenshot_list a", ".screenshot_container a", ".screenshot a",
+            "#game_screenshots a", ".game_page_screenshots a",
+            "a[data-image_lightbox]", "a[href*='img.itch.zone']",
+            "a[href*='/original/']"
+        ] + descriptionLinks
+    }
 }
 
 // MARK: - Game Detail View
@@ -1064,20 +1113,28 @@ private enum GamePageScript {
                 // Adult catalog pages use several description containers depending on
                 // the creator's page template. Keep a broad semantic fallback list.
                 const parserProfile = "__PARSER_PROFILE__";
-                const commonDescriptionSelectors = [
-                    ".formatted_description", ".game_description", "#game_description",
-                    ".game_page_content", ".game_page_text", "#description", ".description",
-                    "[itemprop='description']", "[data-game-description]"
-                ];
-                const profileDescriptionSelectors = parserProfile === "adultRenPy"
-                    ? [".formatted_description", ".game_description", "#game_description",
-                       ".game_page_content", ".game_page_text", "#description", "[itemprop='description']"]
-                    : parserProfile === "adult3D"
-                        ? [".formatted_description", ".game_description", ".game_page_content",
-                           ".game_page_text", "#description", "[itemprop='description']",
-                           "[data-game-description]", "main article"]
-                        : commonDescriptionSelectors;
-                const contentSelector = Array.from(new Set(profileDescriptionSelectors)).join(", ");
+                const profileSelectors = {
+                    standard: {
+                        description: __STANDARD_DESCRIPTION_SELECTORS__,
+                        galleryContainers: __STANDARD_GALLERY_CONTAINERS__,
+                        galleryImages: __STANDARD_GALLERY_IMAGES__,
+                        galleryAnchors: __STANDARD_GALLERY_ANCHORS__
+                    },
+                    adultRenPy: {
+                        description: __RENPY_DESCRIPTION_SELECTORS__,
+                        galleryContainers: __RENPY_GALLERY_CONTAINERS__,
+                        galleryImages: __RENPY_GALLERY_IMAGES__,
+                        galleryAnchors: __RENPY_GALLERY_ANCHORS__
+                    },
+                    adult3D: {
+                        description: __ADULT3D_DESCRIPTION_SELECTORS__,
+                        galleryContainers: __ADULT3D_GALLERY_CONTAINERS__,
+                        galleryImages: __ADULT3D_GALLERY_IMAGES__,
+                        galleryAnchors: __ADULT3D_GALLERY_ANCHORS__
+                    }
+                };
+                const selectedProfile = profileSelectors[parserProfile] || profileSelectors.standard;
+                const contentSelector = selectedProfile.description.join(", ");
                 const contentRoots = Array.from(document.querySelectorAll(contentSelector));
                 const hasGameContent = contentRoots.length > 0;
                 // Some valid itch.io layouts omit the historical .game_page wrapper,
@@ -1163,18 +1220,9 @@ private enum GamePageScript {
                 // itch.io screenshot images are linked to their original-size asset.
                 // Read the anchor href first (usually /original/...), then fall back to lazy-loaded img sources.
                 const galleryCandidates = [];
-                const galleryContainer = document.querySelector(
-                    ".screenshot_list, .screenshot_container, .game_page_screenshots, #game_screenshots, .screenshot"
-                );
+                const galleryContainer = document.querySelector(selectedProfile.galleryContainers.join(", "));
                 const screenshotAnchors = Array.from(document.querySelectorAll(
-                    [
-                        '.screenshot_list a', '.screenshot_container a', '.screenshot a',
-                        '#game_screenshots a', '.game_page_screenshots a',
-                        '.formatted_description a', '.game_description a', '.game_page_content a',
-                        '.game_page_text a', '[itemprop="description"] a',
-                        'a[data-image_lightbox]', 'a[href*="img.itch.zone"]',
-                        'a[href*="/original/"]'
-                    ].join(", ")
+                    selectedProfile.galleryAnchors.join(", ")
                 ));
                 for (const anchor of screenshotAnchors) {
                     const image = anchor.querySelector("img");
@@ -1189,13 +1237,7 @@ private enum GamePageScript {
                     if (candidate) galleryCandidates.push(candidate);
                 }
                 const screenshotImages = Array.from(document.querySelectorAll(
-                    [
-                        'img.screenshot', '.screenshot_list img', '.screenshot_container img',
-                        '.screenshot img', '#game_screenshots img', '.game_page_screenshots img',
-                        '.formatted_description img', '.game_description img',
-                        '#game_description img', '.game_page_content img', '.game_page_text img',
-                        '[itemprop="description"] img', '[data-game-description] img'
-                    ].join(", ")
+                    selectedProfile.galleryImages.join(", ")
                 ));
                 for (const image of screenshotImages) {
                     const source = absolute(
@@ -1257,7 +1299,8 @@ private enum GamePageScript {
                     { name: "Adventure Game Studio", key: "adventuregamestudio" },
                     { name: "Visual Novel Maker", key: "visualnovelmaker" }
                 ];
-                const engine = engineRules.find(rule => normalizedEngineText.includes(rule.key))?.name || null;
+                const engine = engineRules.find(rule => normalizedEngineText.includes(rule.key))?.name
+                    || (parserProfile === "adultRenPy" ? "Ren'Py" : null);
 
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
@@ -1325,7 +1368,30 @@ private enum GamePageScript {
         """
 
     static func source(for profile: GameDetailParserProfile) -> String {
-        source.replacingOccurrences(of: "__PARSER_PROFILE__", with: profile.rawValue)
+        let replacements: [(String, String)] = [
+            ("__PARSER_PROFILE__", profile.rawValue),
+            ("__STANDARD_DESCRIPTION_SELECTORS__", Self.json(GameDetailParserProfile.standard.descriptionSelectors)),
+            ("__STANDARD_GALLERY_CONTAINERS__", Self.json(GameDetailParserProfile.standard.galleryContainerSelectors)),
+            ("__STANDARD_GALLERY_IMAGES__", Self.json(GameDetailParserProfile.standard.galleryImageSelectors)),
+            ("__STANDARD_GALLERY_ANCHORS__", Self.json(GameDetailParserProfile.standard.galleryAnchorSelectors)),
+            ("__RENPY_DESCRIPTION_SELECTORS__", Self.json(GameDetailParserProfile.adultRenPy.descriptionSelectors)),
+            ("__RENPY_GALLERY_CONTAINERS__", Self.json(GameDetailParserProfile.adultRenPy.galleryContainerSelectors)),
+            ("__RENPY_GALLERY_IMAGES__", Self.json(GameDetailParserProfile.adultRenPy.galleryImageSelectors)),
+            ("__RENPY_GALLERY_ANCHORS__", Self.json(GameDetailParserProfile.adultRenPy.galleryAnchorSelectors)),
+            ("__ADULT3D_DESCRIPTION_SELECTORS__", Self.json(GameDetailParserProfile.adult3D.descriptionSelectors)),
+            ("__ADULT3D_GALLERY_CONTAINERS__", Self.json(GameDetailParserProfile.adult3D.galleryContainerSelectors)),
+            ("__ADULT3D_GALLERY_IMAGES__", Self.json(GameDetailParserProfile.adult3D.galleryImageSelectors)),
+            ("__ADULT3D_GALLERY_ANCHORS__", Self.json(GameDetailParserProfile.adult3D.galleryAnchorSelectors))
+        ]
+        return replacements.reduce(source) { result, replacement in
+            result.replacingOccurrences(of: replacement.0, with: replacement.1)
+        }
+    }
+
+    private static func json(_ values: [String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: values),
+              let value = String(data: data, encoding: .utf8) else { return "[]" }
+        return value
     }
 }
 
