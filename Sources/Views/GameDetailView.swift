@@ -1007,7 +1007,7 @@ private enum GamePageScript {
                     ".game_page_title, .game_page h1, h1.game_title, meta[property='og:title']"
                 );
                 const pageTitle = clean(titleElement)
-                    || (document.title || "").replace(/\s*[|–-]\s*itch\.io\s*$/i, "").trim();
+                    || (document.title || "").replace(/\\s*[|–-]\\s*itch\\.io\\s*$/i, "").trim();
                 const hasGameRoot = Boolean(gameRoot);
                 const hasGameTitle = pageTitle.length > 0 && pageTitle.toLowerCase() !== "itch.io";
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
