@@ -331,6 +331,14 @@ enum GameDescriptionContentPolicy {
 }
 
 enum GameDetailSnapshotPolicy {
+    static func displayedDescription(
+        current: String?,
+        cached: String?,
+        fallback: String?
+    ) -> String? {
+        current ?? cached ?? fallback
+    }
+
     static func resolvedValue<Value>(
         existing: Value?,
         incoming: Value?,
