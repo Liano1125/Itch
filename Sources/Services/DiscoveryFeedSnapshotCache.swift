@@ -12,6 +12,7 @@ enum DiscoveryFeedSnapshotCache {
 
     private static let fileName = "curated-feeds-v1.json"
     private static let maximumAge: TimeInterval = 30 * 24 * 60 * 60
+    private static let fileQueue = DispatchQueue(label: "itchPocket.discovery-snapshot", qos: .utility)
 
     static func load(now: Date = .now) -> [String: [PublicCollectionGame]]? {
         guard let fileURL = fileURL(),
@@ -45,16 +46,20 @@ enum DiscoveryFeedSnapshotCache {
         let compact = gamesByFeed.mapValues { Array($0.prefix(24)) }
         let snapshot = Snapshot(version: 1, savedAt: now, gamesByFeed: compact)
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        do {
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            print("itchPocket discovery snapshot write failed: \(error)")
+        fileQueue.async {
+            do {
+                try data.write(to: fileURL, options: .atomic)
+            } catch {
+                print("itchPocket discovery snapshot write failed: \\(error)")
+            }
         }
     }
 
     static func clear() {
         guard let fileURL = fileURL() else { return }
-        try? FileManager.default.removeItem(at: fileURL)
+        fileQueue.async {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
     }
 
     private static func fileURL() -> URL? {
