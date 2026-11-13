@@ -38,7 +38,7 @@ private struct GameDetailPayload {
     let tagsResolved: Bool
     let engine: String?
 
-    var allDetailSectionsResolved: Bool {
+    var requiredDetailResolved: Bool {
         GameDetailSnapshotPolicy.shouldMarkComplete(
             descriptionResolved: descriptionResolved,
             galleryResolved: galleryResolved,
@@ -850,9 +850,9 @@ struct GameDetailView: View {
             translationStatus = nil
             selectedGalleryIndex = 0
             isLoading = false
-            errorMessage = result.allDetailSectionsResolved
+            errorMessage = result.requiredDetailResolved
                 ? nil
-                : "页面已识别，但部分详情区域未能确认读取；未覆盖对应的本地缓存。"
+                : "页面已识别，但游戏介绍未能确认读取；已保留原有详情资料。"
             Task { await translateContent() }
         } catch {
             // A failed save must never be presented as a successful/complete read.
