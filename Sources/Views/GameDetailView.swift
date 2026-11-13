@@ -1035,7 +1035,7 @@ private enum GamePageScript {
                     && /You must be 18\\+ to view this content|Date of Birth:/i.test(bodyText);
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
                 const hasGameContent = Boolean(document.querySelector(
-                    ".formatted_description, .game_description, #game_description, .game_page_content, #description, .description, [itemprop='description'], .game_author, meta[property='og:image']"
+                    ".formatted_description, .game_description, #game_description, .game_page_content, #description, .description, [itemprop='description']"
                 ));
                 // Some valid itch.io layouts omit the historical .game_page wrapper,
                 // but must still contain at least one real game-content marker.
