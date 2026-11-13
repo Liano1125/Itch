@@ -226,7 +226,7 @@ final class DiscoveryFeedClient {
         for match in matches {
             let attributes = nsHTML.substring(with: match.range(at: 2))
             let classes = attribute("class", in: attributes) ?? ""
-            guard classes.split(whereSeparator: { $0.isWhitespace }).contains(Substring(className)),
+            guard classes.split(whereSeparator: { $0.isWhitespace }).contains(where: { String($0) == className }),
                   match.range(at: 3).location != NSNotFound else {
                 continue
             }
