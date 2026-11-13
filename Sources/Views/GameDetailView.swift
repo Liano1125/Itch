@@ -1520,8 +1520,8 @@ private struct DetailPageReader: UIViewRepresentable {
                 DispatchQueue.main.async {
                     self.parent.onLoad(
                         GameDetailPayload(
-                            description: payload.description,
-                            descriptionResolved: payload.descriptionResolved == true,
+                            description: GameDescriptionContentPolicy.cleaned(payload.description),
+                            descriptionResolved: payload.descriptionResolved == true && GameDescriptionContentPolicy.cleaned(payload.description) != nil,
                             developer: payload.developer,
                             coverURL: payload.coverURL,
                             galleryURLs: payload.galleryURLs ?? [],
