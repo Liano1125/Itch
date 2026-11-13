@@ -38,6 +38,7 @@ final class GameUpdateMonitorRepository {
 
     func save(_ watch: GameUpdateWatch, save shouldSave: Bool = true) throws {
         let context = database.repositoryContext
+        try DatabaseReferenceValidator.requireGame(watch.gameID, in: context)
         let gameID = watch.gameID
         let descriptor = FetchDescriptor<DBUpdateWatch>(
             predicate: #Predicate { $0.gameID == gameID }
@@ -59,10 +60,20 @@ final class GameUpdateMonitorRepository {
     }
 
     func save(_ watches: [GameUpdateWatch], save shouldSave: Bool = true) throws {
+        if shouldSave {
+            try database.performTransaction {
+                try save(watches, save: false)
+            }
+            return
+        }
+
+        let context = database.repositoryContext
+        for watch in watches {
+            try DatabaseReferenceValidator.requireGame(watch.gameID, in: context)
+        }
         for watch in watches {
             try save(watch, save: false)
         }
-        if shouldSave { try database.save() }
     }
 
     func remove(gameID: String, save shouldSave: Bool = true) throws {

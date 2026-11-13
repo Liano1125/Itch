@@ -62,6 +62,9 @@ final class GameRepository {
             predicate: #Predicate { $0.id == gameID }
         )
         let row = try context.fetch(descriptor).first ?? DBGame(id: id, title: title)
+        if let effectiveDeveloperID = developerID ?? row.developerID {
+            try DatabaseReferenceValidator.requireDeveloper(effectiveDeveloperID, in: context)
+        }
         var changed = row.modelContext == nil
         if row.modelContext == nil { context.insert(row) }
         if row.title != title { row.title = title; changed = true }

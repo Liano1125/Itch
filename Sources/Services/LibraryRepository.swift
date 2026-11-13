@@ -70,6 +70,7 @@ final class LibraryRepository {
         let gameID = entry.gameID
         let descriptor = FetchDescriptor<DBLibraryEntry>(predicate: #Predicate { $0.gameID == gameID })
         let context = database.repositoryContext
+        try DatabaseReferenceValidator.requireGame(gameID, in: context)
         let matches = try context.fetch(descriptor)
         guard matches.count <= 1 else { throw RepositoryError.duplicateLibraryEntry(gameID) }
         let row: DBLibraryEntry
@@ -145,129 +146,121 @@ final class LibraryRepository {
 
     @discardableResult
     func updateCollection(_ collection: PersonalGameCollection, now: Date = .now) throws -> PersonalGameCollection {
-        let cleaned = collection.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { throw RepositoryError.emptyCollectionTitle }
+        try database.performTransaction {
+            let cleaned = collection.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { throw RepositoryError.emptyCollectionTitle }
 
-        let context = database.repositoryContext
-        let collectionID = collection.id
-        let descriptor = FetchDescriptor<DBLibraryCollection>(
-            predicate: #Predicate { $0.id == collectionID }
-        )
-        guard let row = try context.fetch(descriptor).first else {
-            throw RepositoryError.collectionNotFound(collectionID)
+            let context = database.repositoryContext
+            let collectionID = collection.id
+            let descriptor = FetchDescriptor<DBLibraryCollection>(
+                predicate: #Predicate { $0.id == collectionID }
+            )
+            guard let row = try context.fetch(descriptor).first else {
+                throw RepositoryError.collectionNotFound(collectionID)
+            }
+
+            _ = try membershipIDs(for: row)
+            let gameIDs = Self.uniqueInOrder(collection.gameIDs)
+            try validateGamesExist(gameIDs)
+            try replaceMemberships(for: row, gameIDs: gameIDs, now: now)
+            row.title = cleaned
+            row.updatedAt = now
+
+            return PersonalGameCollection(
+                id: row.id,
+                title: row.title,
+                gameIDs: gameIDs,
+                createdAt: row.createdAt,
+                updatedAt: row.updatedAt
+            )
         }
-
-        // Do not let a stale in-memory snapshot silently overwrite a
-        // partially migrated or inconsistent normalized membership set.
-        _ = try membershipIDs(for: row)
-        let gameIDs = Self.uniqueInOrder(collection.gameIDs)
-        try validateGamesExist(gameIDs)
-        row.title = cleaned
-        row.updatedAt = now
-        try replaceMemberships(for: row, gameIDs: gameIDs, now: now)
-        try database.save()
-
-        return PersonalGameCollection(
-            id: row.id,
-            title: row.title,
-            gameIDs: gameIDs,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt
-        )
     }
 
     func deleteCollection(id: String) throws {
-        let context = database.repositoryContext
-        let descriptor = FetchDescriptor<DBLibraryCollection>(
-            predicate: #Predicate { $0.id == id }
-        )
-        let itemDescriptor = FetchDescriptor<DBLibraryCollectionItem>(
-            predicate: #Predicate { $0.collectionID == id }
-        )
-        for item in try context.fetch(itemDescriptor) {
-            context.delete(item)
+        try database.performTransaction {
+            let context = database.repositoryContext
+            let descriptor = FetchDescriptor<DBLibraryCollection>(
+                predicate: #Predicate { $0.id == id }
+            )
+            let itemDescriptor = FetchDescriptor<DBLibraryCollectionItem>(
+                predicate: #Predicate { $0.collectionID == id }
+            )
+            let items = try context.fetch(itemDescriptor)
+            let collection = try context.fetch(descriptor).first
+            for item in items { context.delete(item) }
+            if let collection { context.delete(collection) }
         }
-        if let collection = try context.fetch(descriptor).first {
-            context.delete(collection)
-        }
-        try database.save()
     }
 
     @discardableResult
     func toggleGame(_ gameID: String, in collectionID: String, now: Date = .now) throws -> PersonalGameCollection {
-        let context = database.repositoryContext
-        let descriptor = FetchDescriptor<DBLibraryCollection>(
-            predicate: #Predicate { $0.id == collectionID }
-        )
-        guard let row = try context.fetch(descriptor).first else {
-            throw RepositoryError.collectionNotFound(collectionID)
+        try database.performTransaction {
+            let context = database.repositoryContext
+            let descriptor = FetchDescriptor<DBLibraryCollection>(
+                predicate: #Predicate { $0.id == collectionID }
+            )
+            guard let row = try context.fetch(descriptor).first else {
+                throw RepositoryError.collectionNotFound(collectionID)
+            }
+
+            let currentIDs = try membershipIDs(for: row)
+            var nextIDs = currentIDs
+            if nextIDs.contains(gameID) {
+                nextIDs.removeAll { $0 == gameID }
+            } else {
+                try validateGamesExist([gameID])
+                nextIDs.append(gameID)
+            }
+
+            try replaceMemberships(for: row, gameIDs: nextIDs, now: now)
+            row.updatedAt = now
+            return PersonalGameCollection(
+                id: row.id,
+                title: row.title,
+                gameIDs: nextIDs,
+                createdAt: row.createdAt,
+                updatedAt: row.updatedAt
+            )
         }
-
-        let currentIDs = try membershipIDs(for: row)
-        var nextIDs = currentIDs
-        if nextIDs.contains(gameID) {
-            nextIDs.removeAll { $0 == gameID }
-        } else {
-            try validateGamesExist([gameID])
-            nextIDs.append(gameID)
-        }
-
-        row.updatedAt = now
-        try replaceMemberships(for: row, gameIDs: nextIDs, now: now)
-        try database.save()
-
-        return PersonalGameCollection(
-            id: row.id,
-            title: row.title,
-            gameIDs: nextIDs,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt
-        )
     }
 
     /// Removes the active library entry, Spark snapshot, and collection membership.
     /// Game metadata, Devlog history, calendar events, and status history intentionally survive.
     /// Status history is a game timeline, not disposable state owned by the active library entry.
     func removeGameFromLibrary(gameID: String) throws {
-        let context = database.repositoryContext
+        try database.performTransaction {
+            let context = database.repositoryContext
+            let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
+            let membershipsByCollection = try Dictionary(uniqueKeysWithValues: collections.map {
+                ($0.id, try membershipIDs(for: $0))
+            })
+            let allMembershipRows = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
+            let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>(
+                predicate: #Predicate { $0.gameID == gameID }
+            ))
+            let sparkRows = try context.fetch(FetchDescriptor<DBSparkMetadata>(
+                predicate: #Predicate { $0.gameID == gameID }
+            ))
+            let affectedCollections = collections.compactMap { collection -> (DBLibraryCollection, [String], [DBLibraryCollectionItem])? in
+                guard let currentIDs = membershipsByCollection[collection.id],
+                      currentIDs.contains(gameID) else { return nil }
+                let remainingIDs = currentIDs.filter { $0 != gameID }
+                let existingItems = allMembershipRows.filter { $0.collectionID == collection.id }
+                return (collection, remainingIDs, existingItems)
+            }
 
-        // Read and validate every affected relationship before mutating the
-        // shared context. A malformed collection must not leave half-applied
-        // deletions waiting to be committed by an unrelated later save.
-        let collections = try context.fetch(FetchDescriptor<DBLibraryCollection>())
-        let membershipsByCollection = try Dictionary(uniqueKeysWithValues: collections.map {
-            ($0.id, try membershipIDs(for: $0))
-        })
-        let allMembershipRows = try context.fetch(FetchDescriptor<DBLibraryCollectionItem>())
-        let entries = try context.fetch(FetchDescriptor<DBLibraryEntry>(
-            predicate: #Predicate { $0.gameID == gameID }
-        ))
-        let sparkRows = try context.fetch(FetchDescriptor<DBSparkMetadata>(
-            predicate: #Predicate { $0.gameID == gameID }
-        ))
-        let affectedCollections = collections.compactMap { collection -> (DBLibraryCollection, [String], [DBLibraryCollectionItem])? in
-            guard let currentIDs = membershipsByCollection[collection.id],
-                  currentIDs.contains(gameID) else { return nil }
-            let remainingIDs = currentIDs.filter { $0 != gameID }
-            let existingItems = allMembershipRows.filter { $0.collectionID == collection.id }
-            return (collection, remainingIDs, existingItems)
-        }
-
-        for item in entries { context.delete(item) }
-        for item in sparkRows { context.delete(item) }
-        for item in allMembershipRows where item.gameID == gameID {
-            context.delete(item)
-        }
-
-        for (collection, remainingIDs, existingItems) in affectedCollections {
-            collection.updatedAt = .now
-
-            for item in existingItems where item.gameID != gameID {
-                item.sortOrder = remainingIDs.firstIndex(of: item.gameID) ?? item.sortOrder
+            for item in entries { context.delete(item) }
+            for item in sparkRows { context.delete(item) }
+            for item in allMembershipRows where item.gameID == gameID {
+                context.delete(item)
+            }
+            for (collection, remainingIDs, existingItems) in affectedCollections {
+                collection.updatedAt = .now
+                for item in existingItems where item.gameID != gameID {
+                    item.sortOrder = remainingIDs.firstIndex(of: item.gameID) ?? item.sortOrder
+                }
             }
         }
-
-        try database.save()
     }
 
     private func membershipIDs(for collection: DBLibraryCollection) throws -> [String] {

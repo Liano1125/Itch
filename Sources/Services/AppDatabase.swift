@@ -197,19 +197,28 @@ final class AppDatabase {
     func removeAllAppData() throws {
         try performTransaction {
             try AppStateRepository(database: self).removeAll(save: false)
-            try modelContext.delete(model: DBLibraryCollectionItem.self)
-            try modelContext.delete(model: DBGameDetail.self)
-            try modelContext.delete(model: DBLibraryStatusEvent.self)
-            try modelContext.delete(model: DBLibraryCollection.self)
-            try modelContext.delete(model: DBUpdateWatch.self)
-            try modelContext.delete(model: DBDiscoverySnapshot.self)
-            try modelContext.delete(model: DBTranslation.self)
-            try modelContext.delete(model: DBSparkMetadata.self)
-            try modelContext.delete(model: DBCalendarEvent.self)
-            try modelContext.delete(model: DBGameUpdate.self)
-            try modelContext.delete(model: DBLibraryEntry.self)
-            try modelContext.delete(model: DBGame.self)
-            try modelContext.delete(model: DBDeveloper.self)
+            try deleteAll(DBLibraryCollectionItem.self)
+            try deleteAll(DBGameDetail.self)
+            try deleteAll(DBLibraryStatusEvent.self)
+            try deleteAll(DBLibraryCollection.self)
+            try deleteAll(DBUpdateWatch.self)
+            try deleteAll(DBDiscoverySnapshot.self)
+            try deleteAll(DBTranslation.self)
+            try deleteAll(DBSparkMetadata.self)
+            try deleteAll(DBCalendarEvent.self)
+            try deleteAll(DBGameUpdate.self)
+            try deleteAll(DBLibraryEntry.self)
+            try deleteAll(DBGame.self)
+            try deleteAll(DBDeveloper.self)
+        }
+    }
+
+    /// Marks rows deleted in the shared context so a failed save can roll back
+    /// the entire clear operation rather than leaving partial bulk deletions.
+    private func deleteAll<Model: PersistentModel>(_ modelType: Model.Type) throws {
+        let rows = try modelContext.fetch(FetchDescriptor<Model>())
+        for row in rows {
+            modelContext.delete(row)
         }
     }
 }

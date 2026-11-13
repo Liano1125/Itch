@@ -53,45 +53,46 @@ final class TranslationCacheRepository {
         for key: String,
         updatedAt: Date = .now
     ) throws {
-        let context = database.repositoryContext
-        let descriptor = FetchDescriptor<DBTranslation>(
-            predicate: #Predicate { $0.cacheKey == key }
-        )
-        let item: DBTranslation
-        if let existing = try context.fetch(descriptor).first {
-            item = existing
-        } else {
-            item = DBTranslation(
-                cacheKey: key,
-                scope: scope,
-                sourceHash: Self.hash(source),
-                sourceText: source,
-                targetLanguage: target,
-                translatedText: translation,
-                updatedAt: updatedAt
+        try database.performTransaction {
+            let context = database.repositoryContext
+            let descriptor = FetchDescriptor<DBTranslation>(
+                predicate: #Predicate { $0.cacheKey == key }
             )
-            context.insert(item)
-        }
-        item.scope = scope
-        item.sourceHash = Self.hash(source)
-        item.sourceText = source
-        item.targetLanguage = target
-        item.translatedText = translation
-        item.updatedAt = updatedAt
+            let item: DBTranslation
+            if let existing = try context.fetch(descriptor).first {
+                item = existing
+            } else {
+                item = DBTranslation(
+                    cacheKey: key,
+                    scope: scope,
+                    sourceHash: Self.hash(source),
+                    sourceText: source,
+                    targetLanguage: target,
+                    translatedText: translation,
+                    updatedAt: updatedAt
+                )
+                context.insert(item)
+            }
+            item.scope = scope
+            item.sourceHash = Self.hash(source)
+            item.sourceText = source
+            item.targetLanguage = target
+            item.translatedText = translation
+            item.updatedAt = updatedAt
 
-        let count = try context.fetchCount(FetchDescriptor<DBTranslation>())
-        if count > maximumEntries {
-            let oldest = try context.fetch(FetchDescriptor<DBTranslation>(
-                sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
-            ))
-            let excess = max(0, count - retainedEntries)
-            var removed = 0
-            for old in oldest where old.cacheKey != key && removed < excess {
-                context.delete(old)
-                removed += 1
+            let count = try context.fetchCount(FetchDescriptor<DBTranslation>())
+            if count > maximumEntries {
+                let oldest = try context.fetch(FetchDescriptor<DBTranslation>(
+                    sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
+                ))
+                let excess = max(0, count - retainedEntries)
+                var removed = 0
+                for old in oldest where old.cacheKey != key && removed < excess {
+                    context.delete(old)
+                    removed += 1
+                }
             }
         }
-        try database.save()
     }
 
     private static func entry(from item: DBTranslation) -> Entry {

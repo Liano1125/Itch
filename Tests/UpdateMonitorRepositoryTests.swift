@@ -138,4 +138,53 @@ final class UpdateMonitorRepositoryTests: XCTestCase {
         XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).isEmpty)
         XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGame>()).map(\.id), ["game-a"])
     }
+
+    @MainActor
+    func testSaveWatchesRejectsMissingGameBeforeDeletingOrUpdatingAnyRows() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        database.context.insert(DBUpdateWatch(gameID: "game-a", entityTag: "keep"))
+        try database.save()
+        let repository = UpdateMonitorRepository(database: database)
+        let invalid = GameUpdateWatch(gameID: "missing-game", gameTitle: "Missing", gameURL: "", entityTag: nil, lastModified: nil, contentHash: nil, lastCheckedAt: nil, hasBaseline: false, isEnabled: true)
+
+        XCTAssertThrowsError(try repository.saveWatches([invalid])) { error in
+            XCTAssertEqual(error as? DatabaseReferenceValidator.ValidationError, .missingGame("missing-game"))
+        }
+        XCTAssertFalse(database.context.hasChanges)
+        let rows = try database.context.fetch(FetchDescriptor<DBUpdateWatch>())
+        XCTAssertEqual(rows.map(\.gameID), ["game-a"])
+        XCTAssertEqual(rows.first?.entityTag, "keep")
+    }
+
+    @MainActor
+    func testSingleWatchSaveRejectsMissingGameBeforeInsertingWatch() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        try database.save()
+
+        let repository = GameUpdateMonitorRepository(database: database)
+        let watch = GameUpdateWatch(
+            gameID: "missing-game",
+            gameTitle: "Missing",
+            gameURL: "",
+            entityTag: nil,
+            lastModified: nil,
+            contentHash: nil,
+            lastCheckedAt: nil,
+            hasBaseline: false,
+            isEnabled: true
+        )
+
+        XCTAssertThrowsError(try repository.save(watch, save: false)) { error in
+            XCTAssertEqual(
+                error as? DatabaseReferenceValidator.ValidationError,
+                .missingGame("missing-game")
+            )
+        }
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).isEmpty)
+    }
+
 }

@@ -285,10 +285,17 @@ enum V3StoreBootstrap {
         let fileManager = FileManager.default
         let detailMarkerURL = directory.appendingPathComponent(recoveryMarkerName)
         let developerMarkerURL = directory.appendingPathComponent(developerRecoveryMarkerName)
-        guard fileManager.fileExists(atPath: v2StoreURL.path) else { return }
         let needsDetailRecovery = !fileManager.fileExists(atPath: detailMarkerURL.path)
         let needsDeveloperRecovery = !fileManager.fileExists(atPath: developerMarkerURL.path)
         guard needsDetailRecovery || needsDeveloperRecovery else { return }
+
+        // A missing V2 backup is acceptable only after every backfill generation
+        // has a durable completion marker. If a marker is absent, we cannot
+        // prove that the corresponding recovery pass completed; fail closed
+        // rather than silently accepting a potentially incomplete V3 store.
+        guard fileManager.fileExists(atPath: v2StoreURL.path) else {
+            throw BootstrapError.missingSource(v2StoreURL)
+        }
 
         let snapshot = try readV2BackfillSnapshot(at: v2StoreURL)
         try applyBackfill(snapshot, to: v3StoreURL)

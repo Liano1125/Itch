@@ -128,6 +128,8 @@ final class RepositoryIntegrationTests: XCTestCase {
     @MainActor
     func testCalendarStoreBlocksWritesUntilReadSucceedsAndRetainsLastGoodSnapshot() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        try database.save()
         let repository = GameCalendarRepository(database: database)
         let date = Date(timeIntervalSince1970: 1_800_000_000)
         let existing = GameCalendarEvent(
@@ -229,6 +231,8 @@ final class RepositoryIntegrationTests: XCTestCase {
     @MainActor
     func testUpdateMonitorBlocksMutationsUntilWatchSnapshotLoads() async throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-1", title: "Game One"))
+        try database.save()
         var shouldFail = false
         let store = GameUpdateMonitorStore(
             database: database,
@@ -272,6 +276,8 @@ final class RepositoryIntegrationTests: XCTestCase {
     @MainActor
     func testCalendarStorePublishesChangesOnlyAfterSuccessfulWrites() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-write-guard", title: "Write Guard Game"))
+        try database.save()
         let repository = GameCalendarRepository(database: database)
         var shouldFailWrites = false
         let store = GameCalendarStore(
@@ -390,6 +396,98 @@ final class RepositoryIntegrationTests: XCTestCase {
         XCTAssertEqual(calendarStore.events.count, 1)
     }
 
+
+    @MainActor
+    func testHistoricalCalendarUpsertRejectsGloballyReusedUpdateIDBeforeMutation() throws {
+        let database = try AppDatabase(inMemory: true)
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        database.context.insert(DBGame(id: "game-b", title: "Game B"))
+        database.context.insert(DBGameUpdate(
+            id: "shared-update-id",
+            gameID: "game-b",
+            title: "Original",
+            summary: "Keep this row",
+            detectedAt: date,
+            sourceID: "other-source",
+            isHistorical: true
+        ))
+        try database.save()
+
+        let repository = GameCalendarRepository(database: database)
+        XCTAssertThrowsError(try repository.upsertHistoricalUpdate(
+            gameID: "game-a",
+            update: GameLibraryUpdate(
+                id: "shared-update-id",
+                title: "Replacement",
+                summary: "Must not overwrite",
+                detectedAt: date,
+                publishedAt: date,
+                sourceID: "new-source",
+                isHistorical: true
+            ),
+            save: false
+        )) { error in
+            XCTAssertEqual(
+                error as? GameCalendarRepository.RepositoryError,
+                .updateIDAlreadyExists("shared-update-id")
+            )
+        }
+
+        XCTAssertFalse(database.context.hasChanges)
+        let rows = try database.context.fetch(FetchDescriptor<DBGameUpdate>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.gameID, "game-b")
+        XCTAssertEqual(rows.first?.title, "Original")
+    }
+
+    @MainActor
+    func testUpdateMonitorBatchSaveFailureRollsBackEveryWatch() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "A"))
+        database.context.insert(DBGame(id: "game-b", title: "B"))
+        try database.save()
+        let repository = GameUpdateMonitorRepository(database: database)
+        func watch(_ id: String) -> GameUpdateWatch {
+            GameUpdateWatch(
+                gameID: id,
+                gameTitle: id,
+                gameURL: "",
+                entityTag: nil,
+                lastModified: nil,
+                contentHash: nil,
+                lastCheckedAt: nil,
+                hasBaseline: false,
+                isEnabled: true
+            )
+        }
+
+        database.simulatedSaveError = { NSError(domain: "test", code: 1) }
+        XCTAssertThrowsError(try repository.save([watch("game-a"), watch("game-b")]))
+        database.simulatedSaveError = nil
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBUpdateWatch>()).isEmpty)
+    }
+
+    @MainActor
+    func testTranslationCacheStoreFailureRollsBackInsertedRow() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = TranslationCacheRepository(database: database)
+        database.simulatedSaveError = { NSError(domain: "test", code: 1) }
+
+        XCTAssertThrowsError(try repository.store(
+            "translated",
+            source: "source",
+            scope: "description",
+            target: "zh-CN",
+            for: "cache-key"
+        ))
+        database.simulatedSaveError = nil
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBTranslation>()).isEmpty)
+    }
 
     @MainActor
     func testPersonalLibraryRemovalRetainsStatusTimelineInMemoryAndAfterReload() throws {

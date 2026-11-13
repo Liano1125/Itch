@@ -167,4 +167,66 @@ final class AppDatabaseTransactionTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
+
+    @MainActor
+    func testFailedFullDatabaseClearRestoresEveryModelTable() throws {
+        let database = try AppDatabase(inMemory: true)
+        let context = database.context
+        context.insert(DBGame(id: "game-a", title: "Game A"))
+        context.insert(DBDeveloper(id: "developer-a", name: "Developer"))
+        context.insert(DBGameDetail(gameID: "game-a"))
+        context.insert(DBLibraryEntry(gameID: "game-a", status: "在玩"))
+        context.insert(DBLibraryCollection(id: "collection-a", title: "Collection"))
+        context.insert(DBLibraryCollectionItem(
+            id: "membership-a",
+            collectionID: "collection-a",
+            gameID: "game-a",
+            sortOrder: 0
+        ))
+        context.insert(DBLibraryStatusEvent(
+            id: "status-a",
+            gameID: "game-a",
+            fromStatus: nil,
+            toStatus: "在玩"
+        ))
+        context.insert(DBUpdateWatch(gameID: "game-a"))
+        context.insert(DBDiscoverySnapshot(
+            key: "discovery-a",
+            payload: Data("payload".utf8),
+            expiresAt: .now.addingTimeInterval(3600)
+        ))
+        context.insert(DBTranslation(
+            cacheKey: "translation-a",
+            scope: "description",
+            sourceHash: "hash",
+            sourceText: "source",
+            targetLanguage: "zh-CN",
+            translatedText: "translated"
+        ))
+        context.insert(DBSparkMetadata(gameID: "game-a", runtimeSeconds: 10))
+        context.insert(DBCalendarEvent(id: "calendar-a", gameID: "game-a", kind: "custom"))
+        context.insert(DBGameUpdate(id: "update-a", gameID: "game-a", summary: "Update", detectedAt: .now))
+        context.insert(DBAppState(key: "state-a", stringValue: "keep"))
+        try database.save()
+
+        database.simulatedSaveError = { TestError.simulatedFailure }
+        XCTAssertThrowsError(try database.removeAllAppData())
+        database.simulatedSaveError = nil
+
+        XCTAssertFalse(context.hasChanges)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDeveloper>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameDetail>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryEntry>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollection>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryCollectionItem>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLibraryStatusEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBDiscoverySnapshot>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBTranslation>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBSparkMetadata>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBCalendarEvent>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGameUpdate>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAppState>()), 1)
+    }
 }

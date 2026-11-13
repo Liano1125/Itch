@@ -6,6 +6,7 @@ final class GameRepositoryTests: XCTestCase {
     @MainActor
     func testLoadByIDReturnsCompleteImmutableGameSnapshots() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "author-a", name: "Author A"))
         let updatedAt = Date(timeIntervalSince1970: 1_700_000_000)
         database.context.insert(DBGame(
             id: "game-a",
@@ -32,6 +33,7 @@ final class GameRepositoryTests: XCTestCase {
     @MainActor
     func testMetadataUpsertPreservesOptionalFieldsWhenIncomingValuesAreNil() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "author-a", name: "Author A"))
         database.context.insert(DBGame(
             id: "game-a",
             title: "Old title",
@@ -56,6 +58,7 @@ final class GameRepositoryTests: XCTestCase {
     @MainActor
     func testMetadataUpsertCreatesAndUpdatesOnlyTheRequestedGame() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "author-a", name: "Author A"))
         database.context.insert(DBGame(id: "other", title: "Other"))
         try database.save()
 
@@ -83,6 +86,7 @@ final class GameRepositoryTests: XCTestCase {
     @MainActor
     func testGameDetailRepositoryPersistsNormalizedDetailRecords() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "author-a", name: "Author A"))
         database.context.insert(DBGame(id: "game-a", title: "Game A"))
         try database.save()
 
@@ -105,6 +109,7 @@ final class GameRepositoryTests: XCTestCase {
     @MainActor
     func testExistingGameIDsReturnsOnlyRequestedExistingIDs() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "author-a", name: "Author A"))
         database.context.insert(DBGame(id: "game-a", title: "A"))
         database.context.insert(DBGame(id: "game-b", title: "B"))
         database.context.insert(DBGame(id: "unrelated", title: "Other"))
@@ -121,6 +126,7 @@ final class GameRepositoryTests: XCTestCase {
     @MainActor
     func testUpsertNeverDeletesUnmentionedGameRows() throws {
         let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBDeveloper(id: "author-a", name: "Author A"))
         database.context.insert(DBGame(id: "game-a", title: "A"))
         database.context.insert(DBGame(id: "game-b", title: "B"))
         try database.save()
@@ -131,4 +137,29 @@ final class GameRepositoryTests: XCTestCase {
         XCTAssertNotNil(try repository.game(id: "game-b"))
         XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGame>()).count, 2)
     }
+
+    @MainActor
+    func testMetadataUpsertRejectsMissingDeveloperBeforeMutatingGame() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Original"))
+        try database.save()
+
+        let repository = GameRepository(database: database)
+        XCTAssertThrowsError(try repository.upsertMetadata(
+            id: "game-a",
+            title: "Must not persist",
+            developerID: "missing-developer",
+            save: false
+        )) { error in
+            XCTAssertEqual(
+                error as? DatabaseReferenceValidator.ValidationError,
+                .missingDeveloper("missing-developer")
+            )
+        }
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertEqual(try repository.game(id: "game-a")?.title, "Original")
+        XCTAssertNil(try repository.game(id: "new-game"))
+    }
+
 }
