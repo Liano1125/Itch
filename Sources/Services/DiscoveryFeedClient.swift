@@ -55,7 +55,7 @@ final class DiscoveryFeedClient {
             throw DiscoveryFeedError.invalidResponse
         }
 
-        if html.range(of: #"You must be 18\\+ to view this content|Date of Birth:"#,
+        if html.range(of: #"You must be 18\+ to view this content|Date of Birth:"#,
                       options: [.regularExpression, .caseInsensitive]) != nil {
             throw DiscoveryFeedError.ageGate
         }
@@ -84,7 +84,7 @@ final class DiscoveryFeedClient {
     }
 
     private static func extractGameCards(from html: String, baseURL: URL) -> [[String: Any]] {
-        let divPattern = #"(?is)<(/?)div\\b([^>]*)>"#
+        let divPattern = #"(?is)<(/?)div\b([^>]*)>"#
         guard let divRegex = try? NSRegularExpression(pattern: divPattern) else { return [] }
         let nsHTML = html as NSString
         let matches = divRegex.matches(in: html, range: NSRange(location: 0, length: nsHTML.length))
@@ -176,7 +176,7 @@ final class DiscoveryFeedClient {
     }
 
     private static func anchors(in html: String) -> [Anchor] {
-        guard let regex = try? NSRegularExpression(pattern: #"(?is)<a\\b([^>]*)>(.*?)</a>"#) else { return [] }
+        guard let regex = try? NSRegularExpression(pattern: #"(?is)<a\b([^>]*)>(.*?)</a>"#) else { return [] }
         let nsHTML = html as NSString
         return regex.matches(in: html, range: NSRange(location: 0, length: nsHTML.length)).map { match in
             let attributes = nsHTML.substring(with: match.range(at: 1))
@@ -189,7 +189,7 @@ final class DiscoveryFeedClient {
     }
 
     private static func tags(named name: String, in html: String) -> [String] {
-        guard let regex = try? NSRegularExpression(pattern: "(?is)<" + NSRegularExpression.escapedPattern(for: name) + #"\\b([^>]*)>"#) else { return [] }
+        guard let regex = try? NSRegularExpression(pattern: "(?is)<" + NSRegularExpression.escapedPattern(for: name) + #"\b([^>]*)>"#) else { return [] }
         let nsHTML = html as NSString
         return regex.matches(in: html, range: NSRange(location: 0, length: nsHTML.length)).map {
             nsHTML.substring(with: $0.range(at: 1))
@@ -201,7 +201,7 @@ final class DiscoveryFeedClient {
     }
 
     private static func attribute(_ name: String, in source: String) -> String? {
-        let pattern = "(?is)(?:^|\\\\s)" + NSRegularExpression.escapedPattern(for: name) + #"\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))"#
+        let pattern = "(?is)(?:^|\\\s)" + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: source, range: NSRange(location: 0, length: (source as NSString).length)) else {
             return nil
@@ -215,7 +215,7 @@ final class DiscoveryFeedClient {
 
     private static func innerHTML(className: String, in html: String) -> String? {
         let escaped = NSRegularExpression.escapedPattern(for: className)
-        let pattern = #"(?is)<([a-z0-9]+)\\b[^>]*class=["'][^"']*(?:^|\\s)"# + escaped + #"(?:\\s|["'])[^>]*>(.*?)</\\1>"#
+        let pattern = #"(?is)<([a-z0-9]+)\b[^>]*class=["'][^"']*(?:^|\s)"# + escaped + #"(?:\s|["'])[^>]*>(.*?)</\1>"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: html, range: NSRange(location: 0, length: (html as NSString).length)),
               match.range(at: 2).location != NSNotFound else { return nil }
@@ -233,7 +233,7 @@ final class DiscoveryFeedClient {
             .replacingOccurrences(of: #"(?is)<style[^>]*>.*?</style>"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"(?is)<[^>]+>"#, with: " ", options: .regularExpression)
         let decoded = decodeEntities(withoutScripts)
-        let compact = decoded.replacingOccurrences(of: #"\\s+"#, with: " ", options: .regularExpression)
+        let compact = decoded.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return compact.isEmpty ? nil : compact
     }
