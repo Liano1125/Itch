@@ -55,37 +55,40 @@ final class CacheRepository {
         target: String,
         for key: String
     ) throws {
-        let context = database.repositoryContext
-        let descriptor = FetchDescriptor<DBTranslation>(
-            predicate: #Predicate { $0.cacheKey == key }
-        )
-        let item = try context.fetch(descriptor).first ?? DBTranslation(
-            cacheKey: key,
-            scope: scope,
-            sourceHash: sourceHash,
-            sourceText: source,
-            targetLanguage: target,
-            translatedText: translation
-        )
-        if item.modelContext == nil { context.insert(item) }
-        item.scope = scope
-        item.sourceHash = sourceHash
-        item.sourceText = source
-        item.targetLanguage = target
-        item.translatedText = translation
-        item.updatedAt = .now
+        try database.performTransaction {
+            let context = database.repositoryContext
+            let descriptor = FetchDescriptor<DBTranslation>(
+                predicate: #Predicate { $0.cacheKey == key }
+            )
+            let item = try context.fetch(descriptor).first ?? DBTranslation(
+                cacheKey: key,
+                scope: scope,
+                sourceHash: sourceHash,
+                sourceText: source,
+                targetLanguage: target,
+                translatedText: translation
+            )
+            if item.modelContext == nil { context.insert(item) }
+            item.scope = scope
+            item.sourceHash = sourceHash
+            item.sourceText = source
+            item.targetLanguage = target
+            item.translatedText = translation
+            item.updatedAt = .now
 
-        let count = try context.fetchCount(FetchDescriptor<DBTranslation>())
-        if count > maximumTranslationEntries {
-            let oldest = try context.fetch(FetchDescriptor<DBTranslation>(
-                sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
-            ))
-            let evictionCount = max(0, count - retainedTranslationEntries)
-            for old in oldest.filter({ $0.cacheKey != key }).prefix(evictionCount) {
-                context.delete(old)
+            let count = try context.fetchCount(FetchDescriptor<DBTranslation>())
+            if count > maximumTranslationEntries {
+                let oldest = try context.fetch(FetchDescriptor<DBTranslation>(
+                    sortBy: [SortDescriptor(\.updatedAt, order: .forward)]
+                ))
+                let evictionCount = max(0, count - retainedTranslationEntries)
+                for old in oldest.filter({ $0.cacheKey != key }).prefix(evictionCount) {
+                    context.delete(old)
+                }
             }
+            try database.save()
+    
         }
-        try database.save()
     }
 
     func discoverySnapshot(for key: String, now: Date = .now) throws -> Data? {
