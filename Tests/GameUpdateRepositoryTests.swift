@@ -39,10 +39,6 @@ final class GameUpdateRepositoryTests: XCTestCase {
         XCTAssertEqual(loaded["game-b"]?.first?.summary, "Summary B")
     }
 
-
-
-}
-
     @MainActor
     func testPartialSynchronizationNeverDeletesOmittedUpdates() throws {
         let database = try AppDatabase(inMemory: true)
