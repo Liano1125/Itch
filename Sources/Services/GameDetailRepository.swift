@@ -254,6 +254,82 @@ struct GameDetailPageSnapshot {
     }
 }
 
+enum GameDescriptionContentPolicy {
+    /// Keeps the game-facing introduction while omitting common itch.io auxiliary
+    /// sections such as author promotion, installation help, translation notices,
+    /// featured mods, and comment/security notices.
+    static func cleaned(_ source: String?) -> String? {
+        guard let source else { return nil }
+        let normalized = source
+            .replacingOccurrences(of: "\\r\\n", with: "\\n")
+            .replacingOccurrences(of: "\\r", with: "\\n")
+        let lines = normalized.components(separatedBy: .newlines)
+        let excludedHeadings: Set<String> = [
+            "about me", "关于我",
+            "android installation", "android install", "安卓安装", "安卓安装指南",
+            "about translations", "translations", "translation", "关于翻译", "关于翻译声明",
+            "featured mods", "featured mod", "精选模组", "精选插件",
+            "comments section", "comments", "评论区", "评论",
+            "support the game", "support development", "支持开发", "支持游戏",
+            "credits", "鸣谢"
+        ]
+        let includedHeadings: Set<String> = [
+            "welcome", "plot", "story", "synopsis", "overview",
+            "about the game", "the game", "gameplay", "features",
+            "description", "剧情", "故事", "游戏介绍", "游戏简介",
+            "玩法", "游戏特色", "简介"
+        ]
+        let allSectionHeadings = excludedHeadings.union(includedHeadings)
+
+        func normalizedHeading(_ line: String) -> String {
+            line.trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ":："))
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                .lowercased()
+        }
+
+        var output: [String] = []
+        var skippingSection = false
+
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else {
+                if !skippingSection, output.last != "" { output.append("") }
+                continue
+            }
+
+            let compact = line.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\\t", with: "")
+            if compact.count >= 4 && compact.allSatisfy({ $0 == "_" || $0 == "-" || $0 == "—" || $0 == "–" || $0 == "=" }) {
+                continue
+            }
+
+            let heading = normalizedHeading(line)
+            if allSectionHeadings.contains(heading) {
+                skippingSection = excludedHeadings.contains(heading)
+                if !skippingSection { output.append(line) }
+                continue
+            }
+
+            if !skippingSection {
+                // Drop a leading creator-support link row, but preserve actual
+                // description text that merely mentions these services later.
+                let upper = line.uppercased()
+                if output.isEmpty,
+                   upper.contains("PATREON"),
+                   (upper.contains("SUBSCRIBESTAR") || upper.contains("SUBSCRIBE STAR")) {
+                    continue
+                }
+                output.append(line)
+            }
+        }
+
+        let result = output.joined(separator: "\\n")
+            .replacingOccurrences(of: "\\n{3,}", with: "\\n\\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? source.trimmingCharacters(in: .whitespacesAndNewlines) : result
+    }
+}
+
 enum GameDetailSnapshotPolicy {
     static func resolvedValue<Value>(
         existing: Value?,
