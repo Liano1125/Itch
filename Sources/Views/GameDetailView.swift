@@ -1073,7 +1073,7 @@ struct GameDetailView: View {
 // MARK: - Game Page Reader
 
 
-private enum GamePageScript {
+enum GamePageScript {
     static let source = """
         (() => {
             try {
