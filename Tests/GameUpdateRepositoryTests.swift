@@ -37,24 +37,9 @@ final class GameUpdateRepositoryTests: XCTestCase {
         XCTAssertEqual(loaded["game-a"]?.first?.title, "First")
         XCTAssertEqual(loaded["game-a"]?.first?.sourceID, "source-a")
         XCTAssertEqual(loaded["game-b"]?.first?.summary, "Summary B")
-        @MainActor
-    func testHistoricalAppendSaveFailureRollsBackEntireBatch() throws {
-        let database = try AppDatabase(inMemory: true)
-        database.context.insert(DBGame(id: "game-a", title: "Game A"))
-        try database.save()
-        let repository = GameUpdateRepository(database: database)
-        let updates = [
-            GameLibraryUpdate(id: "historical-a", title: "A", sourceID: "source-a", isHistorical: true),
-            GameLibraryUpdate(id: "historical-b", title: "B", sourceID: "source-b", isHistorical: true)
-        ]
-        database.simulatedSaveError = { NSError(domain: "test", code: 1) }
-
-        XCTAssertThrowsError(try repository.appendHistoricalUpdates(updates, for: "game-a"))
-        database.simulatedSaveError = nil
-
-        XCTAssertFalse(database.context.hasChanges)
-        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBGameUpdate>()).isEmpty)
     }
+
+
 
 }
 
@@ -273,4 +258,23 @@ final class GameUpdateRepositoryTests: XCTestCase {
         XCTAssertEqual(try database.context.fetch(FetchDescriptor<DBGame>()).first?.title, "A")
     }
 
+
+    @MainActor
+    func testHistoricalAppendSaveFailureRollsBackEntireBatch() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "game-a", title: "Game A"))
+        try database.save()
+        let repository = GameUpdateRepository(database: database)
+        let updates = [
+            GameLibraryUpdate(id: "historical-a", title: "A", sourceID: "source-a", isHistorical: true),
+            GameLibraryUpdate(id: "historical-b", title: "B", sourceID: "source-b", isHistorical: true)
+        ]
+        database.simulatedSaveError = { NSError(domain: "test", code: 1) }
+
+        XCTAssertThrowsError(try repository.appendHistoricalUpdates(updates, for: "game-a"))
+        database.simulatedSaveError = nil
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBGameUpdate>()).isEmpty)
+    }
 }
