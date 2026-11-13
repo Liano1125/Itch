@@ -18,7 +18,7 @@ enum DiscoveryFeedSnapshotCache {
               let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]),
               let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data),
               snapshot.version == 1,
-              now.timeIntervalSince(snapshot.savedAt) <= maximumAge else {
+              DiscoverySnapshotPolicy.isUsable(savedAt: snapshot.savedAt, now: now, maximumAge: maximumAge) else {
             return nil
         }
         // Deliberately return stale-but-useful data. Refresh must never erase
@@ -48,5 +48,17 @@ enum DiscoveryFeedSnapshotCache {
             return nil
         }
         return directory.appendingPathComponent(fileName)
+    }
+}
+
+/// Deterministic age policy for discovery snapshots. Expired snapshots remain
+/// useful until the hard retention limit; freshness only controls refresh intent.
+enum DiscoverySnapshotPolicy {
+    static func isUsable(savedAt: Date, now: Date, maximumAge: TimeInterval) -> Bool {
+        now >= savedAt && now.timeIntervalSince(savedAt) <= maximumAge
+    }
+
+    static func needsRefresh(savedAt: Date, now: Date, refreshAfter: TimeInterval) -> Bool {
+        now < savedAt || now.timeIntervalSince(savedAt) >= refreshAfter
     }
 }
