@@ -50,7 +50,7 @@ enum DiscoveryFeedSnapshotCache {
             do {
                 try data.write(to: fileURL, options: .atomic)
             } catch {
-                print("itchPocket discovery snapshot write failed: \\(error)")
+                print("itchPocket discovery snapshot write failed: \(error)")
             }
         }
     }
