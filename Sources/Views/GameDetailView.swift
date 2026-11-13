@@ -44,10 +44,22 @@ private struct GameDetailPayload {
     }
 }
 
+enum GameDetailParserProfile: String {
+    case standard
+    case adultRenPy
+    case adult3D
+}
+
 // MARK: - Game Detail View
 
 struct GameDetailView: View {
     let game: PublicCollectionGame
+    let parserProfile: GameDetailParserProfile
+
+    init(game: PublicCollectionGame, parserProfile: GameDetailParserProfile = .standard) {
+        self.game = game
+        self.parserProfile = parserProfile
+    }
 
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var library: PersonalLibraryStore
@@ -168,6 +180,7 @@ struct GameDetailView: View {
             GeometryReader { proxy in
                 DetailPageReader(
                     url: game.url,
+                    profile: parserProfile,
                     reloadToken: reloadToken,
                     onLoad: handleLoadedDetail,
                     onError: handleLoadError
@@ -1050,11 +1063,21 @@ private enum GamePageScript {
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
                 // Adult catalog pages use several description containers depending on
                 // the creator's page template. Keep a broad semantic fallback list.
-                const contentSelector = [
+                const parserProfile = "__PARSER_PROFILE__";
+                const commonDescriptionSelectors = [
                     ".formatted_description", ".game_description", "#game_description",
                     ".game_page_content", ".game_page_text", "#description", ".description",
                     "[itemprop='description']", "[data-game-description]"
-                ].join(", ");
+                ];
+                const profileDescriptionSelectors = parserProfile === "adultRenPy"
+                    ? [".formatted_description", ".game_description", "#game_description",
+                       ".game_page_content", ".game_page_text", "#description", "[itemprop='description']"]
+                    : parserProfile === "adult3D"
+                        ? [".formatted_description", ".game_description", ".game_page_content",
+                           ".game_page_text", "#description", "[itemprop='description']",
+                           "[data-game-description]", "main article"]
+                        : commonDescriptionSelectors;
+                const contentSelector = Array.from(new Set(profileDescriptionSelectors)).join(", ");
                 const contentRoots = Array.from(document.querySelectorAll(contentSelector));
                 const hasGameContent = contentRoots.length > 0;
                 // Some valid itch.io layouts omit the historical .game_page wrapper,
@@ -1300,6 +1323,10 @@ private enum GamePageScript {
             }
         })();
         """
+
+    static func source(for profile: GameDetailParserProfile) -> String {
+        source.replacingOccurrences(of: "__PARSER_PROFILE__", with: profile.rawValue)
+    }
 }
 
 /// Preloads missing/stale itch.io detail pages in a bounded sequential WebKit queue.
@@ -1484,6 +1511,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
 
 private struct DetailPageReader: UIViewRepresentable {
     let url: URL?
+    let profile: GameDetailParserProfile
     let reloadToken: UUID
     let onLoad: (GameDetailPayload) -> Void
     let onError: (String) -> Void
@@ -1568,7 +1596,7 @@ private struct DetailPageReader: UIViewRepresentable {
             let extractionStartedAt = Date()
             let navigationDuration = navigationStartedAt.map { extractionStartedAt.timeIntervalSince($0) } ?? 0
 
-            webView.evaluateJavaScript(GamePageScript.source) { result, error in
+            webView.evaluateJavaScript(GamePageScript.source(for: self.parent.profile)) { result, error in
                 guard !self.finished else { return }
                 let scriptDuration = Date().timeIntervalSince(extractionStartedAt)
 
