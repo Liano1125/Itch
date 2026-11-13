@@ -3,6 +3,33 @@ import SwiftData
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
+    func testDisplayedDescriptionPrefersFreshValueThenCachedThenFallback() {
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.displayedDescription(
+                current: "fresh description",
+                cached: "cached description",
+                fallback: "game model description"
+            ),
+            "fresh description"
+        )
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.displayedDescription(
+                current: nil,
+                cached: "cached description",
+                fallback: "game model description"
+            ),
+            "cached description"
+        )
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.displayedDescription(
+                current: nil,
+                cached: nil,
+                fallback: "game model description"
+            ),
+            "game model description"
+        )
+    }
+
     func testPartialGameDetailUpdatePreservesFieldsThatWereNotProvided() {
         XCTAssertEqual(
             GameDetailPersistencePolicy.resolvedValue(existing: "saved description", incoming: nil, mode: .partial),
