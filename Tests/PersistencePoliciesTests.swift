@@ -234,6 +234,39 @@ final class PersistencePoliciesTests: XCTestCase {
         )
     }
 
+    func testDeveloperReferenceRequiresEitherAUsableNameOrAnExistingRow() {
+        XCTAssertNil(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "https://example.itch.io/",
+                hasUsableName: false,
+                existingDeveloperExists: false
+            )
+        )
+        XCTAssertEqual(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "https://example.itch.io/",
+                hasUsableName: true,
+                existingDeveloperExists: false
+            ),
+            "https://example.itch.io/"
+        )
+        XCTAssertEqual(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "https://example.itch.io/",
+                hasUsableName: false,
+                existingDeveloperExists: true
+            ),
+            "https://example.itch.io/"
+        )
+        XCTAssertNil(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "  ",
+                hasUsableName: true,
+                existingDeveloperExists: true
+            )
+        )
+    }
+
     func testPartialLibrarySnapshotDoesNotDeleteOmittedHistory() {
         let shouldDelete = LibraryUpdatePersistencePolicy.shouldDeleteStoredUpdate(
             storedID: "older-update",
