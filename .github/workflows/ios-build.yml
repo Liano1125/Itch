@@ -32,6 +32,8 @@ on:
       - fix/database-reference-write-guards
   pull_request:
     branches:
+      # PR #56 is stacked on this migration/status-history branch.
+      - fix/preserve-library-status-history
       - main
       # Stacked persistence PRs may target the migration branch before it merges.
       - fix/legacy-v2-bootstrap
