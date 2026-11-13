@@ -78,10 +78,6 @@ struct ContentView: View {
             )
             Task(priority: .utility) {
                 await DevlogAutoSync.prefetchCalendarTranslations(events: gameCalendar.events)
-                await GameDetailPrefetchService.shared.prefetch(
-                    records: personalLibrary.records,
-                    library: personalLibrary
-                )
             }
         }
         .onChange(of: scenePhase) { _, phase in
