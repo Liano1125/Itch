@@ -39,11 +39,7 @@ private struct GameDetailPayload {
     let engine: String?
 
     var requiredDetailResolved: Bool {
-        GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: descriptionResolved,
-            galleryResolved: galleryResolved,
-            tagsResolved: tagsResolved
-        )
+        GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: descriptionResolved)
     }
 }
 
