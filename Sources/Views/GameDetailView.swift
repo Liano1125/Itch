@@ -165,13 +165,17 @@ struct GameDetailView: View {
                 .presentationBackground(Color.black)
         }
         .overlay {
-            DetailPageReader(
-                url: game.url,
-                reloadToken: reloadToken,
-                onLoad: handleLoadedDetail,
-                onError: handleLoadError
-            )
-            .frame(width: 1, height: 1)
+            GeometryReader { proxy in
+                DetailPageReader(
+                    url: game.url,
+                    reloadToken: reloadToken,
+                    onLoad: handleLoadedDetail,
+                    onError: handleLoadError
+                )
+                // A 1x1 hidden WebView changes itch.io's responsive DOM and can
+                // prevent viewport-triggered lazy images from loading.
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
             .opacity(0)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
