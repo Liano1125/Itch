@@ -1,6 +1,11 @@
 import SwiftUI
 import WebKit
 
+@MainActor
+private enum DiscoveryInitialLoadGate {
+    static var didStart = false
+}
+
 private struct DiscoveryTagRecommendation: Identifiable {
     let id: String
     let name: String
@@ -51,7 +56,8 @@ struct DiscoverView: View {
         let curated = Self.loadCuratedCache()
         let recommendations = DiscoveryCacheStore.load([PublicCollectionGame].self, key: "personalized-recommendations:v1") ?? []
         _curatedGames = State(initialValue: curated)
-        _shouldLoadCurated = State(initialValue: curated.isEmpty)
+        // Do not create WebKit readers during view construction; the first frame must stay interactive.
+        _shouldLoadCurated = State(initialValue: false)
         _recommendedGames = State(initialValue: recommendations)
         _shouldLoadRecommendations = State(initialValue: recommendations.isEmpty)
     }
@@ -78,7 +84,7 @@ struct DiscoverView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 26) {
+                LazyVStack(alignment: .leading, spacing: 26) {
                     header
                     searchBar
                     curatedFeedSection
@@ -94,26 +100,6 @@ struct DiscoverView: View {
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    if shouldLoadRecommendations {
-                        DiscoveryFeedReader(
-                            url: recommendationURL,
-                            reloadToken: recommendationReloadToken,
-                            onLoad: { games in
-                                recommendedGames = games
-                                DiscoveryCacheStore.save(games, key: "personalized-recommendations:v1", timeToLive: 6 * 60 * 60)
-                                shouldLoadRecommendations = false
-                                isLoadingRecommendations = false
-                                recommendationError = nil
-                            },
-                            onError: { message in
-                                shouldLoadRecommendations = false
-                                isLoadingRecommendations = false
-                                recommendationError = message
-                            },
-                            onStart: { isLoadingRecommendations = true }
-                        )
-                        .frame(width: 1, height: 1)
-                    }
                     if shouldLoadCurated {
                         CuratedDiscoveryFeedReader(
                             feeds: DiscoveryFeed.curated,
@@ -139,6 +125,14 @@ struct DiscoverView: View {
                 .opacity(0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+            }
+            .task {
+                guard !DiscoveryInitialLoadGate.didStart, curatedGames.isEmpty else { return }
+                // Let SwiftUI render the cached/placeholder screen before WebKit starts.
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                guard !Task.isCancelled, !DiscoveryInitialLoadGate.didStart else { return }
+                DiscoveryInitialLoadGate.didStart = true
+                shouldLoadCurated = true
             }
             .navigationDestination(isPresented: $showSearchResults) {
                 ItchSearchResultsView(query: submittedQuery)
@@ -223,6 +217,7 @@ struct DiscoverView: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button {
+                        DiscoveryInitialLoadGate.didStart = true
                         shouldLoadCurated = true
                         curatedReloadToken = UUID()
                     } label: {
@@ -261,8 +256,8 @@ struct DiscoverView: View {
             }
             if !games.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(games.prefix(24)) { game in
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(games.prefix(12)) { game in
                             NavigationLink {
                                 GameDetailView(game: game)
                             } label: {
@@ -564,7 +559,7 @@ struct DiscoverView: View {
                 Text("从这些作品继续探索")
                     .font(.headline)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 11) {
+                    LazyHStack(spacing: 11) {
                         ForEach(recommendedSeedGames) { record in
                             NavigationLink {
                                 ItchSearchResultsView(query: record.title)
