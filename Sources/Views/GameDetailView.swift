@@ -963,7 +963,6 @@ struct GameDetailView: View {
     }
 
     private func loadCachedDescription() async {
-        let database = AppDatabase.shared
         if let savedGame = try? gameRepository.game(id: game.id) {
             let developer = savedGame.developerID.flatMap { try? developerRepository.developer(id: $0) }
             let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
