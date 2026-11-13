@@ -1048,9 +1048,15 @@ private enum GamePageScript {
                 const ageGateRequired = !hasGameRoot
                     && /You must be 18\\+ to view this content|Date of Birth:/i.test(bodyText);
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
-                const hasGameContent = Boolean(document.querySelector(
-                    ".formatted_description, .game_description, #game_description, .game_page_content, #description, .description, [itemprop='description']"
-                ));
+                // Adult catalog pages use several description containers depending on
+                // the creator's page template. Keep a broad semantic fallback list.
+                const contentSelector = [
+                    ".formatted_description", ".game_description", "#game_description",
+                    ".game_page_content", ".game_page_text", "#description", ".description",
+                    "[itemprop='description']", "[data-game-description]"
+                ].join(", ");
+                const contentRoots = Array.from(document.querySelectorAll(contentSelector));
+                const hasGameContent = contentRoots.length > 0;
                 // Some valid itch.io layouts omit the historical .game_page wrapper,
                 // but must still contain at least one real game-content marker.
                 const isCompleteSnapshot = isItchHost
@@ -1065,9 +1071,8 @@ private enum GamePageScript {
                 let descriptionResolved = false;
                 // A comma-separated query returns each matching element once,
                 // avoiding the overlapping .game_page_content descendant scan.
-                const descriptionElements = Array.from(document.querySelectorAll(
-                    ".formatted_description, .game_description, #game_description, .game_page_content, .game_page_text, #description, .description, [itemprop='description']"
-                ));
+                const descriptionElements = contentRoots
+                    .sort((left, right) => clean(right).length - clean(left).length);
                 for (const element of descriptionElements) {
                     const value = clean(element);
                     if (value.length > 0 && (!description || value.length > description.length)) {
@@ -1139,25 +1144,42 @@ private enum GamePageScript {
                     ".screenshot_list, .screenshot_container, .game_page_screenshots, #game_screenshots, .screenshot"
                 );
                 const screenshotAnchors = Array.from(document.querySelectorAll(
-                    '.screenshot_list a, .screenshot_container a, .screenshot a, #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox], a[href*="img.itch.zone"]'
+                    [
+                        '.screenshot_list a', '.screenshot_container a', '.screenshot a',
+                        '#game_screenshots a', '.game_page_screenshots a',
+                        '.formatted_description a', '.game_description a', '.game_page_content a',
+                        '.game_page_text a', '[itemprop="description"] a',
+                        'a[data-image_lightbox]', 'a[href*="img.itch.zone"]',
+                        'a[href*="/original/"]'
+                    ].join(", ")
                 ));
                 for (const anchor of screenshotAnchors) {
                     const image = anchor.querySelector("img");
                     const href = absolute(anchor.getAttribute("href"));
                     const imageSource = absolute(
                         image?.getAttribute("data-lazy_src") || image?.getAttribute("data-lazy-src") ||
-                        image?.getAttribute("data-src") || image?.currentSrc || image?.getAttribute("srcset")?.split(/\\s+/)[0] || image?.getAttribute("src")
+                        image?.getAttribute("data-src") || image?.getAttribute("data-original") ||
+                        image?.currentSrc || image?.getAttribute("srcset")?.split(/\\s+/)[0] ||
+                        image?.getAttribute("data-srcset")?.split(/\\s+/)[0] || image?.getAttribute("src")
                     );
                     const candidate = href && /img\\.itch\\.zone|\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(href) ? href : imageSource;
                     if (candidate) galleryCandidates.push(candidate);
                 }
                 const screenshotImages = Array.from(document.querySelectorAll(
-                    'img.screenshot, .screenshot_list img, .screenshot_container img, .screenshot img, #game_screenshots img, .game_page_screenshots img, .formatted_description img, .game_description img, #game_description img'
+                    [
+                        'img.screenshot', '.screenshot_list img', '.screenshot_container img',
+                        '.screenshot img', '#game_screenshots img', '.game_page_screenshots img',
+                        '.formatted_description img', '.game_description img',
+                        '#game_description img', '.game_page_content img', '.game_page_text img',
+                        '[itemprop="description"] img', '[data-game-description] img'
+                    ].join(", ")
                 ));
                 for (const image of screenshotImages) {
                     const source = absolute(
                         image.getAttribute("data-lazy_src") || image.getAttribute("data-lazy-src") ||
-                        image.getAttribute("data-src") || image.currentSrc || image.getAttribute("srcset")?.split(/\\s+/)[0] || image.getAttribute("src")
+                        image.getAttribute("data-src") || image.getAttribute("data-original") ||
+                        image.currentSrc || image.getAttribute("srcset")?.split(/\\s+/)[0] ||
+                        image.getAttribute("data-srcset")?.split(/\\s+/)[0] || image.getAttribute("src")
                     );
                     if (source) galleryCandidates.push(source);
                 }
