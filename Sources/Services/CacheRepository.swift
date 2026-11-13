@@ -86,8 +86,6 @@ final class CacheRepository {
                     context.delete(old)
                 }
             }
-            try database.save()
-    
         }
     }
 
