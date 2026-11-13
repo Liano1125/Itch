@@ -908,6 +908,8 @@ struct GameDetailView: View {
         cachedOriginalDescription = cached.sourceText
         translatedDescription = cached.translation
         translationStatus = "已显示本地译文 · 正在检查更新"
+        // Cache is for immediate display only; refresh source and fill missing devlogs.
+        await translateContent()
     }
 
     private func translateContent(forceRefresh: Bool = false) async {
@@ -921,8 +923,11 @@ struct GameDetailView: View {
 
         translationStatus = forceRefresh ? "正在重新翻译…" : "正在检查本地译文…"
         var usedCache = false
-        do {
-            if let description = displayDescription, !description.isEmpty {
+        var failureCount = 0
+        var completedUpdates = 0
+        let updates = library.updates(for: game.id)
+        if let description = displayDescription, !description.isEmpty {
+            do {
                 let result = try await TranslationService.translateCached(
                     description,
                     scope: "game-description:\(game.id)",
@@ -930,25 +935,30 @@ struct GameDetailView: View {
                 )
                 translatedDescription = result.text
                 usedCache = result.wasCached
+            } catch {
+                failureCount += 1
             }
-            for update in library.updates(for: game.id) {
-                let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
-                guard !source.isEmpty else { continue }
-                do {
-                    let result = try await TranslationService.translateCached(
-                        source,
-                        scope: "devlog:\(game.id):\(update.id)",
-                        forceRefresh: forceRefresh
-                    )
-                    translatedUpdates[update.id] = result.text
-                    usedCache = usedCache || result.wasCached
-                } catch {
-                    // A failed individual update must not block the rest of the detail page.
-                }
+        }
+        for update in updates {
+            let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+            guard !source.isEmpty else { continue }
+            do {
+                let result = try await TranslationService.translateCached(
+                    source,
+                    scope: "devlog:\(game.id):\(update.id)",
+                    forceRefresh: forceRefresh
+                )
+                translatedUpdates[update.id] = result.text
+                usedCache = usedCache || result.wasCached
+                completedUpdates += 1
+            } catch {
+                failureCount += 1
             }
-            translationStatus = usedCache ? "已使用本地缓存" : "翻译完成 · 已保存"
-        } catch {
-            translationStatus = "翻译失败：\(error.localizedDescription)"
+        }
+        if failureCount > 0 {
+            translationStatus = "已完成 \(completedUpdates)/\(updates.count) 条更新译文，\(failureCount) 项待重试"
+        } else {
+            translationStatus = usedCache ? "已检查更新 · 已使用本地译文" : "翻译完成 · 已保存"
         }
     }
 
@@ -976,7 +986,7 @@ private enum GamePageScript {
             try {
                 const clean = el => {
                     const value = el?.innerText || el?.textContent || "";
-                    return value.replace(/\\s+/g, " ").trim();
+                    return value.replace(/[ \\t]+/g, " ").replace(/\\n{3,}/g, "\\n\\n").trim();
                 };
 
                 const absolute = value => {
@@ -990,17 +1000,22 @@ private enum GamePageScript {
                 const pageURL = new URL(location.href);
                 const isItchHost = pageURL.hostname === "itch.io"
                     || pageURL.hostname.endsWith(".itch.io");
-                const hasGameRoot = Boolean(document.querySelector(".game_page"));
-                const hasGameTitle = Boolean(document.querySelector(
-                    ".game_page_title, .game_page h1, h1.game_title"
-                ));
+                const gameRoot = document.querySelector(
+                    ".game_page, .game_page_wrap, main .game_page"
+                );
+                const titleElement = document.querySelector(
+                    ".game_page_title, .game_page h1, h1.game_title, meta[property='og:title']"
+                );
+                const pageTitle = clean(titleElement)
+                    || (document.title || "").replace(/\s*[|–-]\s*itch\.io\s*$/i, "").trim();
+                const hasGameRoot = Boolean(gameRoot);
+                const hasGameTitle = pageTitle.length > 0 && pageTitle.toLowerCase() !== "itch.io";
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
-                // A generic itch.io header or author widget is not enough: require
-                // an itch.io host, a game-page root, a title, and a non-root path.
+                // Some valid itch.io layouts omit the historical .game_page wrapper.
                 const isCompleteSnapshot = isItchHost
-                    && hasGameRoot
+                    && pathParts.length > 0
                     && hasGameTitle
-                    && pathParts.length > 0;
+                    && (hasGameRoot || pathParts.length === 1);
 
                 let description = null;
                 let descriptionResolved = false;
@@ -1012,14 +1027,13 @@ private enum GamePageScript {
                 ];
 
                 for (const selector of descriptionSelectors) {
-                    const element = document.querySelector(selector);
-                    const value = clean(element);
-                    // Keep the resolved flag aligned with the value we actually save.
-                    // Short but valid descriptions must not resolve to nil and erase cache.
-                    if (value.length > 0) {
-                        description = value;
-                        descriptionResolved = true;
-                        break;
+                    const elements = Array.from(document.querySelectorAll(selector));
+                    for (const element of elements) {
+                        const value = clean(element);
+                        if (value.length > 0 && (!description || value.length > description.length)) {
+                            description = value;
+                            descriptionResolved = true;
+                        }
                     }
                 }
 
@@ -1082,11 +1096,8 @@ private enum GamePageScript {
                 const galleryContainer = document.querySelector(
                     ".screenshot_list, .screenshot_container, .game_page_screenshots, #game_screenshots, .screenshot"
                 );
-                const galleryResolved = Boolean(
-                    galleryContainer && (galleryContainer.querySelector("img, a[href]") || clean(galleryContainer).length > 0)
-                );
                 const screenshotAnchors = Array.from(document.querySelectorAll(
-                    '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox]'
+                    '.screenshot_list a, .screenshot_container a, .screenshot a, #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox], a[href*="img.itch.zone"]'
                 ));
                 for (const anchor of screenshotAnchors) {
                     const image = anchor.querySelector("img");
@@ -1109,9 +1120,19 @@ private enum GamePageScript {
                     if (source) galleryCandidates.push(source);
                 }
                 const galleryURLs = galleryCandidates
-                    .filter(value => /img\\.itch\\.zone|\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(value))
+                    .filter(value => {
+                        try {
+                            const parsed = new URL(value);
+                            return parsed.hostname === "img.itch.zone"
+                                || /\\.(png|jpe?g|webp|gif)$/i.test(parsed.pathname);
+                        } catch (_) {
+                            return false;
+                        }
+                    })
                     .filter((value, index, array) => array.indexOf(value) === index)
                     .slice(0, 30);
+                const galleryResolved = galleryURLs.length > 0
+                    || Boolean(galleryContainer && galleryContainer.querySelector("img, a[href]"));
 
                 const tagsResolved = Boolean(document.querySelector(
                     '.game_tags, .game_page_tags, a.game_tag[href], .game_info_panel_widget a[href*="/games/tag-"]'
@@ -1166,7 +1187,15 @@ private enum GamePageScript {
 
                 const links = Array.from(document.querySelectorAll("a[href]")).map(a => absolute(a.getAttribute("href"))).filter(Boolean);
                 const patreonURL = links.find(value => /(^|\\.)patreon\\.com$/i.test(new URL(value).hostname)) || null;
-                const discordURL = links.find(value => /(^|\\.)discord\\.(gg|com)$/i.test(new URL(value).hostname) || /discord\\.com\\/invite\\//i.test(value)) || null;
+                const discordURL = links.find(value => {
+                    try {
+                        const parsed = new URL(value);
+                        return parsed.hostname === "discord.gg"
+                            || parsed.hostname === "discord.com" && parsed.pathname.startsWith("/invite/");
+                    } catch (_) {
+                        return false;
+                    }
+                }) || null;
 
                 return JSON.stringify({
                     isCompleteSnapshot,
