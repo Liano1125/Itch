@@ -305,8 +305,12 @@ struct GameDetailView: View {
                     Text("\(images.count) 张")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if detail == nil {
+                } else if isLoading {
                     Text("加载中")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if errorMessage != nil {
+                    Text("读取失败")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -316,7 +320,9 @@ struct GameDetailView: View {
                 LazyHStack(spacing: 12) {
                     if images.isEmpty {
                         galleryPlaceholder(
-                            message: detail == nil ? "正在加载游戏截图" : "暂未获取到游戏截图"
+                            message: isLoading
+                                ? "正在加载游戏截图"
+                                : (errorMessage == nil ? "暂未获取到游戏截图" : "详情读取失败，请重新读取")
                         )
                     } else {
                         ForEach(Array(images.enumerated()), id: \.offset) { index, url in
@@ -347,10 +353,10 @@ struct GameDetailView: View {
             .fill(Color(uiColor: .tertiarySystemFill))
             .overlay {
                 VStack(spacing: 9) {
-                    if detail == nil {
+                    if isLoading {
                         ProgressView()
                     } else {
-                        Image(systemName: "photo.on.rectangle.angled")
+                        Image(systemName: errorMessage == nil ? "photo.on.rectangle.angled" : "exclamationmark.arrow.circlepath")
                             .font(.title2)
                             .foregroundStyle(.secondary)
                     }
