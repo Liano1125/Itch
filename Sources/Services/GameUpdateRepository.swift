@@ -155,6 +155,12 @@ final class GameUpdateRepository {
         save shouldSave: Bool = true
     ) throws -> [GameLibraryUpdate] {
         guard !updates.isEmpty else { return [] }
+        if shouldSave {
+            return try database.performTransaction {
+                try appendHistoricalUpdates(updates, for: gameID, save: false)
+            }
+        }
+
         let context = database.repositoryContext
         let existingRows = try context.fetch(FetchDescriptor<DBGameUpdate>(
             predicate: #Predicate { $0.gameID == gameID }
@@ -195,7 +201,6 @@ final class GameUpdateRepository {
         for update in candidates {
             try upsert(update, for: gameID, save: false)
         }
-        if shouldSave && !candidates.isEmpty { try database.save() }
         return candidates
     }
 
