@@ -1035,13 +1035,15 @@ private enum GamePageScript {
                     && /You must be 18\\+ to view this content|Date of Birth:/i.test(bodyText);
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
                 const hasGameContent = Boolean(document.querySelector(
-                    ".formatted_description, .game_description, #game_description, .game_author, meta[property='og:image']"
+                    ".formatted_description, .game_description, #game_description, .game_page_content, #description, .description, [itemprop='description'], .game_author, meta[property='og:image']"
                 ));
                 // Some valid itch.io layouts omit the historical .game_page wrapper,
                 // but must still contain at least one real game-content marker.
                 const isCompleteSnapshot = isItchHost
                     && !ageGateRequired
-                    && pathParts.length === 1
+                    // itch.io supports both creator subdomains and canonical
+                    // multi-segment game URLs; path depth alone is not page identity.
+                    && pathParts.length > 0
                     && hasGameTitle
                     && (hasGameRoot || hasGameContent);
 
@@ -1050,7 +1052,7 @@ private enum GamePageScript {
                 // A comma-separated query returns each matching element once,
                 // avoiding the overlapping .game_page_content descendant scan.
                 const descriptionElements = Array.from(document.querySelectorAll(
-                    ".formatted_description, .game_description, #game_description"
+                    ".formatted_description, .game_description, #game_description, .game_page_content, .game_page_text, #description, .description, [itemprop='description']"
                 ));
                 for (const element of descriptionElements) {
                     const value = clean(element);
@@ -1066,7 +1068,8 @@ private enum GamePageScript {
                     );
                     const metaDescription = (descriptionMeta?.getAttribute("content") || "").trim();
                     if (metaDescription.length > 0) {
-                        descriptionResolved = true;
+                        // Open Graph/meta text is only a short preview, not proof
+                        // that the complete game introduction was extracted.
                         description = metaDescription;
                     }
                 }
