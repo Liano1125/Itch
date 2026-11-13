@@ -122,4 +122,89 @@ final class V3StartupRecoveryHardeningTests: XCTestCase {
         )
     }
 
+
+    @MainActor
+    func testCompletedRecoveryMarkersAllowStartupAfterV2BackupRemoval() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-complete-markers-no-v2-\\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
+        defer { try? fileManager.removeItem(at: root) }
+
+        try fileManager.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration(
+                "itchPocket-v2-complete-markers-fixture-\\(UUID().uuidString)",
+                schema: schema,
+                url: v2StoreURL
+            )
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                let context = container!.mainContext
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-a", title: "Game A"))
+                try context.save()
+            }
+            container = nil
+        }
+
+        _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+        XCTAssertTrue(fileManager.fileExists(atPath: v3Directory.appendingPathComponent(".v2-detail-recovery-v1").path))
+        XCTAssertTrue(fileManager.fileExists(atPath: v3Directory.appendingPathComponent(".v2-developer-recovery-v1").path))
+
+        // Once both independent recovery generations are durably marked,
+        // the V2 backup is no longer required for ordinary V3 startup.
+        try fileManager.removeItem(at: v2Directory)
+        let restartedURL = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+        XCTAssertEqual(restartedURL, v3StoreURL)
+        try SQLiteStoreIntegrityChecker.quickCheck(at: restartedURL)
+    }
+
+    @MainActor
+    func testMissingDeveloperRecoveryMarkerRequiresV2Backup() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("itchPocket-v3-missing-developer-marker-\\(UUID().uuidString)", isDirectory: true)
+        let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
+        let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
+        let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
+        let v3StoreURL = v3Directory.appendingPathComponent(V3StoreBootstrap.storeFileName)
+        let developerMarkerURL = v3Directory.appendingPathComponent(".v2-developer-recovery-v1")
+        defer { try? fileManager.removeItem(at: root) }
+
+        try fileManager.createDirectory(at: v2Directory, withIntermediateDirectories: true)
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
+            let configuration = ModelConfiguration(
+                "itchPocket-v2-missing-developer-marker-\\(UUID().uuidString)",
+                schema: schema,
+                url: v2StoreURL
+            )
+            var container: ModelContainer? = try ModelContainer(for: schema, configurations: [configuration])
+            do {
+                let context = container!.mainContext
+                context.insert(ItchPocketSchemaV2Snapshot.DBGame(id: "game-a", title: "Game A"))
+                try context.save()
+            }
+            container = nil
+        }
+
+        _ = try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL)
+        XCTAssertTrue(fileManager.fileExists(atPath: v3StoreURL.path))
+        XCTAssertTrue(fileManager.fileExists(atPath: developerMarkerURL.path))
+        try fileManager.removeItem(at: developerMarkerURL)
+        try fileManager.removeItem(at: v2Directory)
+
+        XCTAssertThrowsError(try V3StoreBootstrap.prepareStore(v2StoreURL: v2StoreURL))
+        XCTAssertTrue(fileManager.fileExists(atPath: v3StoreURL.path))
+        try SQLiteStoreIntegrityChecker.quickCheck(at: v3StoreURL)
+        XCTAssertFalse(
+            try fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                .contains { $0.lastPathComponent.hasPrefix("itchPocket-v3.quarantine-") }
+        )
+    }
+
 }
