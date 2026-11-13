@@ -219,12 +219,20 @@ final class DiscoveryFeedClient {
     }
 
     private static func innerHTML(className: String, in html: String) -> String? {
-        let escaped = NSRegularExpression.escapedPattern(for: className)
-        let pattern = #"(?is)<([a-z0-9]+)\b[^>]*class=["'][^"']*(?:^|\s)"# + escaped + #"(?:\s|["'])[^>]*>(.*?)</\1>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: html, range: NSRange(location: 0, length: (html as NSString).length)),
-              match.range(at: 2).location != NSNotFound else { return nil }
-        return (html as NSString).substring(with: match.range(at: 2))
+        let pattern = #"(?is)<([a-z0-9]+)\b([^>]*)>(.*?)</\1>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsHTML = html as NSString
+        let matches = regex.matches(in: html, range: NSRange(location: 0, length: nsHTML.length))
+        for match in matches {
+            let attributes = nsHTML.substring(with: match.range(at: 2))
+            let classes = attribute("class", in: attributes) ?? ""
+            guard classes.split(whereSeparator: { $0.isWhitespace }).contains(Substring(className)),
+                  match.range(at: 3).location != NSNotFound else {
+                continue
+            }
+            return nsHTML.substring(with: match.range(at: 3))
+        }
+        return nil
     }
 
     private static func elementsWithClass(_ className: String, in html: String) -> [String] {
