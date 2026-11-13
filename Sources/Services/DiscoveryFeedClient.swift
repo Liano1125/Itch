@@ -201,7 +201,7 @@ final class DiscoveryFeedClient {
     }
 
     private static func attribute(_ name: String, in source: String) -> String? {
-        let pattern = "(?is)(?:^|\\\s)" + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#
+        let pattern = "(?is)(?:^|\\s)" + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: source, range: NSRange(location: 0, length: (source as NSString).length)) else {
             return nil
