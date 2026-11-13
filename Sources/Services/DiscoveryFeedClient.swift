@@ -73,6 +73,7 @@ final class DiscoveryFeedClient {
         }
     }
 
+    @MainActor
     private func websiteCookies() async -> [HTTPCookie] {
         await withCheckedContinuation { continuation in
             WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
@@ -83,7 +84,7 @@ final class DiscoveryFeedClient {
         }
     }
 
-    private static func extractGameCards(from html: String, baseURL: URL) -> [[String: Any]] {
+    static func extractGameCards(from html: String, baseURL: URL) -> [[String: Any]] {
         let divPattern = #"(?is)<(/?)div\b([^>]*)>"#
         guard let divRegex = try? NSRegularExpression(pattern: divPattern) else { return [] }
         let nsHTML = html as NSString
@@ -255,7 +256,7 @@ final class DiscoveryFeedClient {
             let token = nsResult.substring(with: match.range(at: 1))
             let value: UInt32?
             if token.lowercased().hasPrefix("x") {
-                value = UInt32(token.dropFirst(), radix: 16)
+                value = UInt32(String(token.dropFirst()), radix: 16)
             } else {
                 value = UInt32(token)
             }
