@@ -74,19 +74,17 @@ final class PersistencePoliciesTests: XCTestCase {
         )
     }
 
-    func testPageIsNotCompleteUntilEveryDetailSectionWasResolved() {
-        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: true,
-            galleryResolved: false,
-            tagsResolved: true
-        ))
-        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: false,
-            galleryResolved: true,
-            tagsResolved: true
-        ))
+    func testOptionalGalleryAndTagsDoNotPreventAResolvedPageFromBeingComplete() {
         XCTAssertTrue(GameDetailSnapshotPolicy.shouldMarkComplete(
             descriptionResolved: true,
+            galleryResolved: false,
+            tagsResolved: false
+        ))
+    }
+
+    func testPageRemainsPartialWhenRequiredDescriptionWasNotResolved() {
+        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
+            descriptionResolved: false,
             galleryResolved: true,
             tagsResolved: true
         ))
@@ -258,6 +256,40 @@ final class GameDetailRepositoryTests: XCTestCase {
         XCTAssertEqual(stored?.galleryURLs, [])
         XCTAssertEqual(stored?.fetchStatus, .complete)
         XCTAssertEqual(stored?.fetchedAt, fetchedAt)
+    }
+
+    @MainActor
+    func testResolvedDescriptionMarksPageCompleteWhenOptionalSectionsAreAbsent() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "test-game", title: "Test Game"))
+        database.context.insert(DBGameDetail(
+            gameID: "test-game",
+            descriptionText: "Old description",
+            galleryURLs: ["https://example.com/old.jpg"]
+        ))
+        try database.save()
+
+        let repository = GameDetailRepository(database: database)
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let status = try repository.applyPageSnapshot(
+            GameDetailPageSnapshot(
+                description: "Fresh description",
+                descriptionResolved: true,
+                galleryURLs: [],
+                galleryResolved: false,
+                discoveryTags: [],
+                tagsResolved: false
+            ),
+            for: "test-game",
+            fetchedAt: fetchedAt
+        )
+
+        let stored = try XCTUnwrap(repository.detail(for: "test-game"))
+        XCTAssertEqual(status, .complete)
+        XCTAssertEqual(stored.fetchStatus, .complete)
+        XCTAssertEqual(stored.description, "Fresh description")
+        XCTAssertEqual(stored.galleryURLs, ["https://example.com/old.jpg"])
+        XCTAssertEqual(stored.fetchedAt, fetchedAt)
     }
 
     @MainActor
