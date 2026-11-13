@@ -116,6 +116,12 @@ final class PersistencePoliciesTests: XCTestCase {
         XCTAssertTrue(adult3DScript.contains("parserProfile = \"adult3D\""))
         XCTAssertFalse(adult3DScript.contains("main article"))
         XCTAssertTrue(renpyScript.contains("Ren'Py"))
+        XCTAssertNotEqual(
+            GameDetailParserProfile.adultRenPy.descriptionSelectors,
+            GameDetailParserProfile.adult3D.descriptionSelectors
+        )
+        XCTAssertTrue(GameDetailParserProfile.adultRenPy.descriptionSelectors.contains(".formatted_description .paragraph"))
+        XCTAssertTrue(GameDetailParserProfile.adult3D.descriptionSelectors.contains(".game_page_content .formatted_description"))
     }
 
     func testAdultGameDescriptionKeepsInterleavedStoryParagraphsAndImageCaptions() {
