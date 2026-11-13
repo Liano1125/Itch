@@ -26,6 +26,20 @@ enum DiscoveryFeedSnapshotCache {
         return snapshot.gamesByFeed
     }
 
+    static func needsRefresh(now: Date = .now, refreshAfter: TimeInterval = 12 * 60 * 60) -> Bool {
+        guard let fileURL = fileURL(),
+              let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]),
+              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data),
+              snapshot.version == 1 else {
+            return true
+        }
+        return DiscoverySnapshotPolicy.needsRefresh(
+            savedAt: snapshot.savedAt,
+            now: now,
+            refreshAfter: refreshAfter
+        )
+    }
+
     static func save(_ gamesByFeed: [String: [PublicCollectionGame]], now: Date = .now) {
         guard let fileURL = fileURL() else { return }
         let compact = gamesByFeed.mapValues { Array($0.prefix(24)) }
