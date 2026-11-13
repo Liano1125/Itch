@@ -85,12 +85,12 @@ struct DiscoverView: View {
                     persistCuratedCache()
                 }
             } catch {
-                errors.append("\\(feed.title)：\\(error.localizedDescription)")
+                errors.append("\(feed.title)：\(error.localizedDescription)")
             }
         }
 
         if DiscoveryFeed.curated.allSatisfy({ (curatedGames[$0.id] ?? []).isEmpty }), !errors.isEmpty {
-            curatedError = errors.joined(separator: "\\n")
+            curatedError = errors.joined(separator: "\n")
         }
         isLoadingCurated = false
     }
@@ -219,7 +219,7 @@ struct DiscoverView: View {
             }
             ForEach(DiscoveryFeed.curated) { feed in curatedFeedRow(feed) }
             if let curatedError, curatedGames.isEmpty, !isLoadingCurated {
-                Text("暂时无法加载作品：\\(curatedError)")
+                Text("暂时无法加载作品：\(curatedError)")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
