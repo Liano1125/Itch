@@ -132,16 +132,34 @@ final class DiscoveryFeedClient {
             guard seen.insert(id).inserted else { return nil }
 
             let imageTag = tags(named: "img", in: card).first
-            let imageValue = imageTag.flatMap { attrs -> String? in
-                attribute("data-lazy_src", in: attrs)
-                    ?? attribute("data-lazy-src", in: attrs)
-                    ?? attribute("data-src", in: attrs)
-                    ?? attribute("src", in: attrs)
-                    ?? attribute("srcset", in: attrs)?.split(separator: ",").first.map {
-                        String($0).trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init) ?? ""
+            var imageValue: String?
+            if let imageTag {
+                imageValue = attribute("data-lazy_src", in: imageTag)
+                if imageValue == nil {
+                    imageValue = attribute("data-lazy-src", in: imageTag)
+                }
+                if imageValue == nil {
+                    imageValue = attribute("data-src", in: imageTag)
+                }
+                if imageValue == nil {
+                    imageValue = attribute("src", in: imageTag)
+                }
+                if imageValue == nil, let srcset = attribute("srcset", in: imageTag) {
+                    let firstCandidate = srcset.split(separator: ",", maxSplits: 1).first
+                    if let firstCandidate {
+                        let firstURL = firstCandidate
+                            .trimmingCharacters(in: .whitespaces)
+                            .split(whereSeparator: { $0.isWhitespace })
+                            .first
+                        imageValue = firstURL.map(String.init)
                     }
+                }
             }
-            let cover = imageValue.flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL.absoluteString }
+
+            var cover: String?
+            if let imageValue, !imageValue.isEmpty {
+                cover = URL(string: imageValue, relativeTo: baseURL)?.absoluteURL.absoluteString
+            }
 
             let developerContainer = innerHTML(className: "game_author", in: card)
                 ?? innerHTML(className: "author", in: card)
