@@ -74,7 +74,7 @@ final class PersistencePoliciesTests: XCTestCase {
     }
 
     func testGameDescriptionPolicyPreservesUnrecognizedGameContent() {
-        let source = "Welcome!\\n\\nCombat and exploration are important mechanics."
+        let source = "Welcome!\n\nCombat and exploration are important mechanics."
         XCTAssertEqual(GameDescriptionContentPolicy.cleaned(source), source)
     }
 
