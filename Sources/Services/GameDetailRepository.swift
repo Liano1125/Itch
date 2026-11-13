@@ -267,11 +267,14 @@ enum GameDetailSnapshotPolicy {
         isResolved ? incoming : existing
     }
 
+    /// A successfully parsed game description is the required detail payload.
+    /// Gallery and discovery tags are optional on itch.io and must not keep an
+    /// otherwise valid page in the partial/retry state when those sections are absent.
     static func shouldMarkComplete(
         descriptionResolved: Bool,
         galleryResolved: Bool,
         tagsResolved: Bool
     ) -> Bool {
-        descriptionResolved && galleryResolved && tagsResolved
+        descriptionResolved
     }
 }
