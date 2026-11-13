@@ -100,6 +100,46 @@ final class PersistencePoliciesTests: XCTestCase {
         XCTAssertFalse(result.contains("Comments section"))
     }
 
+    func testAdultParserProfilesGenerateScopedSelectorsWithoutBroadArticleFallback() {
+        let renpyScript = GamePageScript.source(for: .adultRenPy)
+        let adult3DScript = GamePageScript.source(for: .adult3D)
+        let standardScript = GamePageScript.source(for: .standard)
+
+        for script in [renpyScript, adult3DScript, standardScript] {
+            XCTAssertFalse(script.contains("__PARSER_PROFILE__"))
+            XCTAssertFalse(script.contains("__ADULT3D_DESCRIPTION_SELECTORS__"))
+            XCTAssertTrue(script.contains("galleryImages"))
+            XCTAssertTrue(script.contains("data-game-description"))
+        }
+
+        XCTAssertTrue(renpyScript.contains("parserProfile = \\"adultRenPy\\""))
+        XCTAssertTrue(adult3DScript.contains("parserProfile = \\"adult3D\\""))
+        XCTAssertTrue(renpyScript.contains("parserProfile === \\"adultRenPy\\" ?") == false)
+        XCTAssertFalse(adult3DScript.contains("main article"))
+        XCTAssertTrue(renpyScript.contains("Ren'Py"))
+    }
+
+    func testAdultGameDescriptionKeepsInterleavedStoryParagraphsAndImageCaptions() {
+        let source = """
+        Synopsis
+        Sarah moves into a new house and begins exploring its rooms.
+
+        Image 01 — The entrance hall
+
+        Gameplay
+        Explore the house, meet its residents, and make choices that affect the story.
+
+        Features
+        Multiple routes and interactive environments.
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("Sarah moves into a new house"))
+        XCTAssertTrue(result.contains("Image 01 — The entrance hall"))
+        XCTAssertTrue(result.contains("Explore the house"))
+        XCTAssertTrue(result.contains("Multiple routes"))
+    }
+
     func testGameDescriptionPolicyPreservesUnrecognizedGameContent() {
         let source = "Welcome!\n\nCombat and exploration are important mechanics."
         XCTAssertEqual(GameDescriptionContentPolicy.cleaned(source), source)
