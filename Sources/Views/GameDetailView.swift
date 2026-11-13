@@ -771,14 +771,10 @@ struct GameDetailView: View {
         )
 
         do {
-            try gameRepository.upsertMetadata(
-                id: game.id,
-                title: game.title,
-                gameURL: game.url?.absoluteString,
-                coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
-                engine: result.engine,
-                developerID: developerID
-            )
+            // Create/verify the developer row before assigning its foreign key to the game.
+            // If the page gives us neither a usable name nor an existing developer row,
+            // keep the relationship nil instead of persisting a dangling reference.
+            let safeDeveloperID: String?
             if let developerID, let developerName {
                 try developerRepository.upsertIdentity(
                     id: developerID,
@@ -787,7 +783,21 @@ struct GameDetailView: View {
                     patreonURL: result.patreonURL?.absoluteString,
                     discordURL: result.discordURL?.absoluteString
                 )
+                safeDeveloperID = developerID
+            } else if let developerID, existingDeveloper != nil {
+                safeDeveloperID = developerID
+            } else {
+                safeDeveloperID = nil
             }
+
+            try gameRepository.upsertMetadata(
+                id: game.id,
+                title: game.title,
+                gameURL: game.url?.absoluteString,
+                coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
+                engine: result.engine,
+                developerID: safeDeveloperID
+            )
 
             try GameDetailRepository.shared.applyPageSnapshot(
                 GameDetailPageSnapshot(
@@ -1377,30 +1387,35 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
         let developerID = authorURL.map { DeveloperRepository.canonicalID(for: $0.absoluteString) }
         do {
+            let existingDeveloper = try developerID.flatMap { try developerRepository.developer(id: $0) }
+            let developerName = GameDetailRepository.resolvedDeveloperName(
+                incoming: payload.developer,
+                existing: existingDeveloper?.name,
+                library: record.developer
+            )
+            let safeDeveloperID: String?
+            if let developerID, let developerName {
+                try developerRepository.upsertIdentity(
+                    id: developerID,
+                    name: developerName,
+                    profileURL: authorURL?.absoluteString,
+                    patreonURL: payload.patreonURL?.absoluteString,
+                    discordURL: payload.discordURL?.absoluteString
+                )
+                safeDeveloperID = developerID
+            } else if let developerID, existingDeveloper != nil {
+                safeDeveloperID = developerID
+            } else {
+                safeDeveloperID = nil
+            }
             try gameRepository.upsertMetadata(
                 id: record.id,
                 title: record.title,
                 gameURL: record.gameURL,
                 coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
                 engine: payload.engine,
-                developerID: developerID
+                developerID: safeDeveloperID
             )
-            if let developerID {
-                let existingName = try developerRepository.developer(id: developerID)?.name
-                if let developerName = GameDetailRepository.resolvedDeveloperName(
-                    incoming: payload.developer,
-                    existing: existingName,
-                    library: record.developer
-                ) {
-                    try developerRepository.upsertIdentity(
-                        id: developerID,
-                        name: developerName,
-                        profileURL: authorURL?.absoluteString,
-                        patreonURL: payload.patreonURL?.absoluteString,
-                        discordURL: payload.discordURL?.absoluteString
-                    )
-                }
-            }
             try GameDetailRepository.shared.applyPageSnapshot(
                 GameDetailPageSnapshot(
                     description: payload.description,
