@@ -264,8 +264,13 @@ final class DiscoveryFeedClient {
             .replacingOccurrences(of: #"(?is)<style[^>]*>.*?</style>"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"(?is)<[^>]+>"#, with: " ", options: .regularExpression)
         let decoded = decodeEntities(withoutScripts)
-        let compact = decoded.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let whitespaceNormalized = decoded.replacingOccurrences(of: #"\\s+"#, with: " ", options: .regularExpression)
+        let punctuationNormalized = whitespaceNormalized.replacingOccurrences(
+            of: #"\\s+([.,!?;:，。！？；：、])"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        let compact = punctuationNormalized.trimmingCharacters(in: .whitespacesAndNewlines)
         return compact.isEmpty ? nil : compact
     }
 
