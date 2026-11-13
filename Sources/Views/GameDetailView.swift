@@ -839,20 +839,19 @@ struct GameDetailView: View {
             // Create/verify the developer row before assigning its foreign key to the game.
             // If the page gives us neither a usable name nor an existing developer row,
             // keep the relationship nil instead of persisting a dangling reference.
-            let safeDeveloperID: String?
-            if let developerID, let developerName {
+            let safeDeveloperID = GameDeveloperReferencePolicy.resolvedID(
+                candidateID: developerID,
+                hasUsableName: developerName != nil,
+                existingDeveloperExists: existingDeveloper != nil
+            )
+            if let safeDeveloperID, let developerName {
                 try developerRepository.upsertIdentity(
-                    id: developerID,
+                    id: safeDeveloperID,
                     name: developerName,
                     profileURL: authorURL?.absoluteString,
                     patreonURL: result.patreonURL?.absoluteString,
                     discordURL: result.discordURL?.absoluteString
                 )
-                safeDeveloperID = developerID
-            } else if let developerID, existingDeveloper != nil {
-                safeDeveloperID = developerID
-            } else {
-                safeDeveloperID = nil
             }
 
             try gameRepository.upsertMetadata(
@@ -1511,20 +1510,19 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
                 existing: existingDeveloper?.name,
                 library: record.developer
             )
-            let safeDeveloperID: String?
-            if let developerID, let developerName {
+            let safeDeveloperID = GameDeveloperReferencePolicy.resolvedID(
+                candidateID: developerID,
+                hasUsableName: developerName != nil,
+                existingDeveloperExists: existingDeveloper != nil
+            )
+            if let safeDeveloperID, let developerName {
                 try developerRepository.upsertIdentity(
-                    id: developerID,
+                    id: safeDeveloperID,
                     name: developerName,
                     profileURL: authorURL?.absoluteString,
                     patreonURL: payload.patreonURL?.absoluteString,
                     discordURL: payload.discordURL?.absoluteString
                 )
-                safeDeveloperID = developerID
-            } else if let developerID, existingDeveloper != nil {
-                safeDeveloperID = developerID
-            } else {
-                safeDeveloperID = nil
             }
             try gameRepository.upsertMetadata(
                 id: record.id,
