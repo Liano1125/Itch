@@ -98,29 +98,34 @@ struct DiscoverView: View {
             .background(Color(uiColor: .systemBackground))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .topLeading) {
-                VStack(spacing: 0) {
-                    if shouldLoadCurated {
-                        CuratedDiscoveryFeedReader(
-                            feeds: DiscoveryFeed.curated,
-                            reloadToken: curatedReloadToken,
-                            onLoad: { feedID, games in
-                                // Keep the raw response; filtering belongs to the UI.
-                                if !games.isEmpty || curatedGames[feedID] == nil {
-                                    curatedGames[feedID] = games
-                                    persistCuratedCache()
+            .overlay {
+                GeometryReader { proxy in
+                    VStack(spacing: 0) {
+                        if shouldLoadCurated {
+                            CuratedDiscoveryFeedReader(
+                                feeds: DiscoveryFeed.curated,
+                                reloadToken: curatedReloadToken,
+                                onLoad: { feedID, games in
+                                    // Keep the raw response; filtering belongs to the UI.
+                                    if !games.isEmpty || curatedGames[feedID] == nil {
+                                        curatedGames[feedID] = games
+                                        persistCuratedCache()
+                                    }
+                                    if !games.isEmpty { curatedError = nil }
+                                },
+                                onError: { curatedError = $0 },
+                                onStart: { isLoadingCurated = true; curatedError = nil },
+                                onFinish: {
+                                    isLoadingCurated = false
+                                    shouldLoadCurated = false
                                 }
-                                if !games.isEmpty { curatedError = nil }
-                            },
-                            onError: { curatedError = $0 },
-                            onStart: { isLoadingCurated = true; curatedError = nil },
-                            onFinish: {
-                                isLoadingCurated = false
-                                shouldLoadCurated = false
-                            }
-                        )
-                        .frame(width: 1, height: 1)
+                            )
+                            // Preserve a real iPhone viewport so itch.io responsive
+                            // layouts and lazy-loaded cover images behave normally.
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                        }
                     }
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 }
                 .opacity(0)
                 .allowsHitTesting(false)
