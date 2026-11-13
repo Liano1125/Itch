@@ -37,7 +37,27 @@ final class CacheRepositoryTests: XCTestCase {
         XCTAssertEqual(updated.translation, "Salut")
         XCTAssertEqual(updated.sourceText, "Hello there")
         XCTAssertEqual(try repository.counts().translations, 1)
+        @MainActor
+    func testCacheTranslationStoreFailureRollsBackInsertedRow() throws {
+        let database = try AppDatabase(inMemory: true)
+        let repository = CacheRepository(database: database)
+        database.simulatedSaveError = { NSError(domain: "test", code: 1) }
+
+        XCTAssertThrowsError(try repository.storeTranslation(
+            "translated",
+            source: "source",
+            sourceHash: "hash",
+            scope: "description",
+            target: "zh-CN",
+            for: "cache-key"
+        ))
+        database.simulatedSaveError = nil
+
+        XCTAssertFalse(database.context.hasChanges)
+        XCTAssertTrue(try database.context.fetch(FetchDescriptor<DBTranslation>()).isEmpty)
     }
+
+}
 
     @MainActor
     func testTranslationCacheEvictsOldestEntriesWhenCapacityIsExceeded() throws {
