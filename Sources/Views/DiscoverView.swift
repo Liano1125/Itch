@@ -264,7 +264,10 @@ struct DiscoverView: View {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(games.prefix(12)) { game in
                             NavigationLink {
-                                GameDetailView(game: game)
+                                GameDetailView(
+                                    game: game,
+                                    parserProfile: feed.id == "adjacent-renpy" ? .adultRenPy : .adult3D
+                                )
                             } label: {
                                 VStack(alignment: .leading, spacing: 7) {
                                     CachedRemoteImage(url: game.coverURL, contentMode: .fill) {
