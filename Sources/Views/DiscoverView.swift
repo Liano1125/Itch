@@ -60,12 +60,24 @@ struct DiscoverView: View {
     private static let curatedCacheKey = "itchPocket.curatedFeeds.v1"
 
     private static func loadCuratedCache() -> [String: [PublicCollectionGame]] {
-        DiscoveryCacheStore.load([String: [PublicCollectionGame]].self, key: curatedCacheKey) ?? [:]
+        if let snapshot = DiscoveryFeedSnapshotCache.load() {
+            return snapshot
+        }
+
+        // One-time compatibility bridge for snapshots written by the previous
+        // SwiftData-backed cache. New discovery snapshots stay out of the
+        // canonical entity database.
+        let legacy = DiscoveryCacheStore.load(
+            [String: [PublicCollectionGame]].self,
+            key: curatedCacheKey
+        ) ?? [:]
+        if !legacy.isEmpty { DiscoveryFeedSnapshotCache.save(legacy) }
+        return legacy
     }
 
     private func persistCuratedCache() {
         let compact = curatedGames.mapValues { Array($0.prefix(24)) }
-        DiscoveryCacheStore.save(compact, key: Self.curatedCacheKey, timeToLive: 12 * 60 * 60)
+        DiscoveryFeedSnapshotCache.save(compact)
     }
 
     private var visibleRecommendedGames: [PublicCollectionGame] {
