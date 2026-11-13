@@ -62,13 +62,16 @@ enum GameDetailParserProfile: String {
             return [
                 ".formatted_description", ".game_description", "#game_description",
                 ".game_page_content", ".game_page_text", "#description",
-                "[itemprop='description']", "[data-game-description]"
+                "[itemprop='description']", "[data-game-description]",
+                ".formatted_description .paragraph", ".game_description .paragraph"
             ]
         case .adult3D:
             return [
-                ".formatted_description", ".game_description", "#game_description",
-                ".game_page_content", ".game_page_text", "#description",
-                "[itemprop='description']", "[data-game-description]"
+                ".game_page_content", ".game_page_text", ".formatted_description",
+                ".game_description", "#game_description", "#description",
+                "[itemprop='description']", "[data-game-description]",
+                ".game_page_content .formatted_description",
+                ".game_page_content .game_description"
             ]
         }
     }
