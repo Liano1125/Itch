@@ -127,7 +127,7 @@ final class V3StartupRecoveryHardeningTests: XCTestCase {
     func testCompletedRecoveryMarkersAllowStartupAfterV2BackupRemoval() throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory
-            .appendingPathComponent("itchPocket-v3-complete-markers-no-v2-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v3-complete-markers-no-v2-\(UUID().uuidString)", isDirectory: true)
         let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
         let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
         let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -138,7 +138,7 @@ final class V3StartupRecoveryHardeningTests: XCTestCase {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
             let configuration = ModelConfiguration(
-                "itchPocket-v2-complete-markers-fixture-\\(UUID().uuidString)",
+                "itchPocket-v2-complete-markers-fixture-\(UUID().uuidString)",
                 schema: schema,
                 url: v2StoreURL
             )
@@ -167,7 +167,7 @@ final class V3StartupRecoveryHardeningTests: XCTestCase {
     func testMissingDeveloperRecoveryMarkerRequiresV2Backup() throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory
-            .appendingPathComponent("itchPocket-v3-missing-developer-marker-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v3-missing-developer-marker-\(UUID().uuidString)", isDirectory: true)
         let v2Directory = root.appendingPathComponent("itchPocket-v2", isDirectory: true)
         let v2StoreURL = v2Directory.appendingPathComponent("itchPocket-v2.store")
         let v3Directory = root.appendingPathComponent(V3StoreBootstrap.directoryName, isDirectory: true)
@@ -179,7 +179,7 @@ final class V3StartupRecoveryHardeningTests: XCTestCase {
         try autoreleasepool {
             let schema = Schema(versionedSchema: ItchPocketSchemaV2Snapshot.self)
             let configuration = ModelConfiguration(
-                "itchPocket-v2-missing-developer-marker-\\(UUID().uuidString)",
+                "itchPocket-v2-missing-developer-marker-\(UUID().uuidString)",
                 schema: schema,
                 url: v2StoreURL
             )
