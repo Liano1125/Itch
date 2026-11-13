@@ -93,8 +93,11 @@ struct GameDetailView: View {
     }
 
     private var displayDescription: String? {
-        if hasLoadedCompleteDetailSnapshot { return detail?.description }
-        return detail?.description ?? cachedOriginalDescription ?? game.description
+        GameDetailSnapshotPolicy.displayedDescription(
+            current: detail?.description,
+            cached: cachedOriginalDescription,
+            fallback: game.description
+        )
     }
 
     var body: some View {
@@ -736,6 +739,7 @@ struct GameDetailView: View {
     // MARK: Data Handling
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
+        let persistenceStartedAt = Date()
         let existingRecord = library.record(for: game.id)
         let existingGame = try? gameRepository.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
@@ -783,6 +787,10 @@ struct GameDetailView: View {
             // Render the values that actually survived persistence. An unresolved
             // section therefore continues to display its previously cached value.
             let persisted = try GameDetailRepository.shared.detail(for: game.id)
+            print(String(
+                format: "itchPocket detail.performance persistence=%.3fs",
+                Date().timeIntervalSince(persistenceStartedAt)
+            ))
             let persistedGallery = (persisted?.galleryURLs ?? []).compactMap { URL(string: $0) }
             let resolved = GameDetailPayload(
                 description: persisted?.description,
@@ -968,7 +976,7 @@ struct GameDetailView: View {
 
         isLoading = true
         errorMessage = nil
-        detail = nil
+        // Keep the last successful snapshot visible while the new page loads.
         reloadToken = UUID()
     }
 }
@@ -1015,21 +1023,16 @@ private enum GamePageScript {
 
                 let description = null;
                 let descriptionResolved = false;
-                const descriptionSelectors = [
-                    ".formatted_description",
-                    ".game_page_content .formatted_description",
-                    ".game_description",
-                    "#game_description"
-                ];
-
-                for (const selector of descriptionSelectors) {
-                    const elements = Array.from(document.querySelectorAll(selector));
-                    for (const element of elements) {
-                        const value = clean(element);
-                        if (value.length > 0 && (!description || value.length > description.length)) {
-                            description = value;
-                            descriptionResolved = true;
-                        }
+                // A comma-separated query returns each matching element once,
+                // avoiding the overlapping .game_page_content descendant scan.
+                const descriptionElements = Array.from(document.querySelectorAll(
+                    ".formatted_description, .game_description, #game_description"
+                ));
+                for (const element of descriptionElements) {
+                    const value = clean(element);
+                    if (value.length > 0 && (!description || value.length > description.length)) {
+                        description = value;
+                        descriptionResolved = true;
                     }
                 }
 
@@ -1441,6 +1444,7 @@ private struct DetailPageReader: UIViewRepresentable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 40
         request.cachePolicy = .useProtocolCachePolicy
+        context.coordinator.markNavigationStarted()
         webView.load(request)
 
         return webView
@@ -1466,7 +1470,8 @@ private struct DetailPageReader: UIViewRepresentable {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 40
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.cachePolicy = .useProtocolCachePolicy
+        context.coordinator.markNavigationStarted()
         webView.load(request)
     }
 
@@ -1474,9 +1479,14 @@ private struct DetailPageReader: UIViewRepresentable {
         var parent: DetailPageReader
         var currentToken: UUID?
         var finished = false
+        private var navigationStartedAt: Date?
 
         init(parent: DetailPageReader) {
             self.parent = parent
+        }
+
+        func markNavigationStarted() {
+            navigationStartedAt = Date()
         }
 
         func webView(
@@ -1484,9 +1494,12 @@ private struct DetailPageReader: UIViewRepresentable {
             didFinish navigation: WKNavigation!
         ) {
             finished = false
+            let extractionStartedAt = Date()
+            let navigationDuration = navigationStartedAt.map { extractionStartedAt.timeIntervalSince($0) } ?? 0
 
             webView.evaluateJavaScript(GamePageScript.source) { result, error in
                 guard !self.finished else { return }
+                let scriptDuration = Date().timeIntervalSince(extractionStartedAt)
 
                 if let error {
                     self.fail(
@@ -1495,6 +1508,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     return
                 }
 
+                let decodingStartedAt = Date()
                 guard let json = result as? String,
                       let data = json.data(using: .utf8),
                       let payload = try? JSONDecoder().decode(
@@ -1504,6 +1518,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     self.fail("游戏主页返回的数据无法解析。请重新读取。")
                     return
                 }
+                let decodingDuration = Date().timeIntervalSince(decodingStartedAt)
 
                 if let scriptError = payload.scriptError {
                     self.fail("游戏主页 JavaScript 错误：\(scriptError)")
@@ -1515,13 +1530,24 @@ private struct DetailPageReader: UIViewRepresentable {
                     return
                 }
 
+                let filteringStartedAt = Date()
+                let cleanedDescription = GameDescriptionContentPolicy.cleaned(payload.description)
+                let filteringDuration = Date().timeIntervalSince(filteringStartedAt)
+                print(String(
+                    format: "itchPocket detail.performance navigation=%.3fs javascript=%.3fs decode=%.3fs filtering=%.3fs",
+                    navigationDuration,
+                    scriptDuration,
+                    decodingDuration,
+                    filteringDuration
+                ))
+
                 self.finished = true
 
                 DispatchQueue.main.async {
                     self.parent.onLoad(
                         GameDetailPayload(
-                            description: GameDescriptionContentPolicy.cleaned(payload.description),
-                            descriptionResolved: payload.descriptionResolved == true && GameDescriptionContentPolicy.cleaned(payload.description) != nil,
+                            description: cleanedDescription,
+                            descriptionResolved: payload.descriptionResolved == true && cleanedDescription != nil,
                             developer: payload.developer,
                             coverURL: payload.coverURL,
                             galleryURLs: payload.galleryURLs ?? [],
