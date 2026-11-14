@@ -375,6 +375,7 @@ final class PersonalLibraryStore: ObservableObject {
             return true
         } catch {
             print("itchPocket library add transaction failed: \(error)")
+            lastAddError = error.localizedDescription
             return false
         }
     }
