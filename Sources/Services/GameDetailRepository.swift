@@ -297,7 +297,7 @@ enum GameDescriptionContentPolicy {
             "controls", "faq", "known issues", "not planned content",
             "planned content", "gallery", "more posts", "recent posts",
             "what's next", "whats next", "next update", "languages",
-            "community", "links", "follow me", "follow us",
+            "community", "links", "follow me", "follow us", "patreon", "discord", "join discord", "social links",
             "下载", "下载说明", "系统需求", "已知问题", "后续计划", "更多动态"
         ]
         let includedHeadings: Set<String> = [
@@ -326,7 +326,7 @@ enum GameDescriptionContentPolicy {
         }
 
         let promotionalLines = [
-            "join our discord", "join the discord", "join our community",
+            "join our discord", "join the discord", "join my discord", "join our server", "join our community",
             "support this project on patreon", "support the project on patreon",
             "support the game on patreon", "become a patron",
             "subscribe on patreon", "follow us on twitter"
@@ -356,7 +356,11 @@ enum GameDescriptionContentPolicy {
 
             if !skippingSection {
                 let lower = line.lowercased()
-                if promotionalLines.contains(where: { lower.contains($0) }) {
+                let isCreatorPromotion = (lower.contains("patreon")
+                    && ["support", "become a patron", "subscribe", "exclusive content", "early access"].contains(where: { lower.contains($0) }))
+                    || (lower.contains("discord")
+                    && ["join", "server", "community", "announcements"].contains(where: { lower.contains($0) }))
+                if isCreatorPromotion || promotionalLines.contains(where: { lower.contains($0) }) {
                     continue
                 }
                 let upper = line.uppercased()
