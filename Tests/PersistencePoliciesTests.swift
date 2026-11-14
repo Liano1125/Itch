@@ -158,6 +158,25 @@ final class PersistencePoliciesTests: XCTestCase {
         XCTAssertTrue(GameDetailParserProfile.adult3D.descriptionSelectors.contains(".game_page_content .formatted_description"))
     }
 
+    func testGallerySelectorsExcludeGeneralDescriptionAndSocialPromoImages() {
+        for profile in [GameDetailParserProfile.standard, .adultRenPy, .adult3D] {
+            XCTAssertTrue(profile.galleryImageSelectors.allSatisfy { selector in
+                selector.contains("screenshot") || selector.contains("game_screenshots")
+            })
+            XCTAssertFalse(profile.galleryImageSelectors.contains { selector in
+                profile.descriptionSelectors.contains { selector == "\($0) img" }
+            })
+            XCTAssertTrue(profile.galleryAnchorSelectors.allSatisfy { selector in
+                selector.contains("screenshot") || selector == "a[data-image_lightbox]"
+            })
+            XCTAssertFalse(profile.galleryAnchorSelectors.contains("a[href*='img.itch.zone']"))
+            XCTAssertFalse(profile.galleryAnchorSelectors.contains("a[href*='/original/']"))
+            XCTAssertFalse(profile.galleryAnchorSelectors.contains { selector in
+                profile.descriptionSelectors.contains { selector == "\($0) a" }
+            })
+        }
+    }
+
     func testAdultGameDescriptionKeepsInterleavedStoryParagraphsAndImageCaptions() {
         let source = """
         Synopsis
