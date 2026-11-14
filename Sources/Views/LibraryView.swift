@@ -714,6 +714,11 @@ private struct LibraryGameActions: View {
                 .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
         }
+        .alert("无法加入游戏", isPresented: $showingAddError) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(addErrorMessage ?? "请稍后重试。")
+        }
     }
 }
 
