@@ -196,7 +196,7 @@ struct GameDetailView: View {
         .task(id: game.id) {
             await loadCachedDescription()
         }
-        .task(id: "devlogs:\\(game.id)") {
+        .task(id: "devlogs:\(game.id)") {
             await syncMissingHistoricalDevlogs()
         }
         .task(id: detail == nil ? nil : (detail?.authorURL?.absoluteString ?? game.url?.absoluteString)) {
