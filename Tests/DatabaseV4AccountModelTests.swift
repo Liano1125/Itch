@@ -143,6 +143,72 @@ final class DatabaseV4AccountModelTests: XCTestCase {
         ))
     }
 
+
+    @MainActor
+    func testAccountScopedLibraryRepositoryKeepsSameGameEntriesIndependent() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBGame(id: "shared-game", title: "Shared"))
+        try context.save()
+
+        let accountA = try AccountScopedLibraryRepository(context: context, accountID: "itch:101")
+        let accountB = try AccountScopedLibraryRepository(context: context, accountID: "itch:202")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try accountA.upsertEntry(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "playing", isFavorite: true,
+            notes: "A only", addedAt: now, updatedAt: now
+        ))
+        try accountB.upsertEntry(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "completed", isFavorite: false,
+            notes: "B only", addedAt: now, updatedAt: now
+        ))
+
+        XCTAssertEqual(try accountA.loadEntries().map(\.notes), ["A only"])
+        XCTAssertEqual(try accountB.loadEntries().map(\.notes), ["B only"])
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()), 2)
+    }
+
+    @MainActor
+    func testAccountScopedLibraryRepositoryCannotReadOrDeleteAnotherAccountEntry() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBGame(id: "shared-game", title: "Shared"))
+        context.insert(ItchPocketSchemaV4.DBLibraryEntry(
+            accountID: "itch:202", gameID: "shared-game", status: "completed"
+        ))
+        try context.save()
+
+        let accountA = try AccountScopedLibraryRepository(context: context, accountID: "itch:101")
+        XCTAssertTrue(try accountA.loadEntries().isEmpty)
+        try accountA.removeEntry(gameID: "shared-game")
+
+        let remaining = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>())
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining.first?.accountID, "itch:202")
+    }
+
+    @MainActor
+    func testAccountScopedLibraryRepositoryRejectsMissingIdentityAndMissingSharedGame() throws {
+        let container = try makeContainer()
+        XCTAssertThrowsError(try AccountScopedLibraryRepository(
+            context: container.mainContext, accountID: ""
+        ))
+
+        let repository = try AccountScopedLibraryRepository(
+            context: container.mainContext, accountID: "itch:101"
+        )
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertThrowsError(try repository.upsertEntry(StoredAccountLibraryEntry(
+            gameID: "not-in-directory", status: "playing", isFavorite: false,
+            notes: "", addedAt: now, updatedAt: now
+        )))
+        XCTAssertEqual(try container.mainContext.fetchCount(
+            FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()
+        ), 0)
+    }
+
     @MainActor
     func testSharedGameDirectoryIsNotDuplicatedForTwoAccounts() throws {
         let container = try makeContainer()
