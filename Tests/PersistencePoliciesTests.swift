@@ -145,6 +145,8 @@ final class PersistencePoliciesTests: XCTestCase {
 
         Play as Lucian and step into the world of Lens Lust.
 
+        Join Dreamveil on Patreon for early access and exclusive content.
+
         Changelog [0.1]:
         Prologue (~15 minutes of gameplay)
         170+ renders
@@ -179,6 +181,8 @@ final class PersistencePoliciesTests: XCTestCase {
 
         Gameplay
         Explore a fantasy world, meet characters, and make choices that shape the journey.
+
+        Join my Discord server for announcements.
 
         Changelog v0.1.8:
         Redesigned interfaces
