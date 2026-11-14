@@ -337,7 +337,7 @@ final class DBAccount {
     }
 
     static func stableID(itchUserID: Int) -> String {
-        "itch:\\(itchUserID)"
+        "itch:\(itchUserID)"
     }
 
     func refreshProfile(from identity: ItchAccountIdentity) {
