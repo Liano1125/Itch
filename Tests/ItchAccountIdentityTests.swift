@@ -121,6 +121,33 @@ final class ItchAccountIdentityTests: XCTestCase {
     }
 
     @MainActor
+    func testPersonalLibraryStoreRejectsRequestAfterAccountSwitch() throws {
+        let database = try AppDatabase(inMemory: true)
+        let store = PersonalLibraryStore(database: database)
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 11, username: "account-a"))
+        store.bindAccountSession(session)
+        let context = store.captureRequestContext()
+
+        XCTAssertTrue(store.isCurrent(context))
+        session.activate(ItchAccountIdentity(itchUserID: 22, username: "account-b"))
+        XCTAssertFalse(store.isCurrent(context))
+    }
+
+    @MainActor
+    func testPersonalLibraryStoreRejectsSignedOutWorkAfterSignIn() throws {
+        let database = try AppDatabase(inMemory: true)
+        let store = PersonalLibraryStore(database: database)
+        let session = ItchAccountSession()
+        store.bindAccountSession(session)
+        let context = store.captureRequestContext()
+
+        XCTAssertTrue(store.isCurrent(context))
+        session.activate(ItchAccountIdentity(itchUserID: 11, username: "account-a"))
+        XCTAssertFalse(store.isCurrent(context))
+    }
+
+    @MainActor
     func testSigningOutInvalidatesInFlightRequests() {
         let session = ItchAccountSession()
         session.activate(ItchAccountIdentity(itchUserID: 1, username: "account-a"))
