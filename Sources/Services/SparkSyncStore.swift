@@ -45,11 +45,16 @@ final class SparkSyncStore: ObservableObject {
 
     func rescan(library: PersonalLibraryStore) async {
         guard !isScanning else { return }
+        let libraryRequestContext = library.captureRequestContext()
         do {
             try prepareFolders()
             let documents = try documentsDirectory()
             let savesURL = documents.appendingPathComponent(savesFolderName, isDirectory: true)
-            await scanFolders(saveURL: savesURL, library: library)
+            await scanFolders(
+                saveURL: savesURL,
+                library: library,
+                requestContext: libraryRequestContext
+            )
         } catch {
             errorMessage = "无法准备 itchPocket 存档目录：\(error.localizedDescription)"
         }
@@ -64,7 +69,11 @@ final class SparkSyncStore: ObservableObject {
         return url
     }
 
-    private func scanFolders(saveURL: URL, library: PersonalLibraryStore) async {
+    private func scanFolders(
+        saveURL: URL,
+        library: PersonalLibraryStore,
+        requestContext: ItchSessionOperationContext?
+    ) async {
         guard !isScanning else { return }
         isScanning = true
         errorMessage = nil
@@ -76,6 +85,7 @@ final class SparkSyncStore: ObservableObject {
             let found = try await Task.detached(priority: .utility) {
                 try SparkArchiveScanner.scan(saveRootURL: saveURL)
             }.value
+            guard library.isCurrent(requestContext) else { return }
 
             summaries = found
             var unmatched: [String] = []
@@ -93,7 +103,7 @@ final class SparkSyncStore: ObservableObject {
                     saveCount: summary.saveSources.contains("正式存档") ? summary.saveCount : nil
                 )
             }
-            library.updateSparkMetadata(metadataByGameID)
+            library.updateSparkMetadata(metadataByGameID, requestContext: requestContext)
 
             unmatchedGameNames = unmatched.sorted()
             let now = Date()
