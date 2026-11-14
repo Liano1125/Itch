@@ -134,6 +134,76 @@ final class PersistencePoliciesTests: XCTestCase {
         XCTAssertFalse(result.contains("Comments section"))
     }
 
+    func testLensLustDescriptionKeepsOverviewAndRemovesChangelogAndPromotions() {
+        let source = """
+        Overview:
+        After a humiliating first relationship in college, you escape the shame by enlisting in the military for two years.
+
+        Now discharged and searching for a fresh start, you move into a quiet apartment with rooftop access.
+
+        With the Lens Lust system, you can discover hidden desires, accept quests, and earn points to improve your abilities.
+
+        Play as Lucian and step into the world of Lens Lust.
+
+        Changelog [0.1]:
+        Prologue (~15 minutes of gameplay)
+        170+ renders
+        2,500+ words of dialog
+
+        By supporting Lens Lust on Patreon, you help secure the future of the project.
+
+        Not Planned Content:
+        Futa/Trans, Femdom, NTR
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("Overview:"))
+        XCTAssertTrue(result.contains("After a humiliating first relationship"))
+        XCTAssertTrue(result.contains("hidden desires"))
+        XCTAssertTrue(result.contains("Play as Lucian"))
+        XCTAssertFalse(result.contains("Changelog"))
+        XCTAssertFalse(result.contains("170+ renders"))
+        XCTAssertFalse(result.contains("supporting Lens Lust on Patreon"))
+        XCTAssertFalse(result.contains("Not Planned Content"))
+        XCTAssertFalse(result.contains("Femdom"))
+    }
+
+    func testTheChronosDescriptionKeepsStoryAndRemovesVersionAndCommunitySections() {
+        let source = """
+        Overview
+        You died once. Now a cursed goddess lives inside you.
+
+        Synopsis
+        After his arrival at Luminar Academy, Chronos begins a new life as a student.
+        A community mission sends him to investigate the disappearance of several children.
+
+        Gameplay
+        Explore a fantasy world, meet characters, and make choices that shape the journey.
+
+        Changelog v0.1.8:
+        Redesigned interfaces
+        Five new languages
+        Better gallery
+
+        What's Next:
+        Version 0.2 is in development.
+
+        Join our Discord for announcements.
+        Downloads
+        TheChronos 0.1.8 PC
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("You died once"))
+        XCTAssertTrue(result.contains("Chronos begins a new life"))
+        XCTAssertTrue(result.contains("Explore a fantasy world"))
+        XCTAssertFalse(result.contains("Changelog"))
+        XCTAssertFalse(result.contains("Five new languages"))
+        XCTAssertFalse(result.contains("What's Next"))
+        XCTAssertFalse(result.contains("Join our Discord"))
+        XCTAssertFalse(result.contains("TheChronos 0.1.8 PC"))
+    }
+
     func testAdultParserProfilesGenerateScopedSelectorsWithoutBroadArticleFallback() {
         let renpyScript = GamePageScript.source(for: .adultRenPy)
         let adult3DScript = GamePageScript.source(for: .adult3D)
