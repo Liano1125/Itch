@@ -38,7 +38,7 @@ struct DiscoverView: View {
     @State private var showSearchResults = false
     @State private var curatedGames: [String: [PublicCollectionGame]]
     @State private var isLoadingCurated = false
-    @State private var curatedError: String?
+    @State private var curatedErrors: [String: String] = [:]
     @State private var didCheckCuratedRefresh = false
 
     init() {
@@ -70,28 +70,28 @@ struct DiscoverView: View {
 
     @MainActor
     private func refreshCuratedFeeds() async {
-        guard !isLoadingCurated else { return }
+        guard !isLoadingCurated, !Task.isCancelled else { return }
         isLoadingCurated = true
-        curatedError = nil
-        var errors: [String] = []
+        curatedErrors = [:]
 
         // Fetch one category at a time to limit concurrent work and memory use.
         for feed in DiscoveryFeed.curated {
+            guard !Task.isCancelled else { break }
             do {
                 let games = try await DiscoveryFeedClient.shared.fetchGames(from: feed.url)
+                // A cancelled refresh must not publish a late response into view state.
+                guard !Task.isCancelled else { break }
                 // Never replace a useful snapshot with an unexpectedly empty response.
                 if !games.isEmpty || curatedGames[feed.id] == nil {
                     curatedGames[feed.id] = games
                     persistCuratedCache()
                 }
             } catch {
-                errors.append("\(feed.title)：\(error.localizedDescription)")
+                if Task.isCancelled { break }
+                curatedErrors[feed.id] = error.localizedDescription
             }
         }
 
-        if DiscoveryFeed.curated.allSatisfy({ (curatedGames[$0.id] ?? []).isEmpty }), !errors.isEmpty {
-            curatedError = errors.joined(separator: "\n")
-        }
         isLoadingCurated = false
     }
 
@@ -218,10 +218,6 @@ struct DiscoverView: View {
                 }
             }
             ForEach(DiscoveryFeed.curated) { feed in curatedFeedRow(feed) }
-            if let curatedError, curatedGames.isEmpty, !isLoadingCurated {
-                Text("暂时无法加载作品：\(curatedError)")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -283,9 +279,9 @@ struct DiscoverView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-            } else if let curatedError {
+            } else if let feedError = curatedErrors[feed.id] {
                 VStack(alignment: .leading, spacing: 9) {
-                    Text(curatedError)
+                    Text(feedError)
                         .font(.caption).foregroundStyle(.secondary)
                     NavigationLink {
                         ItchSearchResultsView(query: feed.title, customURL: feed.url.absoluteString)
