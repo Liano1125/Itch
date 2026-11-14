@@ -48,6 +48,14 @@ struct ItchAccountRequestContext: Equatable {
     let generation: UInt64
 }
 
+/// Snapshot used by legacy V3 library operations, including signed-out local-library mode.
+/// The optional account ID records whether the operation began signed in, while the
+/// generation rejects results that cross sign-in, sign-out, or account-switch boundaries.
+struct ItchSessionOperationContext: Equatable {
+    let accountID: String?
+    let generation: UInt64
+}
+
 /// In-memory account generation used to reject late async results after an
 /// account switch. This is deliberately independent of SwiftData so the
 /// migration can be introduced before repositories become account-scoped.
@@ -77,6 +85,16 @@ final class ItchAccountSession {
     /// Validates both account identity and generation before publishing or saving
     /// an async result. Call this immediately before every account-owned side effect.
     func isCurrent(_ context: ItchAccountRequestContext) -> Bool {
+        identity?.id == context.accountID && generation == context.generation
+    }
+
+    /// Captures the current session state for operations that also run while signed out.
+    func captureOperationContext() -> ItchSessionOperationContext {
+        ItchSessionOperationContext(accountID: identity?.id, generation: generation)
+    }
+
+    /// Rejects work that completed after sign-in, sign-out, or an account switch.
+    func isCurrent(_ context: ItchSessionOperationContext) -> Bool {
         identity?.id == context.accountID && generation == context.generation
     }
 
