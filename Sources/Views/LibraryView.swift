@@ -566,8 +566,12 @@ private struct LibraryGameActions: View {
     let game: PublicCollectionGame
 
     @EnvironmentObject private var library: PersonalLibraryStore
+    @EnvironmentObject private var gameCalendar: GameCalendarStore
+    @EnvironmentObject private var updateMonitor: GameUpdateMonitorStore
     @State private var showingNotesEditor = false
     @State private var notesDraft = ""
+    @State private var showingAddError = false
+    @State private var addErrorMessage: String?
 
     private var record: LibraryRecord? {
         library.record(for: game.id)
@@ -651,7 +655,23 @@ private struct LibraryGameActions: View {
                 }
             } else {
                 Button {
-                    library.add(game)
+                    guard library.add(game) else {
+                        addErrorMessage = library.lastAddError ?? "无法加入这款游戏，请稍后重试。"
+                        showingAddError = true
+                        return
+                    }
+                    guard let addedRecord = library.record(for: game.id) else { return }
+                    Task { @MainActor in
+                        while updateMonitor.isSyncingHistoricalDevlogs {
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                            if Task.isCancelled { return }
+                        }
+                        _ = await updateMonitor.syncHistoricalDevlogs(
+                            records: [addedRecord],
+                            calendarStore: gameCalendar,
+                            libraryStore: library
+                        )
+                    }
                 } label: {
                     Label("加入在玩", systemImage: "plus")
                         .font(.subheadline.weight(.semibold))
