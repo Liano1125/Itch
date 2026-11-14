@@ -310,8 +310,8 @@ enum GameDescriptionContentPolicy {
 
         func normalizedHeading(_ line: String) -> String {
             var value = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            value = value.replacingOccurrences(of: #"^#+\\s*"#, with: "", options: .regularExpression)
-            value = value.replacingOccurrences(of: #"\\s*\\[[^\\]]+\\]\\s*$"#, with: "", options: .regularExpression)
+            value = value.replacingOccurrences(of: #"^#+\s*"#, with: "", options: .regularExpression)
+            value = value.replacingOccurrences(of: #"\s*\[[^\]]+\]\s*$"#, with: "", options: .regularExpression)
             value = value.trimmingCharacters(in: CharacterSet(charactersIn: ":：|—–- "))
             return value
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
@@ -340,7 +340,7 @@ enum GameDescriptionContentPolicy {
                 continue
             }
 
-            let compact = line.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\\t", with: "")
+            let compact = line.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\t", with: "")
             if compact.count >= 4 && compact.allSatisfy({ $0 == "_" || $0 == "-" || $0 == "—" || $0 == "–" || $0 == "=" }) {
                 continue
             }
@@ -368,7 +368,7 @@ enum GameDescriptionContentPolicy {
         }
 
         let result = output.joined(separator: "\n")
-            .replacingOccurrences(of: #"\\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return result.isEmpty ? source.trimmingCharacters(in: .whitespacesAndNewlines) : result
     }
