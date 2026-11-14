@@ -23,8 +23,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
         let accounts = try context.fetch(FetchDescriptor<DBAccount>())
         XCTAssertEqual(accounts.count, 2)
-        XCTAssertEqual(Set(accounts.map(\\.id)), ["itch:101", "itch:202"])
-        XCTAssertEqual(Set(accounts.map(\\.itchUserID)), [101, 202])
+        XCTAssertEqual(Set(accounts.map(\.id)), ["itch:101", "itch:202"])
+        XCTAssertEqual(Set(accounts.map(\.itchUserID)), [101, 202])
     }
 
     @MainActor
@@ -69,9 +69,9 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
         let entries = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>())
         XCTAssertEqual(entries.count, 2)
-        XCTAssertEqual(Set(entries.map(\\.accountID)), [accountA.id, accountB.id])
-        XCTAssertEqual(Set(entries.map(\\.status)), ["playing", "completed"])
-        XCTAssertEqual(Set(entries.map(\\.gameID)), ["game-1"])
+        XCTAssertEqual(Set(entries.map(\.accountID)), [accountA.id, accountB.id])
+        XCTAssertEqual(Set(entries.map(\.status)), ["playing", "completed"])
+        XCTAssertEqual(Set(entries.map(\.gameID)), ["game-1"])
     }
 
     @MainActor
