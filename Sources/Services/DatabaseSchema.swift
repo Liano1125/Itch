@@ -257,3 +257,14 @@ enum ItchPocketSchemaV3: VersionedSchema {
     }
 }
 
+
+
+/// V4 adds the local account registry without changing V3-owned records.
+/// Account ownership columns and their migration are intentionally deferred
+/// until the V4 ownership/backfill policy and recovery tests are complete.
+enum ItchPocketSchemaV4: VersionedSchema {
+    static var versionIdentifier = Schema.Version(4, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        ItchPocketSchemaV3.models + [DBAccount.self]
+    }
+}
