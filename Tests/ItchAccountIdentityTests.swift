@@ -22,6 +22,48 @@ final class ItchAccountIdentityTests: XCTestCase {
     }
 
     @MainActor
+    func testRequestContextCannotBeCapturedWhileSignedOut() {
+        XCTAssertNil(ItchAccountSession().captureRequestContext())
+    }
+
+    @MainActor
+    func testRequestContextCapturesStableAccountIDAndGeneration() {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 42, username: "account-a"))
+
+        let context = session.captureRequestContext()
+
+        XCTAssertEqual(context?.accountID, "itch:42")
+        XCTAssertEqual(context?.generation, session.generation)
+        XCTAssertTrue(context.map(session.isCurrent) ?? false)
+    }
+
+    @MainActor
+    func testRequestContextIsInvalidatedByAccountSwitchAndSignOut() {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 42, username: "account-a"))
+        let context = try! XCTUnwrap(session.captureRequestContext())
+
+        session.activate(ItchAccountIdentity(itchUserID: 43, username: "account-b"))
+        XCTAssertFalse(session.isCurrent(context))
+
+        let accountBContext = try! XCTUnwrap(session.captureRequestContext())
+        session.activate(nil)
+        XCTAssertFalse(session.isCurrent(accountBContext))
+    }
+
+    @MainActor
+    func testProfileRefreshKeepsRequestContextCurrent() {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 42, username: "before"))
+        let context = try! XCTUnwrap(session.captureRequestContext())
+
+        session.activate(ItchAccountIdentity(itchUserID: 42, username: "after"))
+
+        XCTAssertTrue(session.isCurrent(context))
+    }
+
+    @MainActor
     func testAccountSwitchInvalidatesEarlierRequestGeneration() {
         let session = ItchAccountSession()
         session.activate(ItchAccountIdentity(itchUserID: 1, username: "account-a"))
