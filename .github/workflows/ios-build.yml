@@ -30,6 +30,7 @@ on:
       - fix/patreon-primary-author-link-persistence
       - fix/calendar-store-read-failure-guard
       - fix/database-reference-write-guards
+      - feat/v4-account-isolation-foundation
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
@@ -68,6 +69,8 @@ on:
       - fix/patreon-primary-author-link-persistence
       - fix/calendar-store-read-failure-guard
       - fix/database-reference-write-guards
+      # V4 account-isolation foundation PR.
+      - feat/v4-account-isolation-foundation
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
