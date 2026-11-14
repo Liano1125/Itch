@@ -88,6 +88,39 @@ final class ItchAccountIdentityTests: XCTestCase {
     }
 
     @MainActor
+    func testOperationContextRejectsWorkStartedSignedOutWhenUserSignsIn() {
+        let session = ItchAccountSession()
+        let signedOutContext = session.captureOperationContext()
+
+        session.activate(ItchAccountIdentity(itchUserID: 7, username: "account-a"))
+
+        XCTAssertFalse(session.isCurrent(signedOutContext))
+    }
+
+    @MainActor
+    func testOperationContextRejectsSameAccountAfterSignOutAndSignIn() {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 7, username: "account-a"))
+        let original = session.captureOperationContext()
+
+        session.activate(nil)
+        session.activate(ItchAccountIdentity(itchUserID: 7, username: "account-a"))
+
+        XCTAssertFalse(session.isCurrent(original))
+    }
+
+    @MainActor
+    func testOperationContextAllowsProfileRefreshForSameAccount() {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 7, username: "before"))
+        let context = session.captureOperationContext()
+
+        session.activate(ItchAccountIdentity(itchUserID: 7, username: "after"))
+
+        XCTAssertTrue(session.isCurrent(context))
+    }
+
+    @MainActor
     func testSigningOutInvalidatesInFlightRequests() {
         let session = ItchAccountSession()
         session.activate(ItchAccountIdentity(itchUserID: 1, username: "account-a"))
