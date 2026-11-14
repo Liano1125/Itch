@@ -30,7 +30,8 @@ struct V3MigrationPreflightReport: Codable, Equatable {
         self.sourceSchemaVersion = sourceSchemaVersion
         self.rowCounts = rowCounts
         self.ownershipReviewCounts = ownershipReviewCounts
-        self.integrityIssues = integrityIssues.sorted()
+        let normalizedIssues = integrityIssues.sorted()
+        self.integrityIssues = normalizedIssues
 
         struct DigestPayload: Codable {
             let sourceSchemaVersion: String
@@ -43,7 +44,7 @@ struct V3MigrationPreflightReport: Codable, Equatable {
             sourceSchemaVersion: sourceSchemaVersion,
             rowCounts: rowCounts,
             ownershipReviewCounts: ownershipReviewCounts,
-            integrityIssues: self.integrityIssues
+            integrityIssues: normalizedIssues
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
