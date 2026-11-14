@@ -283,7 +283,7 @@ struct LibraryView: View {
                         }
                         .buttonStyle(.plain)
                         Button {
-                            library.add(game)
+                            addToPlaying(game)
                         } label: {
                             Label(library.contains(game.id) ? "在玩" : "加入在玩", systemImage: library.contains(game.id) ? "gamecontroller" : "plus")
                                 .font(.caption.weight(.semibold))
