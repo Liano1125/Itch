@@ -20,8 +20,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
         let accounts = try context.fetch(FetchDescriptor<DBAccount>())
         XCTAssertEqual(accounts.count, 2)
-        XCTAssertEqual(Set(accounts.map(\\.id)), ["itch:101", "itch:202"])
-        XCTAssertEqual(Set(accounts.map(\\.itchUserID)), [101, 202])
+        XCTAssertEqual(Set(accounts.map(\.id)), ["itch:101", "itch:202"])
+        XCTAssertEqual(Set(accounts.map(\.itchUserID)), [101, 202])
     }
 
     @MainActor
