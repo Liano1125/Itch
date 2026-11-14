@@ -734,9 +734,17 @@ struct GameDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Button("重新同步") {
+                        Task { await syncMissingHistoricalDevlogs(force: true) }
+                    }
+                    .font(.caption.weight(.medium))
+                    .disabled(updateMonitor.isSyncingHistoricalDevlogs)
                 }
                 if updates.isEmpty {
-                    Text("检测到的页面更新会同步显示在这里。")
+                    let syncResult = updateMonitor.lastHistoricalSyncResults.first { $0.gameID == game.id }
+                    Text(updateMonitor.isSyncingHistoricalDevlogs
+                         ? "正在同步 itch.io 更新记录…"
+                         : (syncResult?.message ?? "检测到的页面更新会同步显示在这里。"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -1067,7 +1075,7 @@ struct GameDetailView: View {
         }
     }
 
-    private func syncMissingHistoricalDevlogs() async {
+    private func syncMissingHistoricalDevlogs(force: Bool = false) async {
         guard let record = library.record(for: game.id) else { return }
 
         // The global six-hour sync may have run before this game was added.
@@ -1080,7 +1088,7 @@ struct GameDetailView: View {
                 && !result.message.localizedCaseInsensitiveContains("失败")
                 && !result.message.localizedCaseInsensitiveContains("缺少有效")
         }
-        guard !hasRecentResult else { return }
+        if !force { guard !hasRecentResult else { return } }
 
         while updateMonitor.isSyncingHistoricalDevlogs {
             try? await Task.sleep(nanoseconds: 200_000_000)
@@ -1093,7 +1101,7 @@ struct GameDetailView: View {
                 && !result.message.localizedCaseInsensitiveContains("失败")
                 && !result.message.localizedCaseInsensitiveContains("缺少有效")
         }
-        guard !completedWhileWaiting else { return }
+        if !force { guard !completedWhileWaiting else { return } }
 
         _ = await updateMonitor.syncHistoricalDevlogs(
             records: [record],
