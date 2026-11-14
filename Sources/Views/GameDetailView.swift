@@ -83,22 +83,22 @@ enum GameDetailParserProfile: String {
         ]
     }
 
+    // Keep the gallery scoped to itch.io's dedicated screenshot/lightbox markup.
+    // Description images are intentionally excluded: creators often place Discord,
+    // Patreon and other social-promo banners in the description body.
     var galleryImageSelectors: [String] {
-        let descriptionImages = descriptionSelectors.map { "\($0) img" }
-        return [
+        [
             "img.screenshot", ".screenshot_list img", ".screenshot_container img",
             ".screenshot img", "#game_screenshots img", ".game_page_screenshots img"
-        ] + descriptionImages
+        ]
     }
 
     var galleryAnchorSelectors: [String] {
-        let descriptionLinks = descriptionSelectors.map { "\($0) a" }
-        return [
+        [
             ".screenshot_list a", ".screenshot_container a", ".screenshot a",
             "#game_screenshots a", ".game_page_screenshots a",
-            "a[data-image_lightbox]", "a[href*='img.itch.zone']",
-            "a[href*='/original/']"
-        ] + descriptionLinks
+            "a[data-image_lightbox]"
+        ]
     }
 }
 
