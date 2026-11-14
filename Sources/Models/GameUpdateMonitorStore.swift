@@ -383,7 +383,7 @@ final class GameUpdateMonitorStore: ObservableObject {
     }
 }
 
-private struct DevlogRSSPost {
+struct DevlogRSSPost {
     let title: String
     let summary: String
     let url: String?
@@ -391,7 +391,7 @@ private struct DevlogRSSPost {
     let publishedAt: Date?
 }
 
-private final class DevlogRSSParser: NSObject, XMLParserDelegate {
+final class DevlogRSSParser: NSObject, XMLParserDelegate {
     private var posts: [DevlogRSSPost] = []
     private var isInsideItem = false
     private var currentElement = ""
@@ -415,6 +415,12 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
             values = [:]
         } else if isInsideItem {
             currentElement = name
+            // Atom feeds expose the post URL as a link attribute rather than
+            // character content; accept both Atom and RSS representations.
+            if (name == "link" || name.hasSuffix(":link")),
+               let href = attributeDict["href"], !href.isEmpty {
+                values["link"] = href
+            }
         }
     }
 
@@ -435,7 +441,7 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
             let title = Self.clean(values["title"] ?? "")
             let link = Self.clean(values["link"] ?? "")
             let guid = Self.clean(values["guid"] ?? values["id"] ?? "")
-            let rawDate = Self.clean(values["pubdate"] ?? values["published"] ?? values["updated"] ?? "")
+            let rawDate = Self.clean(values["pubdate"] ?? values["published"] ?? values["updated"] ?? values["dc:date"] ?? "")
             let summary = Self.cleanHTML(values["description"] ?? values["content:encoded"] ?? values["summary"] ?? "")
             if !title.isEmpty {
                 posts.append(DevlogRSSPost(
@@ -461,6 +467,8 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
     private static func cleanHTML(_ value: String) -> String {
         let stripped = value.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         return stripped
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&#160;", with: " ")
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
