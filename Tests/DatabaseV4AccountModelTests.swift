@@ -164,8 +164,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
             notes: "B only", addedAt: now, updatedAt: now
         ))
 
-        XCTAssertEqual(try accountA.loadEntries().map(\\.notes), ["A only"])
-        XCTAssertEqual(try accountB.loadEntries().map(\\.notes), ["B only"])
+        XCTAssertEqual(try accountA.loadEntries().map(\.notes), ["A only"])
+        XCTAssertEqual(try accountB.loadEntries().map(\.notes), ["B only"])
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()), 2)
     }
