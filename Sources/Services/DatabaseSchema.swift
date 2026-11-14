@@ -259,12 +259,155 @@ enum ItchPocketSchemaV3: VersionedSchema {
 
 
 
-/// V4 adds the local account registry without changing V3-owned records.
-/// Account ownership columns and their migration are intentionally deferred
-/// until the V4 ownership/backfill policy and recovery tests are complete.
+/// V4 preserves the frozen V3 records and introduces account-scoped
+/// replacements for personal-library data. Legacy V3 rows are migrated into
+/// these models with accountID == nil until ownership can be proven.
 enum ItchPocketSchemaV4: VersionedSchema {
     static var versionIdentifier = Schema.Version(4, 0, 0)
     static var models: [any PersistentModel.Type] {
-        ItchPocketSchemaV3.models + [DBAccount.self]
+        [
+            DBDeveloper.self, DBGame.self, DBGameUpdate.self, DBCalendarEvent.self,
+            DBSparkMetadata.self, DBTranslation.self, DBDiscoverySnapshot.self,
+            DBUpdateWatch.self, DBAppState.self, DBGameDetail.self, DBAccount.self,
+            DBLibraryEntry.self, DBLibraryCollection.self,
+            DBLibraryCollectionItem.self, DBLibraryStatusEvent.self
+        ]
+    }
+
+    /// Account-scoped replacement for the V3 globally-unique game row.
+    /// A nil accountID is reserved for legacy/unassigned data.
+    @Model final class DBLibraryEntry {
+        @Attribute(.unique) var id: String
+        var accountID: String?
+        var gameID: String
+        var status: String
+        var isFavorite: Bool
+        var notes: String
+        var addedAt: Date
+        var updatedAt: Date
+
+        init(
+            accountID: String?,
+            gameID: String,
+            status: String,
+            isFavorite: Bool = false,
+            notes: String = "",
+            addedAt: Date = .now,
+            updatedAt: Date = .now
+        ) {
+            self.id = Self.stableID(accountID: accountID, gameID: gameID)
+            self.accountID = accountID
+            self.gameID = gameID
+            self.status = status
+            self.isFavorite = isFavorite
+            self.notes = notes
+            self.addedAt = addedAt
+            self.updatedAt = updatedAt
+        }
+
+        static func stableID(accountID: String?, gameID: String) -> String {
+            let scope = accountID ?? "legacy-unassigned"
+            return "\(scope.utf8.count):\(scope)\(gameID.utf8.count):\(gameID)"
+        }
+    }
+
+    /// Collection IDs are scoped by account; collectionKey preserves the
+    /// caller-facing V3 identifier during migration.
+    @Model final class DBLibraryCollection {
+        @Attribute(.unique) var id: String
+        var accountID: String?
+        var collectionKey: String
+        var title: String
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(
+            accountID: String?,
+            collectionKey: String,
+            title: String,
+            createdAt: Date = .now,
+            updatedAt: Date = .now
+        ) {
+            self.id = Self.stableID(accountID: accountID, collectionKey: collectionKey)
+            self.accountID = accountID
+            self.collectionKey = collectionKey
+            self.title = title
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+
+        static func stableID(accountID: String?, collectionKey: String) -> String {
+            let scope = accountID ?? "legacy-unassigned"
+            return "\(scope.utf8.count):\(scope)\(collectionKey.utf8.count):\(collectionKey)"
+        }
+    }
+
+    /// Membership identity includes account, collection, and game. This avoids
+    /// cross-account collisions even when imported collection keys are equal.
+    @Model final class DBLibraryCollectionItem {
+        @Attribute(.unique) var id: String
+        var accountID: String?
+        var collectionKey: String
+        var gameID: String
+        var sortOrder: Int
+        var addedAt: Date
+
+        init(
+            accountID: String?,
+            collectionKey: String,
+            gameID: String,
+            sortOrder: Int,
+            addedAt: Date = .now
+        ) {
+            self.id = Self.stableID(
+                accountID: accountID,
+                collectionKey: collectionKey,
+                gameID: gameID
+            )
+            self.accountID = accountID
+            self.collectionKey = collectionKey
+            self.gameID = gameID
+            self.sortOrder = sortOrder
+            self.addedAt = addedAt
+        }
+
+        static func stableID(accountID: String?, collectionKey: String, gameID: String) -> String {
+            let scope = accountID ?? "legacy-unassigned"
+            return "\(scope.utf8.count):\(scope)\(collectionKey.utf8.count):\(collectionKey)\(gameID.utf8.count):\(gameID)"
+        }
+    }
+
+    /// Event identity is account-scoped while eventKey retains the original
+    /// V3 event identifier for traceability during migration.
+    @Model final class DBLibraryStatusEvent {
+        @Attribute(.unique) var id: String
+        var accountID: String?
+        var eventKey: String
+        var gameID: String
+        var fromStatus: String?
+        var toStatus: String
+        var changedAt: Date
+
+        init(
+            accountID: String?,
+            eventKey: String,
+            gameID: String,
+            fromStatus: String?,
+            toStatus: String,
+            changedAt: Date = .now
+        ) {
+            self.id = Self.stableID(accountID: accountID, eventKey: eventKey)
+            self.accountID = accountID
+            self.eventKey = eventKey
+            self.gameID = gameID
+            self.fromStatus = fromStatus
+            self.toStatus = toStatus
+            self.changedAt = changedAt
+        }
+
+        static func stableID(accountID: String?, eventKey: String) -> String {
+            let scope = accountID ?? "legacy-unassigned"
+            return "\(scope.utf8.count):\(scope)\(eventKey.utf8.count):\(eventKey)"
+        }
     }
 }
