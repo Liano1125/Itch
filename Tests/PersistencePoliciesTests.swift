@@ -680,4 +680,42 @@ final class PersonalLibraryStoreReloadTests: XCTestCase {
         store.reload()
         XCTAssertEqual(Set(store.records.map(\.id)), Set(["game-1", "game-2"]))
     }
+    func testDevlogRSSParserReadsRSSAndAtomPostLinksAndDates() throws {
+        let rss = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><item>
+          <title>Version 0.1.8</title>
+          <link>https://creator.itch.io/game/devlog/123</link>
+          <guid>post-123</guid>
+          <pubDate>Fri, 02 Oct 2026 04:17:00 +0000</pubDate>
+          <description><![CDATA[<p>New chapter &amp; fixes</p>]]></description>
+        </item></channel></rss>
+        """
+        let rssPosts = try DevlogRSSParser.parse(data: Data(rss.utf8))
+        XCTAssertEqual(rssPosts.count, 1)
+        XCTAssertEqual(rssPosts.first?.title, "Version 0.1.8")
+        XCTAssertEqual(rssPosts.first?.url, "https://creator.itch.io/game/devlog/123")
+        XCTAssertEqual(rssPosts.first?.guid, "post-123")
+        XCTAssertEqual(rssPosts.first?.summary, "New chapter & fixes")
+        XCTAssertNotNil(rssPosts.first?.publishedAt)
+
+        let atom = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+          <title>Lens Lust 0.2</title>
+          <link href="https://dreamveil.itch.io/lenslust/devlog/456" rel="alternate" />
+          <id>post-456</id>
+          <published>2026-10-02T04:17:00Z</published>
+          <summary>New scenes and improvements</summary>
+        </entry></feed>
+        """
+        let atomPosts = try DevlogRSSParser.parse(data: Data(atom.utf8))
+        XCTAssertEqual(atomPosts.count, 1)
+        XCTAssertEqual(atomPosts.first?.url, "https://dreamveil.itch.io/lenslust/devlog/456")
+        XCTAssertEqual(atomPosts.first?.guid, "post-456")
+        XCTAssertEqual(atomPosts.first?.summary, "New scenes and improvements")
+        XCTAssertNotNil(atomPosts.first?.publishedAt)
+    }
+
+
 }
