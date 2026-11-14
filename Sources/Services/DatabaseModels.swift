@@ -299,3 +299,52 @@ final class DBLibraryCollectionItem {
         "\(collectionID.utf8.count):\(collectionID)\(gameID.utf8.count):\(gameID)"
     }
 }
+
+
+/// Persisted itch.io account profile. Credentials remain exclusively in Keychain.
+/// This model is introduced in V4; V3 stores are not opened with this schema.
+@Model
+final class DBAccount {
+    @Attribute(.unique) var id: String
+    @Attribute(.unique) var itchUserID: Int
+    var username: String
+    var displayName: String?
+    var profileURL: String?
+    var avatarURL: String?
+    var firstSeenAt: Date
+    var lastAuthenticatedAt: Date?
+    var lastUsedAt: Date?
+
+    init(
+        itchUserID: Int,
+        username: String,
+        displayName: String? = nil,
+        profileURL: String? = nil,
+        avatarURL: String? = nil,
+        firstSeenAt: Date = .now,
+        lastAuthenticatedAt: Date? = nil,
+        lastUsedAt: Date? = nil
+    ) {
+        self.id = Self.stableID(itchUserID: itchUserID)
+        self.itchUserID = itchUserID
+        self.username = username
+        self.displayName = displayName
+        self.profileURL = profileURL
+        self.avatarURL = avatarURL
+        self.firstSeenAt = firstSeenAt
+        self.lastAuthenticatedAt = lastAuthenticatedAt
+        self.lastUsedAt = lastUsedAt
+    }
+
+    static func stableID(itchUserID: Int) -> String {
+        "itch:\\(itchUserID)"
+    }
+
+    func refreshProfile(from identity: ItchAccountIdentity) {
+        guard identity.itchUserID == itchUserID else { return }
+        username = identity.username
+        displayName = identity.displayName
+        profileURL = identity.profileURL?.absoluteString
+        avatarURL = identity.avatarURL?.absoluteString
+    }
+}
