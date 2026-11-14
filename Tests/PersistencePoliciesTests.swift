@@ -272,6 +272,20 @@ final class PersistencePoliciesTests: XCTestCase {
         XCTAssertTrue(result.contains("Multiple routes"))
     }
 
+    func testDescriptionContainingOnlyExcludedSectionsDoesNotRestorePageNoise() {
+        let source = """
+        Changelog
+        Version 1.0
+
+        Downloads
+        Download now
+
+        Patreon
+        Support the creator for early access.
+        """
+        XCTAssertNil(GameDescriptionContentPolicy.cleaned(source))
+    }
+
     func testGameDescriptionPolicyPreservesUnrecognizedGameContent() {
         let source = "Welcome!\n\nCombat and exploration are important mechanics."
         XCTAssertEqual(GameDescriptionContentPolicy.cleaned(source), source)
