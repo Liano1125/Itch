@@ -33,6 +33,7 @@ on:
       - feat/v4-account-isolation-foundation
       - feat/v4-account-persistence-model
       - feat/account-request-context-guard
+      - feat/account-scoped-library-repository
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
@@ -76,6 +77,7 @@ on:
       - feat/v4-auth-session-integration
       - feat/v4-account-persistence-model
       - feat/account-request-context-guard
+      - feat/account-scoped-library-repository
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
