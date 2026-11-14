@@ -36,6 +36,7 @@ on:
       - feat/account-scoped-library-repository
       - feat/personal-library-request-context-guard
       - feat/v3-v4-migration-preflight-inventory
+      - docs/appstate-scope-audit
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
@@ -82,6 +83,7 @@ on:
       - feat/account-scoped-library-repository
       - feat/personal-library-request-context-guard
       - feat/v3-v4-migration-preflight-inventory
+      - docs/appstate-scope-audit
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
