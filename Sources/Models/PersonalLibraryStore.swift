@@ -331,11 +331,11 @@ final class PersonalLibraryStore: ObservableObject {
 
     @discardableResult
     func add(_ game: PublicCollectionGame, status: LibraryStatus = .playing) -> Bool {
-        guard didLoadLibrarySnapshots else {
+        if !didLoadLibrarySnapshots {
             // A transient startup read can leave the UI visible while writes are
             // intentionally blocked. Retry the snapshot load once before giving up.
             load()
-            guard didLoadLibrarySnapshots else {
+            if !didLoadLibrarySnapshots {
                 lastAddError = "游戏库数据尚未加载完成，请稍后重试。"
                 return false
             }
