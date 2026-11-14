@@ -126,6 +126,34 @@ final class RepositoryIntegrationTests: XCTestCase {
 
 
     @MainActor
+    func testAddingNewlyDiscoveredGameCreatesCanonicalGameBeforeStatusHistory() throws {
+        let database = try AppDatabase(inMemory: true)
+        let store = PersonalLibraryStore(database: database)
+        let game = PublicCollectionGame(
+            id: "newly-discovered-itch-game",
+            title: "Newly Discovered Game",
+            url: URL(string: "https://creator.itch.io/new-game"),
+            coverURL: URL(string: "https://img.itch.zone/example.jpg"),
+            description: nil,
+            developer: "Creator",
+            platforms: []
+        )
+
+        XCTAssertTrue(store.add(game))
+        XCTAssertTrue(store.contains(game.id))
+        XCTAssertEqual(store.record(for: game.id)?.status, .playing)
+        XCTAssertNotNil(try GameRepository(database: database).game(id: game.id))
+
+        let events = try database.context.fetch(
+            FetchDescriptor<DBLibraryStatusEvent>(
+                predicate: #Predicate { $0.gameID == "newly-discovered-itch-game" }
+            )
+        )
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.toStatus, LibraryStatus.playing.rawValue)
+    }
+
+    @MainActor
     func testCalendarStoreBlocksWritesUntilReadSucceedsAndRetainsLastGoodSnapshot() throws {
         let database = try AppDatabase(inMemory: true)
         database.context.insert(DBGame(id: "game-1", title: "Game One"))
