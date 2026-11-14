@@ -13,6 +13,9 @@ final class ItchAuthService: NSObject, ObservableObject,
 
     private let api = ItchAPI()
 
+    /// Account identity and generation shared with account-scoped request owners.
+    let accountSession = ItchAccountSession()
+
     private var webSession: ASWebAuthenticationSession?
 
     var isSignedIn: Bool {
@@ -21,13 +24,19 @@ final class ItchAuthService: NSObject, ObservableObject,
 
     func restoreSession() async {
         guard let token = KeychainStore.read("access_token") else {
+            user = nil
+            accountSession.activate(nil)
             return
         }
 
         do {
-            user = try await api.fetchProfile(token: token)
+            let restoredUser = try await api.fetchProfile(token: token)
+            user = restoredUser
+            accountSession.activate(ItchAccountIdentity(user: restoredUser))
         } catch {
             KeychainStore.delete("access_token")
+            user = nil
+            accountSession.activate(nil)
             errorMessage = error.localizedDescription
         }
     }
@@ -127,12 +136,16 @@ final class ItchAuthService: NSObject, ObservableObject,
                 verifier: verifier
             )
 
+            // Validate the new credential before replacing the persisted session.
+            let authenticatedUser = try await api.fetchProfile(token: token)
+
             try KeychainStore.save(
                 token,
                 for: "access_token"
             )
 
-            user = try await api.fetchProfile(token: token)
+            user = authenticatedUser
+            accountSession.activate(ItchAccountIdentity(user: authenticatedUser))
 
         } catch {
             errorMessage = error.localizedDescription
@@ -245,6 +258,7 @@ final class ItchAuthService: NSObject, ObservableObject,
     func signOut() async {
         guard let token = KeychainStore.read("access_token") else {
             user = nil
+            accountSession.activate(nil)
             return
         }
 
@@ -290,6 +304,7 @@ final class ItchAuthService: NSObject, ObservableObject,
 
         KeychainStore.delete("access_token")
         user = nil
+        accountSession.activate(nil)
     }
 
     func presentationAnchor(
