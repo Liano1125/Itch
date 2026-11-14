@@ -155,9 +155,13 @@ struct LibraryView: View {
     }
 
     private func importSourceGamesAsPlaying() {
+        var addedRecords: [LibraryRecord] = []
         for game in sourceGames where !library.contains(game.id) {
-            _ = library.add(game, status: .playing)
+            guard library.add(game, status: .playing),
+                  let record = library.record(for: game.id) else { continue }
+            addedRecords.append(record)
         }
+        syncHistoricalDevlogs(for: addedRecords)
     }
 
     private func addToPlaying(_ game: PublicCollectionGame) {
@@ -167,16 +171,20 @@ struct LibraryView: View {
             return
         }
         guard let record = library.record(for: game.id) else { return }
+        syncHistoricalDevlogs(for: [record])
+    }
 
-        // Fetch historical devlogs immediately after the canonical library
-        // transaction; the detail WebView is not a prerequisite for either task.
+    private func syncHistoricalDevlogs(for records: [LibraryRecord]) {
+        guard !records.isEmpty else { return }
+        // Queue behind an in-flight sync so two newly added games are both
+        // checked instead of silently dropping the second request.
         Task { @MainActor in
             while updateMonitor.isSyncingHistoricalDevlogs {
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 if Task.isCancelled { return }
             }
             _ = await updateMonitor.syncHistoricalDevlogs(
-                records: [record],
+                records: records,
                 calendarStore: gameCalendar,
                 libraryStore: library
             )
