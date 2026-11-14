@@ -312,7 +312,7 @@ enum GameDescriptionContentPolicy {
             var value = line.trimmingCharacters(in: .whitespacesAndNewlines)
             value = value.replacingOccurrences(of: #"^#+\s*"#, with: "", options: .regularExpression)
             value = value.replacingOccurrences(of: #"\s*\[[^\]]+\]\s*$"#, with: "", options: .regularExpression)
-            value = value.trimmingCharacters(in: CharacterSet(charactersIn: ":：|—–- "))
+            value = value.trimmingCharacters(in: CharacterSet(charactersIn: ":：|—–- !?.。！？"))
             return value
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
                 .lowercased()
