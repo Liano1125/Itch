@@ -115,6 +115,8 @@ struct GameDetailView: View {
 
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var library: PersonalLibraryStore
+    @EnvironmentObject private var gameCalendar: GameCalendarStore
+    @EnvironmentObject private var updateMonitor: GameUpdateMonitorStore
 
     private var developerRepository: DeveloperRepository {
         DeveloperRepository(database: .shared)
@@ -193,6 +195,9 @@ struct GameDetailView: View {
         .background(Color(uiColor: .systemBackground))
         .task(id: game.id) {
             await loadCachedDescription()
+        }
+        .task(id: "devlogs:\\(game.id)") {
+            await syncMissingHistoricalDevlogs()
         }
         .task(id: detail == nil ? nil : (detail?.authorURL?.absoluteString ?? game.url?.absoluteString)) {
             guard detail != nil else { return }
@@ -1060,6 +1065,32 @@ struct GameDetailView: View {
         } else {
             translationStatus = usedCache ? "已检查更新 · 已使用本地译文" : "翻译完成 · 已保存"
         }
+    }
+
+    private func syncMissingHistoricalDevlogs() async {
+        guard let record = library.record(for: game.id) else { return }
+
+        // The global six-hour sync may have run before this game was added.
+        // Recheck this game's RSS once when its detail is opened, but avoid
+        // repeating successful/empty results on every navigation.
+        let hasRecentResult = updateMonitor.lastHistoricalSyncAt.map {
+            Date().timeIntervalSince($0) < 12 * 60 * 60
+        } == true && updateMonitor.lastHistoricalSyncResults.contains { result in
+            result.gameID == game.id
+                && !result.message.localizedCaseInsensitiveContains("失败")
+                && !result.message.localizedCaseInsensitiveContains("缺少有效")
+        }
+        guard !hasRecentResult else { return }
+
+        while updateMonitor.isSyncingHistoricalDevlogs {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+        }
+        _ = await updateMonitor.syncHistoricalDevlogs(
+            records: [record],
+            calendarStore: gameCalendar,
+            libraryStore: library
+        )
     }
 
     private func handleLoadError(_ message: String) {
