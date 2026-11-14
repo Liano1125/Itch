@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UserNotifications
 import CryptoKit
+import WebKit
 
 struct DetectedGameUpdate {
     let gameID: String
@@ -251,6 +252,12 @@ final class GameUpdateMonitorStore: ObservableObject {
                 var request = URLRequest(url: feedURL)
                 request.timeoutInterval = 25
                 request.setValue("application/rss+xml, application/xml, text/xml, */*", forHTTPHeaderField: "Accept")
+                let cookies = await itchWebsiteCookies()
+                if !cookies.isEmpty {
+                    for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
+                        request.setValue(value, forHTTPHeaderField: name)
+                    }
+                }
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     failed += 1
@@ -260,6 +267,12 @@ final class GameUpdateMonitorStore: ObservableObject {
                 guard (200..<300).contains(http.statusCode) else {
                     failed += 1
                     results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "RSS 请求失败，HTTP \(http.statusCode)"))
+                    continue
+                }
+                if let body = String(data: data, encoding: .utf8),
+                   body.range(of: "You must be 18+ to view this content|Date of Birth:", options: [.regularExpression, .caseInsensitive]) != nil {
+                    failed += 1
+                    results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "更新日志需要先完成 itch.io 18+ 年龄确认。请打开游戏页面确认年龄后重新同步。"))
                     continue
                 }
                 let posts = try DevlogRSSParser.parse(data: data)
@@ -319,6 +332,14 @@ final class GameUpdateMonitorStore: ObservableObject {
             print("itchPocket historical sync state save failed: \(error)")
         }
         return message
+    }
+
+    private func itchWebsiteCookies() async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+                continuation.resume(returning: cookies.filter { $0.domain.contains("itch.io") })
+            }
+        }
     }
 
     private static func devlogFeedURL(for gameURL: URL) -> URL? {
