@@ -321,6 +321,8 @@ enum GameDescriptionContentPolicy {
         func isExcludedHeading(_ heading: String) -> Bool {
             excludedHeadings.contains(heading)
                 || excludedHeadings.contains(where: { heading.hasPrefix($0 + " ") })
+                || heading.hasPrefix("get ")
+                || heading.hasPrefix("download ")
         }
 
         let promotionalLines = [
