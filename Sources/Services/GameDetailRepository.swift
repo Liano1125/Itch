@@ -376,7 +376,7 @@ enum GameDescriptionContentPolicy {
         let result = output.joined(separator: "\n")
             .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.isEmpty ? source.trimmingCharacters(in: .whitespacesAndNewlines) : result
+        return result.isEmpty ? nil : result
     }
 }
 
