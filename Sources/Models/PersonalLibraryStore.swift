@@ -328,9 +328,15 @@ final class PersonalLibraryStore: ObservableObject {
         }
     }
 
-    func add(_ game: PublicCollectionGame, status: LibraryStatus = .playing) {
-        guard didLoadLibrarySnapshots else { return }
-        guard !contains(game.id) else { return }
+    @discardableResult
+    func add(_ game: PublicCollectionGame, status: LibraryStatus = .playing) -> Bool {
+        guard didLoadLibrarySnapshots else {
+            // A transient startup read can leave the UI visible while writes are
+            // intentionally blocked. Retry the snapshot load once before giving up.
+            load()
+            guard didLoadLibrarySnapshots else { return false }
+        }
+        guard !contains(game.id) else { return false }
         let now = Date()
         let record = LibraryRecord(
             id: game.id,
@@ -349,13 +355,19 @@ final class PersonalLibraryStore: ObservableObject {
 
         do {
             try database.performTransaction {
-                try statusHistoryRepository.append(event, for: game.id, save: false)
+                // Status history has a foreign-key reference to DBGame. Persisting
+                // the library projection first creates the canonical game row;
+                // appending history before this used to fail for newly discovered
+                // games until their detail page happened to create that row.
                 try persist(record, save: false)
+                try statusHistoryRepository.append(event, for: game.id, save: false)
             }
             records.insert(record, at: 0)
             statusEvents[game.id, default: []].append(event)
+            return true
         } catch {
             print("itchPocket library add transaction failed: \(error)")
+            return false
         }
     }
 
