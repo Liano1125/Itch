@@ -6,8 +6,10 @@ final class DatabaseV4AccountModelTests: XCTestCase {
     @MainActor
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: ItchPocketSchemaV4.self)
+        // Give every container a unique in-memory store identity. This keeps
+        // independent XCTest cases from sharing a SwiftData coordinator.
         let configuration = ModelConfiguration(
-            "itchPocket-v4-account-scope-tests",
+            "itchPocket-v4-account-scope-\(UUID().uuidString)",
             schema: schema,
             isStoredInMemoryOnly: true
         )
@@ -16,7 +18,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
     @MainActor
     func testV4PersistsDistinctAccountsByNumericItchUserID() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         context.insert(DBAccount(itchUserID: 101, username: "same-name"))
         context.insert(DBAccount(itchUserID: 202, username: "same-name"))
         try context.save()
@@ -29,7 +32,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
     @MainActor
     func testProfileRefreshKeepsStableAccountIdentityAndFirstSeenDate() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let firstSeen = Date(timeIntervalSince1970: 1_700_000_000)
         let account = DBAccount(itchUserID: 303, username: "before", firstSeenAt: firstSeen)
         context.insert(account)
@@ -53,7 +57,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
     @MainActor
     func testSameGameCanHaveIndependentLibraryEntriesForTwoAccounts() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let accountA = DBAccount(itchUserID: 1, username: "a")
         let accountB = DBAccount(itchUserID: 2, username: "b")
         context.insert(accountA)
@@ -76,7 +81,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
     @MainActor
     func testCollectionsMembershipAndStatusEventsAreAccountScoped() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let accountA = DBAccount(itchUserID: 11, username: "a")
         let accountB = DBAccount(itchUserID: 22, username: "b")
         context.insert(accountA)
@@ -114,7 +120,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
     @MainActor
     func testLegacyRowsRemainExplicitlyUnassigned() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         context.insert(ItchPocketSchemaV4.DBLibraryEntry(
             accountID: nil, gameID: "legacy-game", status: "playing"
         ))
@@ -138,7 +145,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
 
     @MainActor
     func testSharedGameDirectoryIsNotDuplicatedForTwoAccounts() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         context.insert(DBAccount(itchUserID: 1, username: "account-a"))
         context.insert(DBAccount(itchUserID: 2, username: "account-b"))
         context.insert(DBGame(id: "shared-game", title: "Shared Game"))
