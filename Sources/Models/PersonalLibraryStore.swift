@@ -129,6 +129,7 @@ final class PersonalLibraryStore: ObservableObject {
     private let gameRepository: GameRepository
     private let shouldSimulateLibraryLoadFailure: () -> Bool
     private var didLoadLibrarySnapshots = false
+    private var accountSession: ItchAccountSession?
 
     private enum StagingError: Error {
         case snapshotNotLoaded
@@ -153,6 +154,23 @@ final class PersonalLibraryStore: ObservableObject {
     /// Retries loading after a transient repository read failure.
     func reload() {
         load()
+    }
+
+    /// Binds the authenticated session without reassigning legacy V3 rows to an account.
+    func bindAccountSession(_ session: ItchAccountSession) {
+        accountSession = session
+    }
+
+    /// Captures a session boundary before starting account-sensitive asynchronous work.
+    func captureRequestContext() -> ItchSessionOperationContext? {
+        accountSession?.captureOperationContext()
+    }
+
+    /// An unbound store preserves legacy behavior; once bound, missing or stale contexts fail closed.
+    func isCurrent(_ context: ItchSessionOperationContext?) -> Bool {
+        guard let accountSession else { return context == nil }
+        guard let context else { return false }
+        return accountSession.isCurrent(context)
     }
 
     func contains(_ id: String) -> Bool {
@@ -408,7 +426,11 @@ final class PersonalLibraryStore: ObservableObject {
 
     /// Persists one complete scan in a single database transaction, and only writes
     /// Spark rows whose values actually changed.
-    func updateSparkMetadata(_ metadataByGameID: [String: SparkPlayMetadata]) {
+    func updateSparkMetadata(
+        _ metadataByGameID: [String: SparkPlayMetadata],
+        requestContext: ItchSessionOperationContext? = nil
+    ) {
+        guard isCurrent(requestContext) else { return }
         guard didLoadLibrarySnapshots else { return }
         guard !metadataByGameID.isEmpty else { return }
         var proposedRecords = records

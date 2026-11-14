@@ -10,6 +10,7 @@ enum AppTab: String, Hashable {
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var authService: ItchAuthService
     @StateObject private var personalLibrary = PersonalLibraryStore.shared
     @StateObject private var gameCalendar = GameCalendarStore.shared
     @StateObject private var updateMonitor = GameUpdateMonitorStore.shared
@@ -63,10 +64,14 @@ struct ContentView: View {
         .onChange(of: launchTab) { _, value in
             selectedTab = AppTab(rawValue: value) ?? .discover
         }
+        .onAppear {
+            personalLibrary.bindAccountSession(authService.accountSession)
+        }
         .environmentObject(personalLibrary)
         .environmentObject(gameCalendar)
         .environmentObject(updateMonitor)
         .task {
+            personalLibrary.bindAccountSession(authService.accountSession)
             // Keep cold-launch maintenance away from the first discovery frame.
             // These operations are useful, but none is required to render the
             // cached landing page or make the tab bar interactive.
@@ -101,6 +106,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
+                personalLibrary.bindAccountSession(authService.accountSession)
                 await sparkSync.rescan(library: personalLibrary)
                 await DevlogAutoSync.refreshIfNeeded(
                     monitor: updateMonitor,

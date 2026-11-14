@@ -121,6 +121,7 @@ final class GameUpdateMonitorStore: ObservableObject {
             statusMessage = "更新监控数据尚未成功加载，请先重新加载后再检查。"
             return
         }
+        let libraryRequestContext = libraryStore.captureRequestContext()
         let targets = watches.values.filter(\.isEnabled)
         guard !targets.isEmpty else {
             statusMessage = "还没有开启监控的游戏。"
@@ -144,6 +145,10 @@ final class GameUpdateMonitorStore: ObservableObject {
                 request.timeoutInterval = 25
                 request.setValue("text/html", forHTTPHeaderField: "Accept")
                 let (body, response) = try await URLSession.shared.data(for: request)
+                guard libraryStore.isCurrent(libraryRequestContext) else {
+                    statusMessage = "账号状态已变化，本次检查结果已丢弃。"
+                    return
+                }
                 guard let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) else {
                     failed += 1
                     continue
@@ -207,6 +212,10 @@ final class GameUpdateMonitorStore: ObservableObject {
                 failed += 1
             }
         }
+        guard libraryStore.isCurrent(libraryRequestContext) else {
+            statusMessage = "账号状态已变化，本次检查结果已丢弃。"
+            return
+        }
         do {
             try database.performTransaction {
                 _ = try libraryStore.stageDetectedUpdates(pendingUpdates)
@@ -218,6 +227,7 @@ final class GameUpdateMonitorStore: ObservableObject {
             libraryStore.reload()
             calendarStore.reload()
             for watch in notificationWatches {
+                guard libraryStore.isCurrent(libraryRequestContext) else { break }
                 await sendUpdateNotification(for: watch)
             }
             statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
@@ -234,6 +244,7 @@ final class GameUpdateMonitorStore: ObservableObject {
         }
         isSyncingHistoricalDevlogs = true
         defer { isSyncingHistoricalDevlogs = false }
+        let libraryRequestContext = libraryStore.captureRequestContext()
 
         var imported = 0
         var unchanged = 0
@@ -241,6 +252,9 @@ final class GameUpdateMonitorStore: ObservableObject {
         var results: [DevlogSyncGameResult] = []
 
         for record in records {
+            guard libraryStore.isCurrent(libraryRequestContext) else {
+                return "账号状态已变化，已停止本次历史更新同步。"
+            }
             guard let rawURL = record.gameURL,
                   let gameURL = URL(string: rawURL),
                   let feedURL = Self.devlogFeedURL(for: gameURL) else {
@@ -253,12 +267,18 @@ final class GameUpdateMonitorStore: ObservableObject {
                 request.timeoutInterval = 25
                 request.setValue("application/rss+xml, application/xml, text/xml, */*", forHTTPHeaderField: "Accept")
                 let cookies = await itchWebsiteCookies()
+                guard libraryStore.isCurrent(libraryRequestContext) else {
+                    return "账号状态已变化，已停止本次历史更新同步。"
+                }
                 if !cookies.isEmpty {
                     for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
                         request.setValue(value, forHTTPHeaderField: name)
                     }
                 }
                 let (data, response) = try await URLSession.shared.data(for: request)
+                guard libraryStore.isCurrent(libraryRequestContext) else {
+                    return "账号状态已变化，已停止本次历史更新同步。"
+                }
                 guard let http = response as? HTTPURLResponse else {
                     failed += 1
                     results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "服务器没有返回有效的 HTTP 响应"))
@@ -290,6 +310,9 @@ final class GameUpdateMonitorStore: ObservableObject {
                 }
                 var libraryAdded = 0
                 var calendarAdded = 0
+                guard libraryStore.isCurrent(libraryRequestContext) else {
+                    return "账号状态已变化，已停止本次历史更新同步。"
+                }
                 try database.performTransaction {
                     libraryAdded = try libraryStore.stageHistoricalUpdates(
                         gameID: record.id,
@@ -320,6 +343,9 @@ final class GameUpdateMonitorStore: ObservableObject {
             }
         }
 
+        guard libraryStore.isCurrent(libraryRequestContext) else {
+            return "账号状态已变化，已停止本次历史更新同步。"
+        }
         let message = "同步完成：新增或补齐 \(imported) 条记录，\(unchanged) 款游戏没有公开更新日志，\(failed) 款游戏读取失败。"
         lastHistoricalSyncAt = Date()
         lastHistoricalSyncMessage = message
