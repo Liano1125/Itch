@@ -1086,6 +1086,15 @@ struct GameDetailView: View {
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
         }
+        let completedWhileWaiting = updateMonitor.lastHistoricalSyncAt.map {
+            Date().timeIntervalSince($0) < 12 * 60 * 60
+        } == true && updateMonitor.lastHistoricalSyncResults.contains { result in
+            result.gameID == game.id
+                && !result.message.localizedCaseInsensitiveContains("失败")
+                && !result.message.localizedCaseInsensitiveContains("缺少有效")
+        }
+        guard !completedWhileWaiting else { return }
+
         _ = await updateMonitor.syncHistoricalDevlogs(
             records: [record],
             calendarStore: gameCalendar,
