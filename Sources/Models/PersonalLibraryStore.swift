@@ -118,6 +118,7 @@ final class PersonalLibraryStore: ObservableObject {
     @Published private(set) var records: [LibraryRecord] = []
     @Published private(set) var collections: [PersonalGameCollection] = []
     @Published private(set) var statusEvents: [String: [LibraryStatusEvent]] = [:]
+    @Published private(set) var lastAddError: String?
 
     private let database: AppDatabase
     private let libraryRepository: LibraryRepository
@@ -334,9 +335,15 @@ final class PersonalLibraryStore: ObservableObject {
             // A transient startup read can leave the UI visible while writes are
             // intentionally blocked. Retry the snapshot load once before giving up.
             load()
-            guard didLoadLibrarySnapshots else { return false }
+            guard didLoadLibrarySnapshots else {
+                lastAddError = "游戏库数据尚未加载完成，请稍后重试。"
+                return false
+            }
         }
-        guard !contains(game.id) else { return false }
+        guard !contains(game.id) else {
+            lastAddError = nil
+            return false
+        }
         let now = Date()
         let record = LibraryRecord(
             id: game.id,
@@ -364,6 +371,7 @@ final class PersonalLibraryStore: ObservableObject {
             }
             records.insert(record, at: 0)
             statusEvents[game.id, default: []].append(event)
+            lastAddError = nil
             return true
         } catch {
             print("itchPocket library add transaction failed: \(error)")
