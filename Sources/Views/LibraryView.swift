@@ -18,6 +18,8 @@ struct PublicCollectionGame: Codable, Identifiable {
 
 struct LibraryView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
+    @EnvironmentObject private var gameCalendar: GameCalendarStore
+    @EnvironmentObject private var updateMonitor: GameUpdateMonitorStore
     @State private var sourceGames: [PublicCollectionGame]
     @State private var shouldLoadSource: Bool
     @State private var searchText = ""
@@ -27,6 +29,8 @@ struct LibraryView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
+    @State private var showingAddError = false
+    @State private var addErrorMessage: String?
 
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
@@ -140,6 +144,11 @@ struct LibraryView: View {
                 LibraryNoteEditor(record: record) { library.update($0) }
                     .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
+            .alert("无法加入游戏", isPresented: $showingAddError) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(addErrorMessage ?? "请稍后重试。")
+            }
             .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
@@ -147,7 +156,30 @@ struct LibraryView: View {
 
     private func importSourceGamesAsPlaying() {
         for game in sourceGames where !library.contains(game.id) {
-            library.add(game, status: .playing)
+            _ = library.add(game, status: .playing)
+        }
+    }
+
+    private func addToPlaying(_ game: PublicCollectionGame) {
+        guard library.add(game) else {
+            addErrorMessage = library.lastAddError ?? "这款游戏已经在游戏库中。"
+            showingAddError = true
+            return
+        }
+        guard let record = library.record(for: game.id) else { return }
+
+        // Fetch historical devlogs immediately after the canonical library
+        // transaction; the detail WebView is not a prerequisite for either task.
+        Task { @MainActor in
+            while updateMonitor.isSyncingHistoricalDevlogs {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if Task.isCancelled { return }
+            }
+            _ = await updateMonitor.syncHistoricalDevlogs(
+                records: [record],
+                calendarStore: gameCalendar,
+                libraryStore: library
+            )
         }
     }
 
