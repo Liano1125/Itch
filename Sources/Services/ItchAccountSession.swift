@@ -40,6 +40,14 @@ struct ItchAccountIdentity: Codable, Hashable, Identifiable {
     }
 }
 
+/// Immutable identity + generation captured when account-owned async work begins.
+/// Requiring both values makes call sites explicit about which account owns a result,
+/// while the generation also rejects sign-out/sign-in cycles for the same identity.
+struct ItchAccountRequestContext: Equatable {
+    let accountID: String
+    let generation: UInt64
+}
+
 /// In-memory account generation used to reject late async results after an
 /// account switch. This is deliberately independent of SwiftData so the
 /// migration can be introduced before repositories become account-scoped.
@@ -59,6 +67,20 @@ final class ItchAccountSession {
         self.identity = identity
     }
 
+    /// Captures the currently authenticated account for an async operation.
+    /// Returns nil while signed out so account-owned work cannot start unscoped.
+    func captureRequestContext() -> ItchAccountRequestContext? {
+        guard let identity else { return nil }
+        return ItchAccountRequestContext(accountID: identity.id, generation: generation)
+    }
+
+    /// Validates both account identity and generation before publishing or saving
+    /// an async result. Call this immediately before every account-owned side effect.
+    func isCurrent(_ context: ItchAccountRequestContext) -> Bool {
+        identity?.id == context.accountID && generation == context.generation
+    }
+
+    /// Compatibility API retained while existing call sites migrate to contexts.
     func requestGeneration() -> UInt64 {
         generation
     }
