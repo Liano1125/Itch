@@ -35,6 +35,7 @@ on:
       - feat/account-request-context-guard
       - feat/account-scoped-library-repository
       - feat/personal-library-request-context-guard
+      - feat/v3-v4-migration-preflight-inventory
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
@@ -80,6 +81,7 @@ on:
       - feat/account-request-context-guard
       - feat/account-scoped-library-repository
       - feat/personal-library-request-context-guard
+      - feat/v3-v4-migration-preflight-inventory
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
