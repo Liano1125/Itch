@@ -7,6 +7,7 @@ import Foundation
 private struct GamePagePayload: Decodable {
     /// Confirms page identity only; it does not imply every detail section was parsed.
     let isCompleteSnapshot: Bool?
+    let ageGateRequired: Bool?
     let description: String?
     let descriptionResolved: Bool?
     let developer: String?
@@ -38,12 +39,66 @@ private struct GameDetailPayload {
     let tagsResolved: Bool
     let engine: String?
 
-    var allDetailSectionsResolved: Bool {
-        GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: descriptionResolved,
-            galleryResolved: galleryResolved,
-            tagsResolved: tagsResolved
-        )
+    var requiredDetailResolved: Bool {
+        GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: descriptionResolved)
+    }
+}
+
+enum GameDetailParserProfile: String {
+    case standard
+    case adultRenPy
+    case adult3D
+
+    var descriptionSelectors: [String] {
+        let common = [
+            ".formatted_description", ".game_description", "#game_description",
+            ".game_page_content", ".game_page_text", "#description", ".description",
+            "[itemprop='description']", "[data-game-description]"
+        ]
+        switch self {
+        case .standard:
+            return common
+        case .adultRenPy:
+            return [
+                ".formatted_description", ".game_description", "#game_description",
+                ".game_page_content", ".game_page_text", "#description",
+                "[itemprop='description']", "[data-game-description]",
+                ".formatted_description .paragraph", ".game_description .paragraph"
+            ]
+        case .adult3D:
+            return [
+                ".game_page_content", ".game_page_text", ".formatted_description",
+                ".game_description", "#game_description", "#description",
+                "[itemprop='description']", "[data-game-description]",
+                ".game_page_content .formatted_description",
+                ".game_page_content .game_description"
+            ]
+        }
+    }
+
+    var galleryContainerSelectors: [String] {
+        [
+            ".screenshot_list", ".screenshot_container", ".game_page_screenshots",
+            "#game_screenshots", ".screenshot"
+        ]
+    }
+
+    // Keep the gallery scoped to itch.io's dedicated screenshot/lightbox markup.
+    // Description images are intentionally excluded: creators often place Discord,
+    // Patreon and other social-promo banners in the description body.
+    var galleryImageSelectors: [String] {
+        [
+            "img.screenshot", ".screenshot_list img", ".screenshot_container img",
+            ".screenshot img", "#game_screenshots img", ".game_page_screenshots img"
+        ]
+    }
+
+    var galleryAnchorSelectors: [String] {
+        [
+            ".screenshot_list a", ".screenshot_container a", ".screenshot a",
+            "#game_screenshots a", ".game_page_screenshots a",
+            "a[data-image_lightbox]"
+        ]
     }
 }
 
@@ -51,9 +106,17 @@ private struct GameDetailPayload {
 
 struct GameDetailView: View {
     let game: PublicCollectionGame
+    let parserProfile: GameDetailParserProfile
+
+    init(game: PublicCollectionGame, parserProfile: GameDetailParserProfile = .standard) {
+        self.game = game
+        self.parserProfile = parserProfile
+    }
 
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var library: PersonalLibraryStore
+    @EnvironmentObject private var gameCalendar: GameCalendarStore
+    @EnvironmentObject private var updateMonitor: GameUpdateMonitorStore
 
     private var developerRepository: DeveloperRepository {
         DeveloperRepository(database: .shared)
@@ -97,8 +160,11 @@ struct GameDetailView: View {
     }
 
     private var displayDescription: String? {
-        if hasLoadedCompleteDetailSnapshot { return detail?.description }
-        return detail?.description ?? cachedOriginalDescription ?? game.description
+        GameDetailSnapshotPolicy.displayedDescription(
+            current: detail?.description,
+            cached: cachedOriginalDescription,
+            fallback: game.description
+        )
     }
 
     var body: some View {
@@ -129,6 +195,9 @@ struct GameDetailView: View {
         .background(Color(uiColor: .systemBackground))
         .task(id: game.id) {
             await loadCachedDescription()
+        }
+        .task(id: "devlogs:\(game.id)") {
+            await syncMissingHistoricalDevlogs()
         }
         .task(id: detail == nil ? nil : (detail?.authorURL?.absoluteString ?? game.url?.absoluteString)) {
             guard detail != nil else { return }
@@ -165,13 +234,18 @@ struct GameDetailView: View {
                 .presentationBackground(Color.black)
         }
         .overlay {
-            DetailPageReader(
-                url: game.url,
-                reloadToken: reloadToken,
-                onLoad: handleLoadedDetail,
-                onError: handleLoadError
-            )
-            .frame(width: 1, height: 1)
+            GeometryReader { proxy in
+                DetailPageReader(
+                    url: game.url,
+                    profile: parserProfile,
+                    reloadToken: reloadToken,
+                    onLoad: handleLoadedDetail,
+                    onError: handleLoadError
+                )
+                // A 1x1 hidden WebView changes itch.io's responsive DOM and can
+                // prevent viewport-triggered lazy images from loading.
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
             .opacity(0)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -236,8 +310,12 @@ struct GameDetailView: View {
                     Text("\(images.count) 张")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if detail == nil {
+                } else if isLoading {
                     Text("加载中")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if errorMessage != nil {
+                    Text("读取失败")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -247,7 +325,9 @@ struct GameDetailView: View {
                 LazyHStack(spacing: 12) {
                     if images.isEmpty {
                         galleryPlaceholder(
-                            message: detail == nil ? "正在加载游戏截图" : "暂未获取到游戏截图"
+                            message: isLoading
+                                ? "正在加载游戏截图"
+                                : (errorMessage == nil ? "暂未获取到游戏截图" : "详情读取失败，请重新读取")
                         )
                     } else {
                         ForEach(Array(images.enumerated()), id: \.offset) { index, url in
@@ -278,10 +358,10 @@ struct GameDetailView: View {
             .fill(Color(uiColor: .tertiarySystemFill))
             .overlay {
                 VStack(spacing: 9) {
-                    if detail == nil {
+                    if isLoading {
                         ProgressView()
                     } else {
-                        Image(systemName: "photo.on.rectangle.angled")
+                        Image(systemName: errorMessage == nil ? "photo.on.rectangle.angled" : "exclamationmark.arrow.circlepath")
                             .font(.title2)
                             .foregroundStyle(.secondary)
                     }
@@ -654,9 +734,17 @@ struct GameDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Button("重新同步") {
+                        Task { await syncMissingHistoricalDevlogs(force: true) }
+                    }
+                    .font(.caption.weight(.medium))
+                    .disabled(updateMonitor.isSyncingHistoricalDevlogs)
                 }
                 if updates.isEmpty {
-                    Text("检测到的页面更新会同步显示在这里。")
+                    let syncResult = updateMonitor.lastHistoricalSyncResults.first { $0.gameID == game.id }
+                    Text(updateMonitor.isSyncingHistoricalDevlogs
+                         ? "正在同步 itch.io 更新记录…"
+                         : (syncResult?.message ?? "检测到的页面更新会同步显示在这里。"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -707,6 +795,18 @@ struct GameDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if message.contains("18+"), let url = game.url {
+                NavigationLink {
+                    ItchSearchResultsView(query: game.title, customURL: url.absoluteString)
+                } label: {
+                    Label("在应用内确认 18+ 年龄", systemImage: "checkmark.shield")
+                        .font(.subheadline.weight(.medium))
+                }
+                Text("完成确认后返回此页面，再点击重新读取。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Button("重新读取", action: reloadDetail)
                 .font(.subheadline.weight(.medium))
         }
@@ -740,6 +840,7 @@ struct GameDetailView: View {
     // MARK: Data Handling
 
     private func handleLoadedDetail(_ result: GameDetailPayload) {
+        let persistenceStartedAt = Date()
         let existingRecord = library.record(for: game.id)
         let existingGame = try? gameRepository.game(id: game.id)
         let authorURL = result.authorURL ?? URL(string: existingRecord?.developerProfileURL ?? game.developerProfileURL?.absoluteString ?? "")
@@ -754,23 +855,32 @@ struct GameDetailView: View {
         )
 
         do {
-            try gameRepository.upsertMetadata(
-                id: game.id,
-                title: game.title,
-                gameURL: game.url?.absoluteString,
-                coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
-                engine: result.engine,
-                developerID: developerID
+            // Create/verify the developer row before assigning its foreign key to the game.
+            // If the page gives us neither a usable name nor an existing developer row,
+            // keep the relationship nil instead of persisting a dangling reference.
+            let safeDeveloperID = GameDeveloperReferencePolicy.resolvedID(
+                candidateID: developerID,
+                hasUsableName: developerName != nil,
+                existingDeveloperExists: existingDeveloper != nil
             )
-            if let developerID, let developerName {
+            if let safeDeveloperID, let developerName {
                 try developerRepository.upsertIdentity(
-                    id: developerID,
+                    id: safeDeveloperID,
                     name: developerName,
                     profileURL: authorURL?.absoluteString,
                     patreonURL: result.patreonURL?.absoluteString,
                     discordURL: result.discordURL?.absoluteString
                 )
             }
+
+            try gameRepository.upsertMetadata(
+                id: game.id,
+                title: game.title,
+                gameURL: game.url?.absoluteString,
+                coverURL: result.coverURL?.absoluteString ?? game.coverURL?.absoluteString,
+                engine: result.engine,
+                developerID: safeDeveloperID
+            )
 
             try GameDetailRepository.shared.applyPageSnapshot(
                 GameDetailPageSnapshot(
@@ -787,6 +897,10 @@ struct GameDetailView: View {
             // Render the values that actually survived persistence. An unresolved
             // section therefore continues to display its previously cached value.
             let persisted = try GameDetailRepository.shared.detail(for: game.id)
+            print(String(
+                format: "itchPocket detail.performance persistence=%.3fs",
+                Date().timeIntervalSince(persistenceStartedAt)
+            ))
             let persistedGallery = (persisted?.galleryURLs ?? []).compactMap { URL(string: $0) }
             let resolved = GameDetailPayload(
                 description: persisted?.description,
@@ -850,9 +964,9 @@ struct GameDetailView: View {
             translationStatus = nil
             selectedGalleryIndex = 0
             isLoading = false
-            errorMessage = result.allDetailSectionsResolved
+            errorMessage = result.requiredDetailResolved
                 ? nil
-                : "页面已识别，但部分详情区域未能确认读取；未覆盖对应的本地缓存。"
+                : "页面已识别，但游戏介绍未能确认读取；已保留原有详情资料。"
             Task { await translateContent() }
         } catch {
             // A failed save must never be presented as a successful/complete read.
@@ -862,7 +976,6 @@ struct GameDetailView: View {
     }
 
     private func loadCachedDescription() async {
-        let database = AppDatabase.shared
         if let savedGame = try? gameRepository.game(id: game.id) {
             let developer = savedGame.developerID.flatMap { try? developerRepository.developer(id: $0) }
             let savedDetail = try? GameDetailRepository.shared.detail(for: game.id)
@@ -908,6 +1021,8 @@ struct GameDetailView: View {
         cachedOriginalDescription = cached.sourceText
         translatedDescription = cached.translation
         translationStatus = "已显示本地译文 · 正在检查更新"
+        // Cache is for immediate display only; refresh source and fill missing devlogs.
+        await translateContent()
     }
 
     private func translateContent(forceRefresh: Bool = false) async {
@@ -921,8 +1036,11 @@ struct GameDetailView: View {
 
         translationStatus = forceRefresh ? "正在重新翻译…" : "正在检查本地译文…"
         var usedCache = false
-        do {
-            if let description = displayDescription, !description.isEmpty {
+        var failureCount = 0
+        var completedUpdates = 0
+        let updates = library.updates(for: game.id)
+        if let description = displayDescription, !description.isEmpty {
+            do {
                 let result = try await TranslationService.translateCached(
                     description,
                     scope: "game-description:\(game.id)",
@@ -930,26 +1048,66 @@ struct GameDetailView: View {
                 )
                 translatedDescription = result.text
                 usedCache = result.wasCached
+            } catch {
+                failureCount += 1
             }
-            for update in library.updates(for: game.id) {
-                let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
-                guard !source.isEmpty else { continue }
-                do {
-                    let result = try await TranslationService.translateCached(
-                        source,
-                        scope: "devlog:\(game.id):\(update.id)",
-                        forceRefresh: forceRefresh
-                    )
-                    translatedUpdates[update.id] = result.text
-                    usedCache = usedCache || result.wasCached
-                } catch {
-                    // A failed individual update must not block the rest of the detail page.
-                }
-            }
-            translationStatus = usedCache ? "已使用本地缓存" : "翻译完成 · 已保存"
-        } catch {
-            translationStatus = "翻译失败：\(error.localizedDescription)"
         }
+        for update in updates {
+            let source = [update.title, update.summary].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+            guard !source.isEmpty else { continue }
+            do {
+                let result = try await TranslationService.translateCached(
+                    source,
+                    scope: "devlog:\(game.id):\(update.id)",
+                    forceRefresh: forceRefresh
+                )
+                translatedUpdates[update.id] = result.text
+                usedCache = usedCache || result.wasCached
+                completedUpdates += 1
+            } catch {
+                failureCount += 1
+            }
+        }
+        if failureCount > 0 {
+            translationStatus = "已完成 \(completedUpdates)/\(updates.count) 条更新译文，\(failureCount) 项待重试"
+        } else {
+            translationStatus = usedCache ? "已检查更新 · 已使用本地译文" : "翻译完成 · 已保存"
+        }
+    }
+
+    private func syncMissingHistoricalDevlogs(force: Bool = false) async {
+        guard let record = library.record(for: game.id) else { return }
+
+        // The global six-hour sync may have run before this game was added.
+        // Recheck this game's RSS once when its detail is opened, but avoid
+        // repeating successful/empty results on every navigation.
+        let hasRecentResult = updateMonitor.lastHistoricalSyncAt.map {
+            Date().timeIntervalSince($0) < 12 * 60 * 60
+        } == true && updateMonitor.lastHistoricalSyncResults.contains { result in
+            result.gameID == game.id
+                && !result.message.localizedCaseInsensitiveContains("失败")
+                && !result.message.localizedCaseInsensitiveContains("缺少有效")
+        }
+        if !force { guard !hasRecentResult else { return } }
+
+        while updateMonitor.isSyncingHistoricalDevlogs {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+        }
+        let completedWhileWaiting = updateMonitor.lastHistoricalSyncAt.map {
+            Date().timeIntervalSince($0) < 12 * 60 * 60
+        } == true && updateMonitor.lastHistoricalSyncResults.contains { result in
+            result.gameID == game.id
+                && !result.message.localizedCaseInsensitiveContains("失败")
+                && !result.message.localizedCaseInsensitiveContains("缺少有效")
+        }
+        if !force { guard !completedWhileWaiting else { return } }
+
+        _ = await updateMonitor.syncHistoricalDevlogs(
+            records: [record],
+            calendarStore: gameCalendar,
+            libraryStore: library
+        )
     }
 
     private func handleLoadError(_ message: String) {
@@ -962,7 +1120,7 @@ struct GameDetailView: View {
 
         isLoading = true
         errorMessage = nil
-        detail = nil
+        // Keep the last successful snapshot visible while the new page loads.
         reloadToken = UUID()
     }
 }
@@ -970,13 +1128,13 @@ struct GameDetailView: View {
 // MARK: - Game Page Reader
 
 
-private enum GamePageScript {
+enum GamePageScript {
     static let source = """
         (() => {
             try {
                 const clean = el => {
                     const value = el?.innerText || el?.textContent || "";
-                    return value.replace(/\\s+/g, " ").trim();
+                    return value.replace(/[ \\t]+/g, " ").replace(/\\n{3,}/g, "\\n\\n").trim();
                 };
 
                 const absolute = value => {
@@ -990,44 +1148,82 @@ private enum GamePageScript {
                 const pageURL = new URL(location.href);
                 const isItchHost = pageURL.hostname === "itch.io"
                     || pageURL.hostname.endsWith(".itch.io");
-                const hasGameRoot = Boolean(document.querySelector(".game_page"));
-                const hasGameTitle = Boolean(document.querySelector(
-                    ".game_page_title, .game_page h1, h1.game_title"
-                ));
+                const gameRoot = document.querySelector(
+                    ".game_page, .game_page_wrap, main .game_page"
+                );
+                const titleElement = document.querySelector(
+                    ".game_page_title, .game_page h1, h1.game_title, meta[property='og:title']"
+                );
+                const pageTitle = clean(titleElement)
+                    || (document.title || "").replace(/\\s*[|–-]\\s*itch\\.io\\s*$/i, "").trim();
+                const hasGameRoot = Boolean(gameRoot);
+                const hasGameTitle = pageTitle.length > 0 && pageTitle.toLowerCase() !== "itch.io";
+                const bodyText = document.body?.innerText || "";
+                // Adult game pages can return an age-gate document at the same
+                // one-segment URL as the actual game. Never treat that document
+                // as a successfully parsed game snapshot.
+                const ageGateRequired = !hasGameRoot
+                    && /You must be 18\\+ to view this content|Date of Birth:/i.test(bodyText);
                 const pathParts = pageURL.pathname.split("/").filter(Boolean);
-                // A generic itch.io header or author widget is not enough: require
-                // an itch.io host, a game-page root, a title, and a non-root path.
+                // Adult catalog pages use several description containers depending on
+                // the creator's page template. Keep a broad semantic fallback list.
+                const parserProfile = "__PARSER_PROFILE__";
+                const profileSelectors = {
+                    standard: {
+                        description: __STANDARD_DESCRIPTION_SELECTORS__,
+                        galleryContainers: __STANDARD_GALLERY_CONTAINERS__,
+                        galleryImages: __STANDARD_GALLERY_IMAGES__,
+                        galleryAnchors: __STANDARD_GALLERY_ANCHORS__
+                    },
+                    adultRenPy: {
+                        description: __RENPY_DESCRIPTION_SELECTORS__,
+                        galleryContainers: __RENPY_GALLERY_CONTAINERS__,
+                        galleryImages: __RENPY_GALLERY_IMAGES__,
+                        galleryAnchors: __RENPY_GALLERY_ANCHORS__
+                    },
+                    adult3D: {
+                        description: __ADULT3D_DESCRIPTION_SELECTORS__,
+                        galleryContainers: __ADULT3D_GALLERY_CONTAINERS__,
+                        galleryImages: __ADULT3D_GALLERY_IMAGES__,
+                        galleryAnchors: __ADULT3D_GALLERY_ANCHORS__
+                    }
+                };
+                const selectedProfile = profileSelectors[parserProfile] || profileSelectors.standard;
+                const contentSelector = selectedProfile.description.join(", ");
+                const contentRoots = Array.from(document.querySelectorAll(contentSelector));
+                const hasGameContent = contentRoots.length > 0;
+                // Some valid itch.io layouts omit the historical .game_page wrapper,
+                // but must still contain at least one real game-content marker.
                 const isCompleteSnapshot = isItchHost
-                    && hasGameRoot
+                    && !ageGateRequired
+                    // itch.io supports both creator subdomains and canonical
+                    // multi-segment game URLs; path depth alone is not page identity.
+                    && pathParts.length > 0
                     && hasGameTitle
-                    && pathParts.length > 0;
+                    && (hasGameRoot || hasGameContent);
 
                 let description = null;
                 let descriptionResolved = false;
-                const descriptionSelectors = [
-                    ".formatted_description",
-                    ".game_page_content .formatted_description",
-                    ".game_description",
-                    "#game_description"
-                ];
-
-                for (const selector of descriptionSelectors) {
-                    const element = document.querySelector(selector);
+                // A comma-separated query returns each matching element once,
+                // avoiding the overlapping .game_page_content descendant scan.
+                const descriptionElements = contentRoots
+                    .sort((left, right) => clean(right).length - clean(left).length);
+                for (const element of descriptionElements) {
                     const value = clean(element);
-                    // Keep the resolved flag aligned with the value we actually save.
-                    // Short but valid descriptions must not resolve to nil and erase cache.
-                    if (value.length > 0) {
+                    if (value.length > 0 && (!description || value.length > description.length)) {
                         description = value;
                         descriptionResolved = true;
-                        break;
                     }
                 }
 
                 if (!description) {
-                    const descriptionMeta = document.querySelector('meta[name="description"]');
+                    const descriptionMeta = document.querySelector(
+                        'meta[name="description"], meta[property="og:description"]'
+                    );
                     const metaDescription = (descriptionMeta?.getAttribute("content") || "").trim();
                     if (metaDescription.length > 0) {
-                        descriptionResolved = true;
+                        // Open Graph/meta text is only a short preview, not proof
+                        // that the complete game introduction was extracted.
                         description = metaDescription;
                     }
                 }
@@ -1079,39 +1275,48 @@ private enum GamePageScript {
                 // itch.io screenshot images are linked to their original-size asset.
                 // Read the anchor href first (usually /original/...), then fall back to lazy-loaded img sources.
                 const galleryCandidates = [];
-                const galleryContainer = document.querySelector(
-                    ".screenshot_list, .screenshot_container, .game_page_screenshots, #game_screenshots, .screenshot"
-                );
-                const galleryResolved = Boolean(
-                    galleryContainer && (galleryContainer.querySelector("img, a[href]") || clean(galleryContainer).length > 0)
-                );
+                const galleryContainer = document.querySelector(selectedProfile.galleryContainers.join(", "));
                 const screenshotAnchors = Array.from(document.querySelectorAll(
-                    '.screenshot_list a[data-image_lightbox], .screenshot_container a[data-image_lightbox], .screenshot a[data-image_lightbox], #game_screenshots a, .game_page_screenshots a, a[data-image_lightbox]'
+                    selectedProfile.galleryAnchors.join(", ")
                 ));
                 for (const anchor of screenshotAnchors) {
                     const image = anchor.querySelector("img");
                     const href = absolute(anchor.getAttribute("href"));
                     const imageSource = absolute(
                         image?.getAttribute("data-lazy_src") || image?.getAttribute("data-lazy-src") ||
-                        image?.getAttribute("data-src") || image?.currentSrc || image?.getAttribute("srcset")?.split(/\\s+/)[0] || image?.getAttribute("src")
+                        image?.getAttribute("data-src") || image?.getAttribute("data-original") ||
+                        image?.currentSrc || image?.getAttribute("srcset")?.split(/\\s+/)[0] ||
+                        image?.getAttribute("data-srcset")?.split(/\\s+/)[0] || image?.getAttribute("src")
                     );
                     const candidate = href && /img\\.itch\\.zone|\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(href) ? href : imageSource;
                     if (candidate) galleryCandidates.push(candidate);
                 }
                 const screenshotImages = Array.from(document.querySelectorAll(
-                    'img.screenshot, .screenshot_list img, .screenshot_container img, .screenshot img, #game_screenshots img, .game_page_screenshots img'
+                    selectedProfile.galleryImages.join(", ")
                 ));
                 for (const image of screenshotImages) {
                     const source = absolute(
                         image.getAttribute("data-lazy_src") || image.getAttribute("data-lazy-src") ||
-                        image.getAttribute("data-src") || image.currentSrc || image.getAttribute("srcset")?.split(/\\s+/)[0] || image.getAttribute("src")
+                        image.getAttribute("data-src") || image.getAttribute("data-original") ||
+                        image.currentSrc || image.getAttribute("srcset")?.split(/\\s+/)[0] ||
+                        image.getAttribute("data-srcset")?.split(/\\s+/)[0] || image.getAttribute("src")
                     );
                     if (source) galleryCandidates.push(source);
                 }
                 const galleryURLs = galleryCandidates
-                    .filter(value => /img\\.itch\\.zone|\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(value))
+                    .filter(value => {
+                        try {
+                            const parsed = new URL(value);
+                            return parsed.hostname === "img.itch.zone"
+                                || /\\.(png|jpe?g|webp|gif)$/i.test(parsed.pathname);
+                        } catch (_) {
+                            return false;
+                        }
+                    })
                     .filter((value, index, array) => array.indexOf(value) === index)
                     .slice(0, 30);
+                const galleryResolved = galleryURLs.length > 0
+                    || Boolean(galleryContainer && galleryContainer.querySelector("img, a[href]"));
 
                 const tagsResolved = Boolean(document.querySelector(
                     '.game_tags, .game_page_tags, a.game_tag[href], .game_info_panel_widget a[href*="/games/tag-"]'
@@ -1149,7 +1354,8 @@ private enum GamePageScript {
                     { name: "Adventure Game Studio", key: "adventuregamestudio" },
                     { name: "Visual Novel Maker", key: "visualnovelmaker" }
                 ];
-                const engine = engineRules.find(rule => normalizedEngineText.includes(rule.key))?.name || null;
+                const engine = engineRules.find(rule => normalizedEngineText.includes(rule.key))?.name
+                    || (parserProfile === "adultRenPy" ? "Ren'Py" : null);
 
                 const authorLink = document.querySelector(".game_author a[href], .header_links .user_link[href], a.user_link[href]");
                 const authorURL = authorLink ? absolute(authorLink.getAttribute("href")) : null;
@@ -1166,10 +1372,19 @@ private enum GamePageScript {
 
                 const links = Array.from(document.querySelectorAll("a[href]")).map(a => absolute(a.getAttribute("href"))).filter(Boolean);
                 const patreonURL = links.find(value => /(^|\\.)patreon\\.com$/i.test(new URL(value).hostname)) || null;
-                const discordURL = links.find(value => /(^|\\.)discord\\.(gg|com)$/i.test(new URL(value).hostname) || /discord\\.com\\/invite\\//i.test(value)) || null;
+                const discordURL = links.find(value => {
+                    try {
+                        const parsed = new URL(value);
+                        return parsed.hostname === "discord.gg"
+                            || parsed.hostname === "discord.com" && parsed.pathname.startsWith("/invite/");
+                    } catch (_) {
+                        return false;
+                    }
+                }) || null;
 
                 return JSON.stringify({
                     isCompleteSnapshot,
+                    ageGateRequired,
                     description,
                     descriptionResolved,
                     developer,
@@ -1206,6 +1421,33 @@ private enum GamePageScript {
             }
         })();
         """
+
+    static func source(for profile: GameDetailParserProfile) -> String {
+        let replacements: [(String, String)] = [
+            ("__PARSER_PROFILE__", profile.rawValue),
+            ("__STANDARD_DESCRIPTION_SELECTORS__", Self.json(GameDetailParserProfile.standard.descriptionSelectors)),
+            ("__STANDARD_GALLERY_CONTAINERS__", Self.json(GameDetailParserProfile.standard.galleryContainerSelectors)),
+            ("__STANDARD_GALLERY_IMAGES__", Self.json(GameDetailParserProfile.standard.galleryImageSelectors)),
+            ("__STANDARD_GALLERY_ANCHORS__", Self.json(GameDetailParserProfile.standard.galleryAnchorSelectors)),
+            ("__RENPY_DESCRIPTION_SELECTORS__", Self.json(GameDetailParserProfile.adultRenPy.descriptionSelectors)),
+            ("__RENPY_GALLERY_CONTAINERS__", Self.json(GameDetailParserProfile.adultRenPy.galleryContainerSelectors)),
+            ("__RENPY_GALLERY_IMAGES__", Self.json(GameDetailParserProfile.adultRenPy.galleryImageSelectors)),
+            ("__RENPY_GALLERY_ANCHORS__", Self.json(GameDetailParserProfile.adultRenPy.galleryAnchorSelectors)),
+            ("__ADULT3D_DESCRIPTION_SELECTORS__", Self.json(GameDetailParserProfile.adult3D.descriptionSelectors)),
+            ("__ADULT3D_GALLERY_CONTAINERS__", Self.json(GameDetailParserProfile.adult3D.galleryContainerSelectors)),
+            ("__ADULT3D_GALLERY_IMAGES__", Self.json(GameDetailParserProfile.adult3D.galleryImageSelectors)),
+            ("__ADULT3D_GALLERY_ANCHORS__", Self.json(GameDetailParserProfile.adult3D.galleryAnchorSelectors))
+        ]
+        return replacements.reduce(source) { result, replacement in
+            result.replacingOccurrences(of: replacement.0, with: replacement.1)
+        }
+    }
+
+    private static func json(_ values: [String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: values),
+              let value = String(data: data, encoding: .utf8) else { return "[]" }
+        return value
+    }
 }
 
 /// Preloads missing/stale itch.io detail pages in a bounded sequential WebKit queue.
@@ -1315,30 +1557,34 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
         let authorURL = payload.authorURL ?? URL(string: record.developerProfileURL ?? "")
         let developerID = authorURL.map { DeveloperRepository.canonicalID(for: $0.absoluteString) }
         do {
+            let existingDeveloper = try developerID.flatMap { try developerRepository.developer(id: $0) }
+            let developerName = GameDetailRepository.resolvedDeveloperName(
+                incoming: payload.developer,
+                existing: existingDeveloper?.name,
+                library: record.developer
+            )
+            let safeDeveloperID = GameDeveloperReferencePolicy.resolvedID(
+                candidateID: developerID,
+                hasUsableName: developerName != nil,
+                existingDeveloperExists: existingDeveloper != nil
+            )
+            if let safeDeveloperID, let developerName {
+                try developerRepository.upsertIdentity(
+                    id: safeDeveloperID,
+                    name: developerName,
+                    profileURL: authorURL?.absoluteString,
+                    patreonURL: payload.patreonURL?.absoluteString,
+                    discordURL: payload.discordURL?.absoluteString
+                )
+            }
             try gameRepository.upsertMetadata(
                 id: record.id,
                 title: record.title,
                 gameURL: record.gameURL,
                 coverURL: payload.coverURL?.absoluteString ?? record.coverURL,
                 engine: payload.engine,
-                developerID: developerID
+                developerID: safeDeveloperID
             )
-            if let developerID {
-                let existingName = try developerRepository.developer(id: developerID)?.name
-                if let developerName = GameDetailRepository.resolvedDeveloperName(
-                    incoming: payload.developer,
-                    existing: existingName,
-                    library: record.developer
-                ) {
-                    try developerRepository.upsertIdentity(
-                        id: developerID,
-                        name: developerName,
-                        profileURL: authorURL?.absoluteString,
-                        patreonURL: payload.patreonURL?.absoluteString,
-                        discordURL: payload.discordURL?.absoluteString
-                    )
-                }
-            }
             try GameDetailRepository.shared.applyPageSnapshot(
                 GameDetailPageSnapshot(
                     description: payload.description,
@@ -1385,6 +1631,7 @@ final class GameDetailPrefetchService: NSObject, WKNavigationDelegate {
 
 private struct DetailPageReader: UIViewRepresentable {
     let url: URL?
+    let profile: GameDetailParserProfile
     let reloadToken: UUID
     let onLoad: (GameDetailPayload) -> Void
     let onError: (String) -> Void
@@ -1416,6 +1663,7 @@ private struct DetailPageReader: UIViewRepresentable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 40
         request.cachePolicy = .useProtocolCachePolicy
+        context.coordinator.markNavigationStarted()
         webView.load(request)
 
         return webView
@@ -1441,7 +1689,8 @@ private struct DetailPageReader: UIViewRepresentable {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 40
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.cachePolicy = .useProtocolCachePolicy
+        context.coordinator.markNavigationStarted()
         webView.load(request)
     }
 
@@ -1449,9 +1698,14 @@ private struct DetailPageReader: UIViewRepresentable {
         var parent: DetailPageReader
         var currentToken: UUID?
         var finished = false
+        private var navigationStartedAt: Date?
 
         init(parent: DetailPageReader) {
             self.parent = parent
+        }
+
+        func markNavigationStarted() {
+            navigationStartedAt = Date()
         }
 
         func webView(
@@ -1459,9 +1713,12 @@ private struct DetailPageReader: UIViewRepresentable {
             didFinish navigation: WKNavigation!
         ) {
             finished = false
+            let extractionStartedAt = Date()
+            let navigationDuration = navigationStartedAt.map { extractionStartedAt.timeIntervalSince($0) } ?? 0
 
-            webView.evaluateJavaScript(GamePageScript.source) { result, error in
+            webView.evaluateJavaScript(GamePageScript.source(for: self.parent.profile)) { result, error in
                 guard !self.finished else { return }
+                let scriptDuration = Date().timeIntervalSince(extractionStartedAt)
 
                 if let error {
                     self.fail(
@@ -1470,6 +1727,7 @@ private struct DetailPageReader: UIViewRepresentable {
                     return
                 }
 
+                let decodingStartedAt = Date()
                 guard let json = result as? String,
                       let data = json.data(using: .utf8),
                       let payload = try? JSONDecoder().decode(
@@ -1479,9 +1737,15 @@ private struct DetailPageReader: UIViewRepresentable {
                     self.fail("游戏主页返回的数据无法解析。请重新读取。")
                     return
                 }
+                let decodingDuration = Date().timeIntervalSince(decodingStartedAt)
 
                 if let scriptError = payload.scriptError {
                     self.fail("游戏主页 JavaScript 错误：\(scriptError)")
+                    return
+                }
+
+                if payload.ageGateRequired == true {
+                    self.fail("itch.io 要求先完成 18+ 年龄确认。请打开下方的 itch.io 页面，在应用内确认年龄后返回，再点“重新读取”。")
                     return
                 }
 
@@ -1490,13 +1754,24 @@ private struct DetailPageReader: UIViewRepresentable {
                     return
                 }
 
+                let filteringStartedAt = Date()
+                let cleanedDescription = GameDescriptionContentPolicy.cleaned(payload.description)
+                let filteringDuration = Date().timeIntervalSince(filteringStartedAt)
+                print(String(
+                    format: "itchPocket detail.performance navigation=%.3fs javascript=%.3fs decode=%.3fs filtering=%.3fs",
+                    navigationDuration,
+                    scriptDuration,
+                    decodingDuration,
+                    filteringDuration
+                ))
+
                 self.finished = true
 
                 DispatchQueue.main.async {
                     self.parent.onLoad(
                         GameDetailPayload(
-                            description: payload.description,
-                            descriptionResolved: payload.descriptionResolved == true,
+                            description: cleanedDescription,
+                            descriptionResolved: payload.descriptionResolved == true && cleanedDescription != nil,
                             developer: payload.developer,
                             coverURL: payload.coverURL,
                             galleryURLs: payload.galleryURLs ?? [],

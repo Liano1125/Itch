@@ -18,6 +18,8 @@ struct PublicCollectionGame: Codable, Identifiable {
 
 struct LibraryView: View {
     @EnvironmentObject private var library: PersonalLibraryStore
+    @EnvironmentObject private var gameCalendar: GameCalendarStore
+    @EnvironmentObject private var updateMonitor: GameUpdateMonitorStore
     @State private var sourceGames: [PublicCollectionGame]
     @State private var shouldLoadSource: Bool
     @State private var searchText = ""
@@ -27,6 +29,8 @@ struct LibraryView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
+    @State private var showingAddError = false
+    @State private var addErrorMessage: String?
 
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
@@ -140,14 +144,50 @@ struct LibraryView: View {
                 LibraryNoteEditor(record: record) { library.update($0) }
                     .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
+            .alert("无法加入游戏", isPresented: $showingAddError) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(addErrorMessage ?? "请稍后重试。")
+            }
             .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
 
     private func importSourceGamesAsPlaying() {
+        var addedRecords: [LibraryRecord] = []
         for game in sourceGames where !library.contains(game.id) {
-            library.add(game, status: .playing)
+            guard library.add(game, status: .playing),
+                  let record = library.record(for: game.id) else { continue }
+            addedRecords.append(record)
+        }
+        syncHistoricalDevlogs(for: addedRecords)
+    }
+
+    private func addToPlaying(_ game: PublicCollectionGame) {
+        guard library.add(game) else {
+            addErrorMessage = library.lastAddError ?? "这款游戏已经在游戏库中。"
+            showingAddError = true
+            return
+        }
+        guard let record = library.record(for: game.id) else { return }
+        syncHistoricalDevlogs(for: [record])
+    }
+
+    private func syncHistoricalDevlogs(for records: [LibraryRecord]) {
+        guard !records.isEmpty else { return }
+        // Queue behind an in-flight sync so two newly added games are both
+        // checked instead of silently dropping the second request.
+        Task { @MainActor in
+            while updateMonitor.isSyncingHistoricalDevlogs {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if Task.isCancelled { return }
+            }
+            _ = await updateMonitor.syncHistoricalDevlogs(
+                records: records,
+                calendarStore: gameCalendar,
+                libraryStore: library
+            )
         }
     }
 
@@ -251,7 +291,7 @@ struct LibraryView: View {
                         }
                         .buttonStyle(.plain)
                         Button {
-                            library.add(game)
+                            addToPlaying(game)
                         } label: {
                             Label(library.contains(game.id) ? "在玩" : "加入在玩", systemImage: library.contains(game.id) ? "gamecontroller" : "plus")
                                 .font(.caption.weight(.semibold))
@@ -526,8 +566,12 @@ private struct LibraryGameActions: View {
     let game: PublicCollectionGame
 
     @EnvironmentObject private var library: PersonalLibraryStore
+    @EnvironmentObject private var gameCalendar: GameCalendarStore
+    @EnvironmentObject private var updateMonitor: GameUpdateMonitorStore
     @State private var showingNotesEditor = false
     @State private var notesDraft = ""
+    @State private var showingAddError = false
+    @State private var addErrorMessage: String?
 
     private var record: LibraryRecord? {
         library.record(for: game.id)
@@ -611,7 +655,23 @@ private struct LibraryGameActions: View {
                 }
             } else {
                 Button {
-                    library.add(game)
+                    guard library.add(game) else {
+                        addErrorMessage = library.lastAddError ?? "无法加入这款游戏，请稍后重试。"
+                        showingAddError = true
+                        return
+                    }
+                    guard let addedRecord = library.record(for: game.id) else { return }
+                    Task { @MainActor in
+                        while updateMonitor.isSyncingHistoricalDevlogs {
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                            if Task.isCancelled { return }
+                        }
+                        _ = await updateMonitor.syncHistoricalDevlogs(
+                            records: [addedRecord],
+                            calendarStore: gameCalendar,
+                            libraryStore: library
+                        )
+                    }
                 } label: {
                     Label("加入在玩", systemImage: "plus")
                         .font(.subheadline.weight(.semibold))
@@ -653,6 +713,11 @@ private struct LibraryGameActions: View {
                 }
                 .presentationBackground(Color(uiColor: .systemGroupedBackground))
             }
+        }
+        .alert("无法加入游戏", isPresented: $showingAddError) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(addErrorMessage ?? "请稍后重试。")
         }
     }
 }

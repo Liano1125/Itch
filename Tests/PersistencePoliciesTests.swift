@@ -3,6 +3,67 @@ import SwiftData
 @testable import itchPocket
 
 final class PersistencePoliciesTests: XCTestCase {
+    func testDiscoverySnapshotCanServeStaleDataUntilHardRetentionLimit() {
+        let savedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(DiscoverySnapshotPolicy.isUsable(
+            savedAt: savedAt,
+            now: savedAt.addingTimeInterval(13 * 60 * 60),
+            maximumAge: 30 * 24 * 60 * 60
+        ))
+        XCTAssertFalse(DiscoverySnapshotPolicy.isUsable(
+            savedAt: savedAt,
+            now: savedAt.addingTimeInterval(31 * 24 * 60 * 60),
+            maximumAge: 30 * 24 * 60 * 60
+        ))
+        XCTAssertFalse(DiscoverySnapshotPolicy.isUsable(
+            savedAt: savedAt,
+            now: savedAt.addingTimeInterval(-1),
+            maximumAge: 30 * 24 * 60 * 60
+        ))
+    }
+
+    func testDiscoverySnapshotRefreshThresholdDoesNotControlStaleDisplay() {
+        let savedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let now = savedAt.addingTimeInterval(13 * 60 * 60)
+        XCTAssertTrue(DiscoverySnapshotPolicy.needsRefresh(
+            savedAt: savedAt,
+            now: now,
+            refreshAfter: 12 * 60 * 60
+        ))
+        XCTAssertFalse(DiscoverySnapshotPolicy.needsRefresh(
+            savedAt: savedAt,
+            now: now,
+            refreshAfter: 24 * 60 * 60
+        ))
+    }
+
+    func testDisplayedDescriptionPrefersFreshValueThenCachedThenFallback() {
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.displayedDescription(
+                current: "fresh description",
+                cached: "cached description",
+                fallback: "game model description"
+            ),
+            "fresh description"
+        )
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.displayedDescription(
+                current: nil,
+                cached: "cached description",
+                fallback: "game model description"
+            ),
+            "cached description"
+        )
+        XCTAssertEqual(
+            GameDetailSnapshotPolicy.displayedDescription(
+                current: nil,
+                cached: nil,
+                fallback: "game model description"
+            ),
+            "game model description"
+        )
+    }
+
     func testPartialGameDetailUpdatePreservesFieldsThatWereNotProvided() {
         XCTAssertEqual(
             GameDetailPersistencePolicy.resolvedValue(existing: "saved description", incoming: nil, mode: .partial),
@@ -29,6 +90,205 @@ final class PersistencePoliciesTests: XCTestCase {
             GameDetailPersistencePolicy.resolvedValue(existing: ["old.jpg"], incoming: [], mode: .complete),
             []
         )
+    }
+
+    func testGameDescriptionKeepsWelcomeAndPlotButRemovesAuxiliarySections() {
+        let source = """
+        PATREON | SUBSCRIBESTAR
+        ____________________________________
+
+        Welcome!
+        I'm creating Eternum, a choice-based visual novel.
+
+        Plot
+        You move to Kredon and discover Eternum.
+        The game has a darker side.
+
+        About me
+        The game has 11,000 renders.
+        Check out my Patreon.
+
+        Android installation
+        Read this installation guide.
+
+        About translations
+        Translations are fan-made.
+
+        Featured mods
+        Bonus features mod.
+
+        Comments section
+        Comments are temporarily disabled.
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("Welcome!"))
+        XCTAssertTrue(result.contains("Plot"))
+        XCTAssertTrue(result.contains("You move to Kredon"))
+        XCTAssertFalse(result.contains("PATREON | SUBSCRIBESTAR"))
+        XCTAssertFalse(result.contains("About me"))
+        XCTAssertFalse(result.contains("11,000 renders"))
+        XCTAssertFalse(result.contains("Android installation"))
+        XCTAssertFalse(result.contains("fan-made"))
+        XCTAssertFalse(result.contains("Featured mods"))
+        XCTAssertFalse(result.contains("Comments section"))
+    }
+
+    func testLensLustDescriptionKeepsOverviewAndRemovesChangelogAndPromotions() {
+        let source = """
+        Overview:
+        After a humiliating first relationship in college, you escape the shame by enlisting in the military for two years.
+
+        Now discharged and searching for a fresh start, you move into a quiet apartment with rooftop access.
+
+        With the Lens Lust system, you can discover hidden desires, accept quests, and earn points to improve your abilities.
+
+        Play as Lucian and step into the world of Lens Lust.
+
+        Join Dreamveil on Patreon for early access and exclusive content.
+
+        Changelog [0.1]:
+        Prologue (~15 minutes of gameplay)
+        170+ renders
+        2,500+ words of dialog
+
+        By supporting Lens Lust on Patreon, you help secure the future of the project.
+
+        Not Planned Content:
+        Futa/Trans, Femdom, NTR
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("Overview:"))
+        XCTAssertTrue(result.contains("After a humiliating first relationship"))
+        XCTAssertTrue(result.contains("hidden desires"))
+        XCTAssertTrue(result.contains("Play as Lucian"))
+        XCTAssertFalse(result.contains("Changelog"))
+        XCTAssertFalse(result.contains("170+ renders"))
+        XCTAssertFalse(result.contains("supporting Lens Lust on Patreon"))
+        XCTAssertFalse(result.contains("Not Planned Content"))
+        XCTAssertFalse(result.contains("Femdom"))
+    }
+
+    func testTheChronosDescriptionKeepsStoryAndRemovesVersionAndCommunitySections() {
+        let source = """
+        Overview
+        You died once. Now a cursed goddess lives inside you.
+
+        Synopsis
+        After his arrival at Luminar Academy, Chronos begins a new life as a student.
+        A community mission sends him to investigate the disappearance of several children.
+
+        Gameplay
+        Explore a fantasy world, meet characters, and make choices that shape the journey.
+
+        Join my Discord server for announcements.
+
+        Changelog v0.1.8:
+        Redesigned interfaces
+        Five new languages
+        Better gallery
+
+        What's Next:
+        Version 0.2 is in development.
+
+        Join our Discord for announcements.
+        Downloads
+        TheChronos 0.1.8 PC
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("You died once"))
+        XCTAssertTrue(result.contains("Chronos begins a new life"))
+        XCTAssertTrue(result.contains("Explore a fantasy world"))
+        XCTAssertFalse(result.contains("Changelog"))
+        XCTAssertFalse(result.contains("Five new languages"))
+        XCTAssertFalse(result.contains("What's Next"))
+        XCTAssertFalse(result.contains("Join our Discord"))
+        XCTAssertFalse(result.contains("TheChronos 0.1.8 PC"))
+    }
+
+    func testAdultParserProfilesGenerateScopedSelectorsWithoutBroadArticleFallback() {
+        let renpyScript = GamePageScript.source(for: .adultRenPy)
+        let adult3DScript = GamePageScript.source(for: .adult3D)
+        let standardScript = GamePageScript.source(for: .standard)
+
+        for script in [renpyScript, adult3DScript, standardScript] {
+            XCTAssertFalse(script.contains("__PARSER_PROFILE__"))
+            XCTAssertFalse(script.contains("__ADULT3D_DESCRIPTION_SELECTORS__"))
+            XCTAssertTrue(script.contains("galleryImages"))
+            XCTAssertTrue(script.contains("data-game-description"))
+        }
+
+        XCTAssertTrue(renpyScript.contains("parserProfile = \"adultRenPy\""))
+        XCTAssertTrue(adult3DScript.contains("parserProfile = \"adult3D\""))
+        XCTAssertFalse(adult3DScript.contains("main article"))
+        XCTAssertTrue(renpyScript.contains("Ren'Py"))
+        XCTAssertNotEqual(
+            GameDetailParserProfile.adultRenPy.descriptionSelectors,
+            GameDetailParserProfile.adult3D.descriptionSelectors
+        )
+        XCTAssertTrue(GameDetailParserProfile.adultRenPy.descriptionSelectors.contains(".formatted_description .paragraph"))
+        XCTAssertTrue(GameDetailParserProfile.adult3D.descriptionSelectors.contains(".game_page_content .formatted_description"))
+    }
+
+    func testGallerySelectorsExcludeGeneralDescriptionAndSocialPromoImages() {
+        for profile in [GameDetailParserProfile.standard, .adultRenPy, .adult3D] {
+            XCTAssertTrue(profile.galleryImageSelectors.allSatisfy { selector in
+                selector.contains("screenshot") || selector.contains("game_screenshots")
+            })
+            XCTAssertFalse(profile.galleryImageSelectors.contains { selector in
+                profile.descriptionSelectors.contains { selector == "\($0) img" }
+            })
+            XCTAssertTrue(profile.galleryAnchorSelectors.allSatisfy { selector in
+                selector.contains("screenshot") || selector == "a[data-image_lightbox]"
+            })
+            XCTAssertFalse(profile.galleryAnchorSelectors.contains("a[href*='img.itch.zone']"))
+            XCTAssertFalse(profile.galleryAnchorSelectors.contains("a[href*='/original/']"))
+            XCTAssertFalse(profile.galleryAnchorSelectors.contains { selector in
+                profile.descriptionSelectors.contains { selector == "\($0) a" }
+            })
+        }
+    }
+
+    func testAdultGameDescriptionKeepsInterleavedStoryParagraphsAndImageCaptions() {
+        let source = """
+        Synopsis
+        Sarah moves into a new house and begins exploring its rooms.
+
+        Image 01 — The entrance hall
+
+        Gameplay
+        Explore the house, meet its residents, and make choices that affect the story.
+
+        Features
+        Multiple routes and interactive environments.
+        """
+        let result = GameDescriptionContentPolicy.cleaned(source) ?? ""
+
+        XCTAssertTrue(result.contains("Sarah moves into a new house"))
+        XCTAssertTrue(result.contains("Image 01 — The entrance hall"))
+        XCTAssertTrue(result.contains("Explore the house"))
+        XCTAssertTrue(result.contains("Multiple routes"))
+    }
+
+    func testDescriptionContainingOnlyExcludedSectionsDoesNotRestorePageNoise() {
+        let source = """
+        Changelog
+        Version 1.0
+
+        Downloads
+        Download now
+
+        Patreon
+        Support the creator for early access.
+        """
+        XCTAssertNil(GameDescriptionContentPolicy.cleaned(source))
+    }
+
+    func testGameDescriptionPolicyPreservesUnrecognizedGameContent() {
+        let source = "Welcome!\n\nCombat and exploration are important mechanics."
+        XCTAssertEqual(GameDescriptionContentPolicy.cleaned(source), source)
     }
 
     func testUnresolvedDescriptionPreservesCachedValue() {
@@ -74,22 +334,12 @@ final class PersistencePoliciesTests: XCTestCase {
         )
     }
 
-    func testPageIsNotCompleteUntilEveryDetailSectionWasResolved() {
-        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: true,
-            galleryResolved: false,
-            tagsResolved: true
-        ))
-        XCTAssertFalse(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: false,
-            galleryResolved: true,
-            tagsResolved: true
-        ))
-        XCTAssertTrue(GameDetailSnapshotPolicy.shouldMarkComplete(
-            descriptionResolved: true,
-            galleryResolved: true,
-            tagsResolved: true
-        ))
+    func testOptionalGalleryAndTagsDoNotPreventAResolvedPageFromBeingComplete() {
+        XCTAssertTrue(GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: true))
+    }
+
+    func testPageRemainsPartialWhenRequiredDescriptionWasNotResolved() {
+        XCTAssertFalse(GameDetailSnapshotPolicy.hasRequiredDescription(descriptionResolved: false))
     }
 
     func testDeveloperNameResolutionPreservesExistingNameWhenPageOmitsIt() {
@@ -122,6 +372,39 @@ final class PersistencePoliciesTests: XCTestCase {
                 library: nil
             ),
             "New developer"
+        )
+    }
+
+    func testDeveloperReferenceRequiresEitherAUsableNameOrAnExistingRow() {
+        XCTAssertNil(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "https://example.itch.io/",
+                hasUsableName: false,
+                existingDeveloperExists: false
+            )
+        )
+        XCTAssertEqual(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "https://example.itch.io/",
+                hasUsableName: true,
+                existingDeveloperExists: false
+            ),
+            "https://example.itch.io/"
+        )
+        XCTAssertEqual(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "https://example.itch.io/",
+                hasUsableName: false,
+                existingDeveloperExists: true
+            ),
+            "https://example.itch.io/"
+        )
+        XCTAssertNil(
+            GameDeveloperReferencePolicy.resolvedID(
+                candidateID: "  ",
+                hasUsableName: true,
+                existingDeveloperExists: true
+            )
         )
     }
 
@@ -261,6 +544,40 @@ final class GameDetailRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testResolvedDescriptionMarksPageCompleteWhenOptionalSectionsAreAbsent() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBGame(id: "test-game", title: "Test Game"))
+        database.context.insert(DBGameDetail(
+            gameID: "test-game",
+            descriptionText: "Old description",
+            galleryURLs: ["https://example.com/old.jpg"]
+        ))
+        try database.save()
+
+        let repository = GameDetailRepository(database: database)
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let status = try repository.applyPageSnapshot(
+            GameDetailPageSnapshot(
+                description: "Fresh description",
+                descriptionResolved: true,
+                galleryURLs: [],
+                galleryResolved: false,
+                discoveryTags: [],
+                tagsResolved: false
+            ),
+            for: "test-game",
+            fetchedAt: fetchedAt
+        )
+
+        let stored = try XCTUnwrap(repository.detail(for: "test-game"))
+        XCTAssertEqual(status, .complete)
+        XCTAssertEqual(stored.fetchStatus, .complete)
+        XCTAssertEqual(stored.description, "Fresh description")
+        XCTAssertEqual(stored.galleryURLs, ["https://example.com/old.jpg"])
+        XCTAssertEqual(stored.fetchedAt, fetchedAt)
+    }
+
+    @MainActor
     func testFailedSnapshotSaveRestoresOnlyDetailChangesAndPreservesUnrelatedPendingChanges() throws {
         let database = try AppDatabase(inMemory: true)
         let game = DBGame(id: "test-game", title: "Test Game")
@@ -381,4 +698,42 @@ final class PersonalLibraryStoreReloadTests: XCTestCase {
         store.reload()
         XCTAssertEqual(Set(store.records.map(\.id)), Set(["game-1", "game-2"]))
     }
+    func testDevlogRSSParserReadsRSSAndAtomPostLinksAndDates() throws {
+        let rss = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><item>
+          <title>Version 0.1.8</title>
+          <link>https://creator.itch.io/game/devlog/123</link>
+          <guid>post-123</guid>
+          <pubDate>Fri, 02 Oct 2026 04:17:00 +0000</pubDate>
+          <description><![CDATA[<p>New chapter &amp; fixes</p>]]></description>
+        </item></channel></rss>
+        """
+        let rssPosts = try DevlogRSSParser.parse(data: Data(rss.utf8))
+        XCTAssertEqual(rssPosts.count, 1)
+        XCTAssertEqual(rssPosts.first?.title, "Version 0.1.8")
+        XCTAssertEqual(rssPosts.first?.url, "https://creator.itch.io/game/devlog/123")
+        XCTAssertEqual(rssPosts.first?.guid, "post-123")
+        XCTAssertEqual(rssPosts.first?.summary, "New chapter & fixes")
+        XCTAssertNotNil(rssPosts.first?.publishedAt)
+
+        let atom = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+          <title>Lens Lust 0.2</title>
+          <link href="https://dreamveil.itch.io/lenslust/devlog/456" rel="alternate" />
+          <id>post-456</id>
+          <published>2026-10-02T04:17:00Z</published>
+          <summary>New scenes and improvements</summary>
+        </entry></feed>
+        """
+        let atomPosts = try DevlogRSSParser.parse(data: Data(atom.utf8))
+        XCTAssertEqual(atomPosts.count, 1)
+        XCTAssertEqual(atomPosts.first?.url, "https://dreamveil.itch.io/lenslust/devlog/456")
+        XCTAssertEqual(atomPosts.first?.guid, "post-456")
+        XCTAssertEqual(atomPosts.first?.summary, "New scenes and improvements")
+        XCTAssertNotNil(atomPosts.first?.publishedAt)
+    }
+
+
 }

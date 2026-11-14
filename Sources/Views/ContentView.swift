@@ -67,8 +67,20 @@ struct ContentView: View {
         .environmentObject(gameCalendar)
         .environmentObject(updateMonitor)
         .task {
-            try? await AppCacheManager.pruneExpiredCaches()
+            // Keep cold-launch maintenance away from the first discovery frame.
+            // These operations are useful, but none is required to render the
+            // cached landing page or make the tab bar interactive.
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+
             await sparkSync.rescan(library: personalLibrary)
+            guard !Task.isCancelled else { return }
+
+            // Cache pruning touches persistence and the filesystem; run it only
+            // after the initial screen has had time to settle.
+            try? await AppCacheManager.pruneExpiredCaches()
+            guard !Task.isCancelled else { return }
+
             DevlogAutoSync.scheduleNext()
             // Respect the six-hour throttle on cold launch as well as foregrounding.
             await DevlogAutoSync.refreshIfNeeded(
@@ -76,12 +88,14 @@ struct ContentView: View {
                 library: personalLibrary,
                 calendar: gameCalendar
             )
+            guard !Task.isCancelled else { return }
+
+            // Calendar translation prefetch is lowest priority and deliberately
+            // starts later so it cannot compete with the first discovery scroll.
             Task(priority: .utility) {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { return }
                 await DevlogAutoSync.prefetchCalendarTranslations(events: gameCalendar.events)
-                await GameDetailPrefetchService.shared.prefetch(
-                    records: personalLibrary.records,
-                    library: personalLibrary
-                )
             }
         }
         .onChange(of: scenePhase) { _, phase in

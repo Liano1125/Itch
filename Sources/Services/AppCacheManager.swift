@@ -35,6 +35,7 @@ enum AppCacheManager {
             try DeveloperRepository(database: database).invalidateAvatarCaches(save: false)
         }
 
+        DiscoveryFeedSnapshotCache.clear()
         await PersistentImageCache.shared.clear()
         URLCache.shared.removeAllCachedResponses()
     }

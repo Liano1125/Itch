@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UserNotifications
 import CryptoKit
+import WebKit
 
 struct DetectedGameUpdate {
     let gameID: String
@@ -251,6 +252,12 @@ final class GameUpdateMonitorStore: ObservableObject {
                 var request = URLRequest(url: feedURL)
                 request.timeoutInterval = 25
                 request.setValue("application/rss+xml, application/xml, text/xml, */*", forHTTPHeaderField: "Accept")
+                let cookies = await itchWebsiteCookies()
+                if !cookies.isEmpty {
+                    for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
+                        request.setValue(value, forHTTPHeaderField: name)
+                    }
+                }
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     failed += 1
@@ -260,6 +267,12 @@ final class GameUpdateMonitorStore: ObservableObject {
                 guard (200..<300).contains(http.statusCode) else {
                     failed += 1
                     results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "RSS 请求失败，HTTP \(http.statusCode)"))
+                    continue
+                }
+                if let body = String(data: data, encoding: .utf8),
+                   body.range(of: "You must be 18+ to view this content|Date of Birth:", options: [.regularExpression, .caseInsensitive]) != nil {
+                    failed += 1
+                    results.append(DevlogSyncGameResult(gameID: record.id, gameTitle: record.title, importedCount: 0, message: "更新日志需要先完成 itch.io 18+ 年龄确认。请打开游戏页面确认年龄后重新同步。"))
                     continue
                 }
                 let posts = try DevlogRSSParser.parse(data: data)
@@ -319,6 +332,14 @@ final class GameUpdateMonitorStore: ObservableObject {
             print("itchPocket historical sync state save failed: \(error)")
         }
         return message
+    }
+
+    private func itchWebsiteCookies() async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+                continuation.resume(returning: cookies.filter { $0.domain.contains("itch.io") })
+            }
+        }
     }
 
     private static func devlogFeedURL(for gameURL: URL) -> URL? {
@@ -383,7 +404,7 @@ final class GameUpdateMonitorStore: ObservableObject {
     }
 }
 
-private struct DevlogRSSPost {
+struct DevlogRSSPost {
     let title: String
     let summary: String
     let url: String?
@@ -391,7 +412,7 @@ private struct DevlogRSSPost {
     let publishedAt: Date?
 }
 
-private final class DevlogRSSParser: NSObject, XMLParserDelegate {
+final class DevlogRSSParser: NSObject, XMLParserDelegate {
     private var posts: [DevlogRSSPost] = []
     private var isInsideItem = false
     private var currentElement = ""
@@ -415,6 +436,12 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
             values = [:]
         } else if isInsideItem {
             currentElement = name
+            // Atom feeds expose the post URL as a link attribute rather than
+            // character content; accept both Atom and RSS representations.
+            if (name == "link" || name.hasSuffix(":link")),
+               let href = attributeDict["href"], !href.isEmpty {
+                values["link"] = href
+            }
         }
     }
 
@@ -435,7 +462,7 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
             let title = Self.clean(values["title"] ?? "")
             let link = Self.clean(values["link"] ?? "")
             let guid = Self.clean(values["guid"] ?? values["id"] ?? "")
-            let rawDate = Self.clean(values["pubdate"] ?? values["published"] ?? values["updated"] ?? "")
+            let rawDate = Self.clean(values["pubdate"] ?? values["published"] ?? values["updated"] ?? values["dc:date"] ?? "")
             let summary = Self.cleanHTML(values["description"] ?? values["content:encoded"] ?? values["summary"] ?? "")
             if !title.isEmpty {
                 posts.append(DevlogRSSPost(
@@ -461,6 +488,8 @@ private final class DevlogRSSParser: NSObject, XMLParserDelegate {
     private static func cleanHTML(_ value: String) -> String {
         let stripped = value.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         return stripped
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&#160;", with: " ")
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
