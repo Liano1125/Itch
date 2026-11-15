@@ -145,8 +145,11 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
         let managed = AccountCalendarNotificationCoordinator.notificationIdentifier(
             accountID: "itch:101", eventID: "event-1"
         )
-        center.pending = [managed, "unrelated"]
-        center.delivered = [managed, "unrelated"]
+        let staleOtherAccount = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:202", eventID: "old-event"
+        )
+        center.pending = [managed, staleOtherAccount, "unrelated"]
+        center.delivered = [managed, staleOtherAccount, "unrelated"]
         let coordinator = AccountCalendarNotificationCoordinator(center: center)
 
         let count = await coordinator.rebuild(
@@ -157,6 +160,8 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(count, 0)
         XCTAssertFalse(center.pending.contains(managed))
         XCTAssertFalse(center.delivered.contains(managed))
+        XCTAssertFalse(center.pending.contains(staleOtherAccount))
+        XCTAssertFalse(center.delivered.contains(staleOtherAccount))
         XCTAssertTrue(center.pending.contains("unrelated"))
         XCTAssertTrue(center.delivered.contains("unrelated"))
     }
