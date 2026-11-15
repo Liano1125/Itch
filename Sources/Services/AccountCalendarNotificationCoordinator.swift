@@ -96,20 +96,20 @@ final class AccountCalendarNotificationCoordinator {
         if let previousAccountID, !Self.isCanonicalItchAccountID(previousAccountID) { return 0 }
 
         if let previousAccountID, previousAccountID != accountID {
-            await removeManagedNotifications(accountID: previousAccountID)
+            await removeManagedNotifications(accountID: previousAccountID, generation: generation)
             guard isCurrent(), isCurrentOperation(generation) else { return 0 }
         }
 
         guard let accountID else {
             // A sign-out without a known previous identity still clears only this app's V4 IDs.
             if previousAccountID == nil {
-                await removeManagedNotifications(accountID: nil)
+                await removeManagedNotifications(accountID: nil, generation: generation)
             }
             return 0
         }
 
         // Clear the destination account's previous projection first. This makes rebuilds idempotent.
-        await removeManagedNotifications(accountID: accountID)
+        await removeManagedNotifications(accountID: accountID, generation: generation)
         guard isCurrent(), isCurrentOperation(generation) else { return 0 }
 
         let authorization = await center.authorizationStatus()
@@ -164,20 +164,29 @@ final class AccountCalendarNotificationCoordinator {
 
     func cancelAllManagedNotifications() async {
         operationGeneration &+= 1
-        await removeManagedNotifications(accountID: nil)
+        await removeManagedNotifications(accountID: nil, generation: operationGeneration)
     }
 
     static func notificationIdentifier(accountID: String, eventID: String) -> String {
         "\(identifierPrefix)\(encoded(accountID)).event.\(encoded(eventID))"
     }
 
-    private func removeManagedNotifications(accountID: String?) async {
+    private func removeManagedNotifications(accountID: String?, generation: UInt64) async {
         let prefix = accountID.map { Self.notificationIdentifierPrefix(accountID: $0) }
             ?? Self.identifierPrefix
-        let pending = await center.pendingIdentifiers().filter { $0.hasPrefix(prefix) }
-        let delivered = await center.deliveredIdentifiers().filter { $0.hasPrefix(prefix) }
-        if !pending.isEmpty { await center.removePending(identifiers: Array(pending)) }
-        if !delivered.isEmpty { await center.removeDelivered(identifiers: Array(delivered)) }
+        let pendingIdentifiers = await center.pendingIdentifiers()
+        guard isCurrentOperation(generation) else { return }
+        let pending = pendingIdentifiers.filter { $0.hasPrefix(prefix) }
+        let deliveredIdentifiers = await center.deliveredIdentifiers()
+        guard isCurrentOperation(generation) else { return }
+        let delivered = deliveredIdentifiers.filter { $0.hasPrefix(prefix) }
+        if !pending.isEmpty {
+            await center.removePending(identifiers: Array(pending))
+            guard isCurrentOperation(generation) else { return }
+        }
+        if !delivered.isEmpty {
+            await center.removeDelivered(identifiers: Array(delivered))
+        }
     }
 
     private func isCurrentOperation(_ generation: UInt64) -> Bool {
