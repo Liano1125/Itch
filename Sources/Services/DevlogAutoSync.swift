@@ -24,6 +24,9 @@ enum DevlogAutoSync {
         calendar: GameCalendarStore,
         force: Bool = false
     ) async {
+        // Keep the completion marker tied to the session that initiated this refresh.
+        // A result discarded after an account switch must not throttle the next account.
+        let requestContext = library.captureRequestContext()
         let stateRepository = AppStateRepository(database: AppDatabase.shared)
         let lastAttempt = try? stateRepository.state(for: lastSyncKey)?.dateValue
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < interval {
@@ -40,6 +43,7 @@ enum DevlogAutoSync {
             calendarStore: calendar,
             libraryStore: library
         )
+        guard library.isCurrent(requestContext) else { return }
         try? stateRepository.setDate(Date(), for: lastSyncKey)
         scheduleNext()
     }
