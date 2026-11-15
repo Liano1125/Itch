@@ -161,4 +161,22 @@ final class AccountScopedCalendarRepositoryTests: XCTestCase {
         XCTAssertEqual(row.gameID, "missing-game")
         XCTAssertEqual(row.sourceUpdateID, "missing-update")
     }
+    @MainActor
+    func testLegacyMissingSourceUpdateLinkIsPreservedAndDiagnosed() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBGame(id: "game", title: "Game"))
+        context.insert(DBCalendarEvent(
+            id: "missing-update-row", gameID: "game", title: "Keep snapshot", kind: "update",
+            sourceFingerprint: "devlog:missing", sourceUpdateID: "deleted-update"
+        ))
+        try context.save()
+        let repository = try AccountScopedCalendarRepository(context: context, accountID: "itch:9")
+        XCTAssertEqual(try repository.quarantineLegacyRows(), 1)
+        let row = try XCTUnwrap(context.fetch(FetchDescriptor<DBLegacyCalendarEvent>()).first)
+        XCTAssertEqual(row.integrityIssue, "missing-source-update")
+        XCTAssertEqual(row.sourceFingerprint, "devlog:missing")
+        XCTAssertEqual(row.sourceUpdateID, "deleted-update")
+    }
+
 }
