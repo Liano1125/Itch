@@ -132,14 +132,13 @@ final class AccountCalendarNotificationCoordinator {
         for event in events where event.reminderEnabled {
             guard isCurrent(), isCurrentOperation(generation) else { return scheduled }
             guard let eventDate = event.date else { continue }
-            let fireDate = eventDate.addingTimeInterval(-Double(max(0, event.reminderMinutes) * 60))
+            let fireDate = eventDate.addingTimeInterval(-(Double(max(0, event.reminderMinutes)) * 60))
             guard fireDate > now else { continue }
 
             let content = UNMutableNotificationContent()
-            content.title = event.title?.isEmpty == false ? event.title! : "游戏提醒"
-            content.body = event.notes?.isEmpty == false
-                ? event.notes!
-                : "提醒时间：\(eventDate.formatted(date: .abbreviated, time: .shortened))"
+            content.title = event.title.flatMap { $0.isEmpty ? nil : $0 } ?? "游戏提醒"
+            content.body = event.notes.flatMap { $0.isEmpty ? nil : $0 }
+                ?? "提醒时间：\(eventDate.formatted(date: .abbreviated, time: .shortened))"
             content.sound = .default
 
             let components = Calendar.current.dateComponents(
