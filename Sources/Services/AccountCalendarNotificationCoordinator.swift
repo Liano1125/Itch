@@ -96,20 +96,20 @@ final class AccountCalendarNotificationCoordinator {
         if let previousAccountID, !Self.isCanonicalItchAccountID(previousAccountID) { return 0 }
 
         if let previousAccountID, previousAccountID != accountID {
-            await removeManagedNotifications(accountID: previousAccountID, generation: generation)
+            await removeManagedNotifications(accountID: previousAccountID, generation: generation, isCurrent: isCurrent)
             guard isCurrent(), isCurrentOperation(generation) else { return 0 }
         }
 
         guard let accountID else {
             // A sign-out without a known previous identity still clears only this app's V4 IDs.
             if previousAccountID == nil {
-                await removeManagedNotifications(accountID: nil, generation: generation)
+                await removeManagedNotifications(accountID: nil, generation: generation, isCurrent: isCurrent)
             }
             return 0
         }
 
         // Clear the destination account's previous projection first. This makes rebuilds idempotent.
-        await removeManagedNotifications(accountID: accountID, generation: generation)
+        await removeManagedNotifications(accountID: accountID, generation: generation, isCurrent: isCurrent)
         guard isCurrent(), isCurrentOperation(generation) else { return 0 }
 
         let authorization = await center.authorizationStatus()
@@ -147,12 +147,18 @@ final class AccountCalendarNotificationCoordinator {
             )
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(
-                identifier: Self.notificationIdentifier(accountID: accountID, eventID: event.id),
+                identifier: Self.projectionNotificationIdentifier(accountID: accountID, eventID: event.id, generation: generation),
                 content: content,
                 trigger: trigger
             )
             do {
                 try await center.add(request)
+                guard isCurrent(), isCurrentOperation(generation) else {
+                    // Generation-specific identifiers ensure this stale cleanup cannot remove
+                    // a replacement notification scheduled by a newer rebuild.
+                    await center.removePending(identifiers: [request.identifier])
+                    return scheduled
+                }
                 scheduled += 1
             } catch {
                 // A failed individual notification must not stop other reminders from being projected.
@@ -163,29 +169,37 @@ final class AccountCalendarNotificationCoordinator {
 
     func cancelAllManagedNotifications() async {
         operationGeneration &+= 1
-        await removeManagedNotifications(accountID: nil, generation: operationGeneration)
+        await removeManagedNotifications(accountID: nil, generation: operationGeneration, isCurrent: { true })
     }
 
     static func notificationIdentifier(accountID: String, eventID: String) -> String {
         "\(identifierPrefix)\(encoded(accountID)).event.\(encoded(eventID))"
     }
 
-    private func removeManagedNotifications(accountID: String?, generation: UInt64) async {
+    private func removeManagedNotifications(
+        accountID: String?,
+        generation: UInt64,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async {
         let prefix = accountID.map { Self.notificationIdentifierPrefix(accountID: $0) }
             ?? Self.identifierPrefix
         let pendingIdentifiers = await center.pendingIdentifiers()
-        guard isCurrentOperation(generation) else { return }
+        guard isCurrent(), isCurrentOperation(generation) else { return }
         let pending = pendingIdentifiers.filter { $0.hasPrefix(prefix) }
         let deliveredIdentifiers = await center.deliveredIdentifiers()
-        guard isCurrentOperation(generation) else { return }
+        guard isCurrent(), isCurrentOperation(generation) else { return }
         let delivered = deliveredIdentifiers.filter { $0.hasPrefix(prefix) }
         if !pending.isEmpty {
             await center.removePending(identifiers: Array(pending))
-            guard isCurrentOperation(generation) else { return }
+            guard isCurrent(), isCurrentOperation(generation) else { return }
         }
         if !delivered.isEmpty {
             await center.removeDelivered(identifiers: Array(delivered))
         }
+    }
+
+    private static func projectionNotificationIdentifier(accountID: String, eventID: String, generation: UInt64) -> String {
+        "\(notificationIdentifier(accountID: accountID, eventID: eventID)).generation.\(generation)"
     }
 
     private func isCurrentOperation(_ generation: UInt64) -> Bool {
