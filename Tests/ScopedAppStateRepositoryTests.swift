@@ -131,4 +131,66 @@ final class ScopedAppStateRepositoryTests: XCTestCase {
         let repository = ScopedAppStateRepository(context: container.mainContext)
         XCTAssertThrowsError(try repository.setString("x", for: "  ", in: .device))
     }
+
+    @MainActor
+    func testTypedWritesReplacePreviousValueTypes() throws {
+        let container = try makeContainer()
+        let repository = ScopedAppStateRepository(context: container.mainContext)
+        let scope = try AppStateScope.itchAccount(userID: 404)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let data = Data([0, 1, 2, 255])
+
+        try repository.setString("first", for: "typed", in: scope)
+        try repository.setDate(date, for: "typed", in: scope)
+        var state = try XCTUnwrap(repository.state(for: "typed", in: scope))
+        XCTAssertNil(state.stringValue)
+        XCTAssertEqual(state.dateValue, date)
+        XCTAssertNil(state.dataValue)
+
+        try repository.setData(data, for: "typed", in: scope)
+        state = try XCTUnwrap(repository.state(for: "typed", in: scope))
+        XCTAssertNil(state.stringValue)
+        XCTAssertNil(state.dateValue)
+        XCTAssertEqual(state.dataValue, data)
+
+        try repository.setString("final", for: "typed", in: scope)
+        state = try XCTUnwrap(repository.state(for: "typed", in: scope))
+        XCTAssertEqual(state.stringValue, "final")
+        XCTAssertNil(state.dateValue)
+        XCTAssertNil(state.dataValue)
+    }
+
+    @MainActor
+    func testDateSnapshotCanBeRestoredAfterDataOverwrite() throws {
+        let container = try makeContainer()
+        let repository = ScopedAppStateRepository(context: container.mainContext)
+        let scope = try AppStateScope.itchAccount(userID: 505)
+        let date = Date(timeIntervalSince1970: 1_710_000_000)
+
+        try repository.setDate(date, for: "snapshot", in: scope)
+        let snapshot = try XCTUnwrap(repository.state(for: "snapshot", in: scope))
+        try repository.setData(Data([4, 5, 6]), for: "snapshot", in: scope)
+        try repository.restore(snapshot, for: "snapshot", in: scope, save: true)
+
+        let restored = try XCTUnwrap(repository.state(for: "snapshot", in: scope))
+        XCTAssertEqual(restored.dateValue, date)
+        XCTAssertNil(restored.stringValue)
+        XCTAssertNil(restored.dataValue)
+    }
+
+    @MainActor
+    func testRestoringNilSnapshotDeletesOnlyTheRequestedScopedRow() throws {
+        let container = try makeContainer()
+        let repository = ScopedAppStateRepository(context: container.mainContext)
+        let accountA = try AppStateScope.itchAccount(userID: 606)
+        let accountB = try AppStateScope.itchAccount(userID: 707)
+
+        try repository.setData(Data([7, 7]), for: "remove-me", in: accountA)
+        try repository.setString("keep", for: "remove-me", in: accountB)
+        try repository.restore(nil, for: "remove-me", in: accountA, save: true)
+
+        XCTAssertNil(try repository.state(for: "remove-me", in: accountA))
+        XCTAssertEqual(try repository.state(for: "remove-me", in: accountB)?.stringValue, "keep")
+    }
+
 }
