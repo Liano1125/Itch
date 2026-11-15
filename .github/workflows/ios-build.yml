@@ -45,6 +45,7 @@ on:
       - fix/v4-session-stale-side-effect-guards
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
+      - feat/v4-library-migration-parity-gate
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
@@ -96,6 +97,7 @@ on:
       - fix/v4-session-stale-side-effect-guards
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
+      - feat/v4-library-migration-parity-gate
       - feat/v4-scoped-appstate-repository
   workflow_dispatch:
 
