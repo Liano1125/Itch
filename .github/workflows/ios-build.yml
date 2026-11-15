@@ -46,9 +46,7 @@ on:
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
       - feat/v4-library-migration-parity-gate
-      # Stacked V4 ownership audits target the preceding audit branch.
-      - audit/v4-update-watch-ownership
-      # Validate stacked V4 ownership audits.
+      # Validate stacked V4 ownership audit branch pushes.
       - audit/v4-update-watch-ownership
       - audit/v4-appstate-ownership
   pull_request:
@@ -103,6 +101,8 @@ on:
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
       - feat/v4-library-migration-parity-gate
+      # Stacked V4 ownership audit PRs target this branch.
+      - audit/v4-update-watch-ownership
       - feat/v4-scoped-appstate-repository
   workflow_dispatch:
 
