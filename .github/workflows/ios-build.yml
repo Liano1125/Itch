@@ -46,6 +46,8 @@ on:
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
       - feat/v4-library-migration-parity-gate
+      # Validate the V3 AppState ownership audit branch.
+      - audit/v4-appstate-ownership
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
