@@ -228,7 +228,11 @@ final class GameUpdateMonitorStore: ObservableObject {
             calendarStore.reload()
             for watch in notificationWatches {
                 guard libraryStore.isCurrent(libraryRequestContext) else { break }
-                await sendUpdateNotification(for: watch)
+                await sendUpdateNotification(
+                    for: watch,
+                    libraryStore: libraryStore,
+                    requestContext: libraryRequestContext
+                )
             }
             statusMessage = "检查完成：\(updated) 款游戏检测到页面更新并已写入日历，\(failed) 款检查失败。首次检查只建立基准，不会生成更新记录。"
         } catch {
@@ -378,10 +382,16 @@ final class GameUpdateMonitorStore: ObservableObject {
         return components.url
     }
 
-    private func sendUpdateNotification(for watch: GameUpdateWatch) async {
+    private func sendUpdateNotification(
+        for watch: GameUpdateWatch,
+        libraryStore: PersonalLibraryStore,
+        requestContext: ItchSessionOperationContext?
+    ) async {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        guard granted else { return }
+        // Permission prompts suspend this task. Revalidate after the suspension so a
+        // notification discovered for the previous account cannot be delivered later.
+        guard granted, libraryStore.isCurrent(requestContext) else { return }
         let content = UNMutableNotificationContent()
         content.title = "游戏页面可能已更新"
         content.body = "\(watch.gameTitle) 的 itch.io 页面信息发生变化，打开游戏页面确认详情。"
