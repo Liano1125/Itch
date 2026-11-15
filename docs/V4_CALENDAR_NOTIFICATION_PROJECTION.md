@@ -18,7 +18,8 @@ This slice adds a V4-only notification projection coordinator. It does not conne
 - Sign-out removes all notifications in the V4 calendar namespace.
 - Only enabled reminders with a future fire date are scheduled.
 - Authorization is checked before scheduling; denied or declined authorization produces no notification requests.
-- A caller-provided session validator and an internal operation generation reject stale work after awaits.
+- A caller-provided session validator and an internal operation generation reject stale work after awaits, including notification-add completion.
+- Each rebuild uses a generation-specific notification identifier; a stale completion can remove its own request without deleting a newer rebuild's replacement.
 
 ## Validation status
 
