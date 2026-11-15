@@ -43,6 +43,7 @@ on:
       - test/v4-scoped-appstate-typed-values
       - feat/v4-account-scoped-calendar
       - fix/v4-session-stale-side-effect-guards
+      - feat/v4-account-calendar-notification-projection
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
@@ -91,6 +92,7 @@ on:
       - feat/v3-v4-migration-preflight-inventory
       - docs/appstate-scope-audit
       - docs/calendar-data-scope-audit
+      - fix/v4-session-stale-side-effect-guards
       - feat/v4-scoped-appstate-repository
   workflow_dispatch:
 
