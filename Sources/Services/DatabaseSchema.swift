@@ -270,7 +270,7 @@ enum ItchPocketSchemaV4: VersionedSchema {
             DBSparkMetadata.self, DBTranslation.self, DBDiscoverySnapshot.self,
             DBUpdateWatch.self, DBAppState.self, DBGameDetail.self, DBAccount.self,
             DBLibraryEntry.self, DBLibraryCollection.self,
-            DBLibraryCollectionItem.self, DBLibraryStatusEvent.self, DBScopedAppState.self
+            DBLibraryCollectionItem.self, DBLibraryStatusEvent.self, DBScopedAppState.self,\n            DBCalendarSourceEvent.self, DBAccountCalendarEvent.self, DBAccountCalendarOverlay.self,\n            DBLegacyCalendarEvent.self
         ]
     }
 
