@@ -348,3 +348,39 @@ final class DBAccount {
         avatarURL = identity.avatarURL?.absoluteString
     }
 }
+
+
+/// V4 replacement for globally keyed V3 DBAppState rows.
+/// The legacy DBAppState model remains in the V4 schema unchanged so V3
+/// values can be retained for explicit review without implicit reassignment.
+@Model
+final class DBScopedAppState {
+    @Attribute(.unique) var id: String
+    var scopeID: String
+    var logicalKey: String
+    var stringValue: String?
+    var dateValue: Date?
+    var dataValue: Data?
+    var updatedAt: Date
+
+    init(
+        scopeID: String,
+        logicalKey: String,
+        stringValue: String? = nil,
+        dateValue: Date? = nil,
+        dataValue: Data? = nil,
+        updatedAt: Date = .now
+    ) {
+        self.id = Self.stableID(scopeID: scopeID, logicalKey: logicalKey)
+        self.scopeID = scopeID
+        self.logicalKey = logicalKey
+        self.stringValue = stringValue
+        self.dateValue = dateValue
+        self.dataValue = dataValue
+        self.updatedAt = updatedAt
+    }
+
+    static func stableID(scopeID: String, logicalKey: String) -> String {
+        "\(scopeID.utf8.count):\(scopeID)\(logicalKey.utf8.count):\(logicalKey)"
+    }
+}
