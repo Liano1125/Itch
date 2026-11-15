@@ -16,7 +16,7 @@ This slice adds a V4-only notification projection coordinator. It does not conne
 - On account switch, pending and delivered notifications for the previous account are removed.
 - When the previous account is unknown (such as cold-launch restore after an interrupted sign-out), the whole app-owned V4 namespace is cleared before rebuilding the active account.
 - Existing notifications for the destination account are removed before rebuilding, making the projection idempotent.
-- Sign-out removes all notifications in the V4 calendar namespace.
+- Sign-out removes all notifications in the V4 calendar namespace, including stale projections from accounts other than the currently active one.
 - Only enabled reminders with a future fire date are scheduled.
 - Authorization is checked before scheduling; denied or declined authorization produces no notification requests.
 - A caller-provided session validator and an internal operation generation reject stale work after awaits, including notification-add completion.
