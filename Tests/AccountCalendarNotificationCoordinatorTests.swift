@@ -6,6 +6,7 @@ import UserNotifications
 private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotificationCenterClient {
     var status: UNAuthorizationStatus = .authorized
     var authorizationResult = true
+    var onRequestAuthorization: (() -> Void)?
     var pending = Set<String>()
     var delivered = Set<String>()
     var added: [UNNotificationRequest] = []
@@ -13,7 +14,10 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
     var removedDelivered: [String] = []
 
     func authorizationStatus() async -> UNAuthorizationStatus { status }
-    func requestAuthorization() async -> Bool { authorizationResult }
+    func requestAuthorization() async -> Bool {
+        onRequestAuthorization?()
+        return authorizationResult
+    }
     func pendingIdentifiers() async -> Set<String> { pending }
     func deliveredIdentifiers() async -> Set<String> { delivered }
     func removePending(identifiers: [String]) async {
@@ -142,6 +146,24 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
             ],
             now: Date(timeIntervalSince1970: 1_900_000_000),
             isCurrent: { true }
+        )
+
+        XCTAssertEqual(count, 0)
+        XCTAssertTrue(center.added.isEmpty)
+    }
+
+    @MainActor
+    func testSessionInvalidatedWhilePermissionPromptIsSuspendedCannotSchedule() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        center.status = .notDetermined
+        var sessionIsCurrent = true
+        center.onRequestAuthorization = { sessionIsCurrent = false }
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        let count = await coordinator.rebuild(
+            previousAccountID: nil, accountID: "itch:101",
+            events: [event()], now: Date(timeIntervalSince1970: 1_900_000_000),
+            isCurrent: { sessionIsCurrent }
         )
 
         XCTAssertEqual(count, 0)
