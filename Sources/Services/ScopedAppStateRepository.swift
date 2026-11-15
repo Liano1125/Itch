@@ -114,15 +114,12 @@ final class ScopedAppStateRepository {
         _ value: String?,
         for key: String,
         in scope: AppStateScope,
-        clearOtherValues: Bool = false,
         save shouldSave: Bool = true
     ) throws {
         let row = try existingOrInsert(key: key, in: scope)
         row.stringValue = value
-        if clearOtherValues {
-            row.dateValue = nil
-            row.dataValue = nil
-        }
+        row.dateValue = nil
+        row.dataValue = nil
         row.updatedAt = .now
         if shouldSave { try context.save() }
     }
@@ -131,15 +128,12 @@ final class ScopedAppStateRepository {
         _ value: Date?,
         for key: String,
         in scope: AppStateScope,
-        clearOtherValues: Bool = false,
         save shouldSave: Bool = true
     ) throws {
         let row = try existingOrInsert(key: key, in: scope)
         row.dateValue = value
-        if clearOtherValues {
-            row.stringValue = nil
-            row.dataValue = nil
-        }
+        row.stringValue = nil
+        row.dataValue = nil
         row.updatedAt = .now
         if shouldSave { try context.save() }
     }
@@ -152,6 +146,8 @@ final class ScopedAppStateRepository {
     ) throws {
         let row = try existingOrInsert(key: key, in: scope)
         row.dataValue = value
+        row.stringValue = nil
+        row.dateValue = nil
         row.updatedAt = .now
         if shouldSave { try context.save() }
     }
