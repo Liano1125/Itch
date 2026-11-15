@@ -32,7 +32,10 @@ Tests cover:
 - snapshot restore and cross-account restore rejection;
 - legacy V3 row preservation without implicit migration;
 - transaction rollback;
-- invalid identities and empty keys.
+- invalid identities and empty keys;
+- String/Date/Data writes replace prior value types;
+- Date snapshot restoration after a Data overwrite;
+- nil-snapshot deletion limited to the requested account.
 
 ## Safety boundary
 
