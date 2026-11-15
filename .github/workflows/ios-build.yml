@@ -39,6 +39,8 @@ on:
       - docs/appstate-scope-audit
       - feat/v4-scoped-appstate-repository
       - test/v4-scoped-appstate-typed-values
+      - test/v4-scoped-appstate-typed-values
+      - feat/v4-account-scoped-calendar
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
