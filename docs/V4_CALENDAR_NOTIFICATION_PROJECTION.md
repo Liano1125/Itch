@@ -20,6 +20,10 @@ This slice adds a V4-only notification projection coordinator. It does not conne
 - Authorization is checked before scheduling; denied or declined authorization produces no notification requests.
 - A caller-provided session validator and an internal operation generation reject stale work after awaits.
 
+## Validation status
+
+The coordinator is covered by the dedicated XCTest target. CI must pass on the latest PR head before this slice is considered validated.
+
 ## Integration boundary
 
 The caller must capture `ItchSessionOperationContext` from `ItchAccountSession`, pass the previous and current canonical itch account IDs, obtain events from `AccountScopedCalendarRepository.resolvedEvents()`, and provide an `isCurrent` closure that validates the captured context. The coordinator is deliberately not wired into V3 until the V4 migration/cutover is independently validated.
