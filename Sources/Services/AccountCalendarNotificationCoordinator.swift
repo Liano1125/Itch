@@ -108,8 +108,14 @@ final class AccountCalendarNotificationCoordinator {
             return 0
         }
 
-        // Clear the destination account's previous projection first. This makes rebuilds idempotent.
-        await removeManagedNotifications(accountID: accountID, generation: generation, isCurrent: isCurrent)
+        // If the previous identity is unknown (for example, cold-launch restore after an
+        // interrupted sign-out), clear the whole app-owned V4 namespace before rebuilding.
+        // With a known identity, restrict cleanup to the destination account.
+        if previousAccountID == nil {
+            await removeManagedNotifications(accountID: nil, generation: generation, isCurrent: isCurrent)
+        } else {
+            await removeManagedNotifications(accountID: accountID, generation: generation, isCurrent: isCurrent)
+        }
         guard isCurrent(), isCurrentOperation(generation) else { return 0 }
 
         let authorization = await center.authorizationStatus()
