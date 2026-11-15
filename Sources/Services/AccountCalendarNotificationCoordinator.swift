@@ -72,8 +72,8 @@ final class AccountCalendarNotificationCoordinator {
     private let center: any AccountCalendarNotificationCenterClient
     private var operationGeneration: UInt64 = 0
 
-    init(center: any AccountCalendarNotificationCenterClient = SystemAccountCalendarNotificationCenter()) {
-        self.center = center
+    init(center: (any AccountCalendarNotificationCenterClient)? = nil) {
+        self.center = center ?? SystemAccountCalendarNotificationCenter()
     }
 
     /// Replaces the notification projection after an account transition.
