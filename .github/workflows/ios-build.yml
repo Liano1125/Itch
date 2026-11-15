@@ -84,6 +84,7 @@ on:
       - feat/personal-library-request-context-guard
       - feat/v3-v4-migration-preflight-inventory
       - docs/appstate-scope-audit
+      - docs/calendar-data-scope-audit
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
