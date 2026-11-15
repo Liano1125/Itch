@@ -257,9 +257,12 @@ final class AccountScopedCalendarRepository {
             let issue: String?
             if try !gameExists(row.gameID) {
                 issue = "missing-game"
-            } else if let updateID = row.sourceUpdateID,
-                      let update = try fetchUpdate(updateID), update.gameID != row.gameID {
-                issue = "cross-game-source-update"
+            } else if let updateID = row.sourceUpdateID {
+                if let update = try fetchUpdate(updateID) {
+                    issue = update.gameID == row.gameID ? nil : "cross-game-source-update"
+                } else {
+                    issue = "missing-source-update"
+                }
             } else {
                 issue = nil
             }
