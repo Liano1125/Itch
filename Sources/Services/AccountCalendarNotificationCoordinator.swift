@@ -95,17 +95,16 @@ final class AccountCalendarNotificationCoordinator {
         if let accountID, !Self.isCanonicalItchAccountID(accountID) { return 0 }
         if let previousAccountID, !Self.isCanonicalItchAccountID(previousAccountID) { return 0 }
 
+        guard let accountID else {
+            // Sign-out clears the complete app-owned V4 namespace, including any stale
+            // projections left behind by an earlier account transition.
+            await removeManagedNotifications(accountID: nil, generation: generation, isCurrent: isCurrent)
+            return 0
+        }
+
         if let previousAccountID, previousAccountID != accountID {
             await removeManagedNotifications(accountID: previousAccountID, generation: generation, isCurrent: isCurrent)
             guard isCurrent(), isCurrentOperation(generation) else { return 0 }
-        }
-
-        guard let accountID else {
-            // A sign-out without a known previous identity still clears only this app's V4 IDs.
-            if previousAccountID == nil {
-                await removeManagedNotifications(accountID: nil, generation: generation, isCurrent: isCurrent)
-            }
-            return 0
         }
 
         // If the previous identity is unknown (for example, cold-launch restore after an
