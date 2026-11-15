@@ -10,6 +10,17 @@ struct StoredCalendarSourceEvent: Equatable {
     let sourceUpdateID: String?
     let gameTitleSnapshot: String?
 
+    init(sourceFingerprint: String, gameID: String, title: String? = nil, date: Date? = nil,
+         kind: String, sourceUpdateID: String? = nil, gameTitleSnapshot: String? = nil) {
+        self.sourceFingerprint = sourceFingerprint
+        self.gameID = gameID
+        self.title = title
+        self.date = date
+        self.kind = kind
+        self.sourceUpdateID = sourceUpdateID
+        self.gameTitleSnapshot = gameTitleSnapshot
+    }
+
     var id: String { DBCalendarSourceEvent.stableID(sourceFingerprint: sourceFingerprint) }
 }
 
