@@ -7,6 +7,7 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
     var status: UNAuthorizationStatus = .authorized
     var authorizationResult = true
     var onRequestAuthorization: (() -> Void)?
+    var onAdd: (() -> Void)?
     var pending = Set<String>()
     var delivered = Set<String>()
     var added: [UNNotificationRequest] = []
@@ -31,6 +32,7 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
     func add(_ request: UNNotificationRequest) async throws {
         added.append(request)
         pending.insert(request.identifier)
+        onAdd?()
     }
 }
 
@@ -168,6 +170,28 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(count, 0)
         XCTAssertTrue(center.added.isEmpty)
+    }
+
+    @MainActor
+    func testSessionInvalidatedWhileNotificationAddCompletesRemovesStaleRequest() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        var sessionIsCurrent = true
+        center.onAdd = { sessionIsCurrent = false }
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        let count = await coordinator.rebuild(
+            previousAccountID: nil, accountID: "itch:101",
+            events: [event()], now: Date(timeIntervalSince1970: 1_900_000_000),
+            isCurrent: { sessionIsCurrent }
+        )
+
+        XCTAssertEqual(count, 0)
+        XCTAssertEqual(center.added.count, 1)
+        let staleIdentifier = try! XCTUnwrap(center.added.first?.identifier)
+        XCTAssertTrue(staleIdentifier.hasPrefix(AccountCalendarNotificationCoordinator.identifierPrefix))
+        XCTAssertTrue(staleIdentifier.contains(".generation."))
+        XCTAssertTrue(center.removedPending.contains(staleIdentifier))
+        XCTAssertFalse(center.pending.contains(staleIdentifier))
     }
 
     @MainActor
