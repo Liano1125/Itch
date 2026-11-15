@@ -80,6 +80,33 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
     }
 
     @MainActor
+    func testUnknownPreviousAccountClearsOnlyManagedNamespaceBeforeRestore() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "old-event-a"
+        )
+        let accountB = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:202", eventID: "old-event-b"
+        )
+        center.pending = [accountA, accountB, "unrelated.pending"]
+        center.delivered = [accountA, accountB, "unrelated.delivered"]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        let count = await coordinator.rebuild(
+            previousAccountID: nil, accountID: "itch:303",
+            events: [], isCurrent: { true }
+        )
+
+        XCTAssertEqual(count, 0)
+        XCTAssertFalse(center.pending.contains(accountA))
+        XCTAssertFalse(center.pending.contains(accountB))
+        XCTAssertFalse(center.delivered.contains(accountA))
+        XCTAssertFalse(center.delivered.contains(accountB))
+        XCTAssertTrue(center.pending.contains("unrelated.pending"))
+        XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
+    @MainActor
     func testNotificationIdentifiersAreNamespacedByAccount() {
         let a = AccountCalendarNotificationCoordinator.notificationIdentifier(
             accountID: "itch:101", eventID: "same-event"
@@ -175,14 +202,18 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
     @MainActor
     func testSessionInvalidatedWhileNotificationAddCompletesRemovesStaleRequest() async {
         let center = FakeAccountCalendarNotificationCenter()
-        var sessionIsCurrent = true
-        center.onAdd = { sessionIsCurrent = false }
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 101, username: "account-a"))
+        let context = session.captureOperationContext()
+        center.onAdd = {
+            session.activate(ItchAccountIdentity(itchUserID: 202, username: "account-b"))
+        }
         let coordinator = AccountCalendarNotificationCoordinator(center: center)
 
         let count = await coordinator.rebuild(
             previousAccountID: nil, accountID: "itch:101",
             events: [event()], now: Date(timeIntervalSince1970: 1_900_000_000),
-            isCurrent: { sessionIsCurrent }
+            isCurrent: { session.isCurrent(context) }
         )
 
         XCTAssertEqual(count, 0)
