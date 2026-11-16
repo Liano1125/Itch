@@ -20,6 +20,8 @@ struct V4MigrationPayloadVerificationReport: Equatable {
 @MainActor
 enum V4MigrationPayloadVerifier {
     private struct LibraryEntryValue: Equatable {
+        let id: String
+        let accountID: String?
         let status: String
         let isFavorite: Bool
         let notes: String
@@ -28,12 +30,16 @@ enum V4MigrationPayloadVerifier {
     }
 
     private struct CollectionValue: Equatable {
+        let id: String
+        let accountID: String?
         let title: String
         let createdAt: Date
         let updatedAt: Date
     }
 
     private struct CollectionItemValue: Equatable {
+        let id: String
+        let accountID: String?
         let collectionID: String
         let gameID: String
         let sortOrder: Int
@@ -41,6 +47,8 @@ enum V4MigrationPayloadVerifier {
     }
 
     private struct StatusEventValue: Equatable {
+        let id: String
+        let accountID: String?
         let gameID: String
         let fromStatus: String?
         let toStatus: String
@@ -48,6 +56,7 @@ enum V4MigrationPayloadVerifier {
     }
 
     private struct AppStateValue: Equatable {
+        let id: String
         let scopeID: String
         let stringValue: String?
         let dateValue: Date?
@@ -114,18 +123,13 @@ enum V4MigrationPayloadVerifier {
 
         let entries = compare(
             source: sourceEntries.map { ($0.gameID, LibraryEntryValue(
-                status: $0.status, isFavorite: $0.isFavorite, notes: $0.notes,
+                id: ItchPocketSchemaV4.DBLibraryEntry.stableID(accountID: nil, gameID: $0.gameID),
+                accountID: nil, status: $0.status, isFavorite: $0.isFavorite, notes: $0.notes,
                 addedAt: $0.addedAt, updatedAt: $0.updatedAt
             )) },
             destination: destinationEntries.map { row in
-                if row.accountID != nil ||
-                    row.id != ItchPocketSchemaV4.DBLibraryEntry.stableID(
-                        accountID: nil, gameID: row.gameID
-                    ) {
-                    diagnostics.append("migration.library.entry.identityOrScopeMismatch")
-                }
-                return (row.gameID, LibraryEntryValue(
-                    status: row.status, isFavorite: row.isFavorite, notes: row.notes,
+                (row.gameID, LibraryEntryValue(
+                    id: row.id, accountID: row.accountID, status: row.status, isFavorite: row.isFavorite, notes: row.notes,
                     addedAt: row.addedAt, updatedAt: row.updatedAt
                 ))
             },
@@ -137,17 +141,12 @@ enum V4MigrationPayloadVerifier {
 
         let collections = compare(
             source: sourceCollections.map { ($0.id, CollectionValue(
-                title: $0.title, createdAt: $0.createdAt, updatedAt: $0.updatedAt
+                id: ItchPocketSchemaV4.DBLibraryCollection.stableID(accountID: nil, collectionKey: $0.id),
+                accountID: nil, title: $0.title, createdAt: $0.createdAt, updatedAt: $0.updatedAt
             )) },
             destination: destinationCollections.map { row in
-                if row.accountID != nil ||
-                    row.id != ItchPocketSchemaV4.DBLibraryCollection.stableID(
-                        accountID: nil, collectionKey: row.collectionKey
-                    ) {
-                    diagnostics.append("migration.library.collection.identityOrScopeMismatch")
-                }
-                return (row.collectionKey, CollectionValue(
-                    title: row.title, createdAt: row.createdAt, updatedAt: row.updatedAt
+                (row.collectionKey, CollectionValue(
+                    id: row.id, accountID: row.accountID, title: row.title, createdAt: row.createdAt, updatedAt: row.updatedAt
                 ))
             },
             duplicateCode: "migration.library.collection.duplicateIdentity",
@@ -161,21 +160,16 @@ enum V4MigrationPayloadVerifier {
                 (DBLibraryCollectionItem.stableID(
                     collectionID: row.collectionID, gameID: row.gameID
                 ), CollectionItemValue(
-                    collectionID: row.collectionID, gameID: row.gameID,
+                    id: ItchPocketSchemaV4.DBLibraryCollectionItem.stableID(accountID: nil, collectionKey: row.collectionID, gameID: row.gameID),
+                    accountID: nil, collectionID: row.collectionID, gameID: row.gameID,
                     sortOrder: row.sortOrder, addedAt: row.addedAt
                 ))
             },
             destination: destinationItems.map { row in
-                if row.accountID != nil ||
-                    row.id != ItchPocketSchemaV4.DBLibraryCollectionItem.stableID(
-                        accountID: nil, collectionKey: row.collectionKey, gameID: row.gameID
-                    ) {
-                    diagnostics.append("migration.library.collectionItem.identityOrScopeMismatch")
-                }
-                return (DBLibraryCollectionItem.stableID(
+                (DBLibraryCollectionItem.stableID(
                     collectionID: row.collectionKey, gameID: row.gameID
                 ), CollectionItemValue(
-                    collectionID: row.collectionKey, gameID: row.gameID,
+                    id: row.id, accountID: row.accountID, collectionID: row.collectionKey, gameID: row.gameID,
                     sortOrder: row.sortOrder, addedAt: row.addedAt
                 ))
             },
@@ -187,18 +181,13 @@ enum V4MigrationPayloadVerifier {
 
         let events = compare(
             source: sourceEvents.map { ($0.id, StatusEventValue(
-                gameID: $0.gameID, fromStatus: $0.fromStatus,
+                id: ItchPocketSchemaV4.DBLibraryStatusEvent.stableID(accountID: nil, eventKey: $0.id),
+                accountID: nil, gameID: $0.gameID, fromStatus: $0.fromStatus,
                 toStatus: $0.toStatus, changedAt: $0.changedAt
             )) },
             destination: destinationEvents.map { row in
-                if row.accountID != nil ||
-                    row.id != ItchPocketSchemaV4.DBLibraryStatusEvent.stableID(
-                        accountID: nil, eventKey: row.eventKey
-                    ) {
-                    diagnostics.append("migration.library.statusEvent.identityOrScopeMismatch")
-                }
-                return (row.eventKey, StatusEventValue(
-                    gameID: row.gameID, fromStatus: row.fromStatus,
+                (row.eventKey, StatusEventValue(
+                    id: row.id, accountID: row.accountID, gameID: row.gameID, fromStatus: row.fromStatus,
                     toStatus: row.toStatus, changedAt: row.changedAt
                 ))
             },
@@ -224,19 +213,15 @@ enum V4MigrationPayloadVerifier {
                     expectedScope = expectedLegacy
                 }
                 return (row.key, AppStateValue(
+                    id: DBScopedAppState.stableID(scopeID: expectedScope, logicalKey: row.key),
                     scopeID: expectedScope, stringValue: row.stringValue,
                     dateValue: row.dateValue, dataValue: row.dataValue,
                     updatedAt: row.updatedAt
                 ))
             },
             destination: destinationStates.map { row in
-                if row.id != DBScopedAppState.stableID(
-                    scopeID: row.scopeID, logicalKey: row.logicalKey
-                ) {
-                    diagnostics.append("migration.appState.identityMismatch")
-                }
-                return (row.logicalKey, AppStateValue(
-                    scopeID: row.scopeID, stringValue: row.stringValue,
+                (row.logicalKey, AppStateValue(
+                    id: row.id, scopeID: row.scopeID, stringValue: row.stringValue,
                     dateValue: row.dateValue, dataValue: row.dataValue,
                     updatedAt: row.updatedAt
                 ))
