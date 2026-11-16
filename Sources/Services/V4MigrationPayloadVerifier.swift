@@ -230,13 +230,14 @@ enum V4MigrationPayloadVerifier {
             mismatchCode: "migration.appState.payloadOrScopeMismatch"
         )
 
+        // Keep domain status independent: a Library mismatch must not rewrite
+        // an otherwise exact AppState comparison as failed (and vice versa).
+        // The shared diagnostic list still blocks whole-manifest promotion.
         let librarySummary = summary(
-            verified: libraryVerified, unverified: libraryUnverified,
-            forceFailed: !diagnostics.isEmpty
+            verified: libraryVerified, unverified: libraryUnverified
         )
         let appStateSummary = summary(
-            verified: appState.0, unverified: appState.1,
-            forceFailed: !diagnostics.isEmpty
+            verified: appState.0, unverified: appState.1
         )
         return V4MigrationPayloadVerificationReport(
             library: librarySummary,
@@ -246,10 +247,10 @@ enum V4MigrationPayloadVerifier {
     }
 
     private static func summary(
-        verified: Int, unverified: Int, forceFailed: Bool
+        verified: Int, unverified: Int
     ) -> V4MigrationPayloadVerificationSummary {
         V4MigrationPayloadVerificationSummary(
-            status: unverified == 0 && !forceFailed ? .verified : .failed,
+            status: unverified == 0 ? .verified : .failed,
             method: .fieldByFieldCanonicalValues,
             verifiedRows: verified,
             unverifiedRows: unverified
