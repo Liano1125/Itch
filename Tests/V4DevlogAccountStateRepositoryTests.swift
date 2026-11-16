@@ -116,4 +116,43 @@ final class V4DevlogAccountStateRepositoryTests: XCTestCase {
         XCTAssertThrowsError(try repository.historicalSyncState(for: context, session: session))
         XCTAssertThrowsError(try repository.setAutoSyncAttempt(.now, for: context, session: session))
     }
+
+    @MainActor
+    func testOldGenerationCannotAccessAfterSameAccountSignsOutAndBackIn() throws {
+        let container = try makeContainer()
+        let repository = V4DevlogAccountStateRepository(context: container.mainContext)
+        let session = ItchAccountSession()
+        let account = identity(606)
+
+        session.activate(account)
+        let originalContext = try XCTUnwrap(session.captureRequestContext())
+        try repository.setAutoSyncAttempt(
+            Date(timeIntervalSince1970: 1_700_000_606),
+            for: originalContext,
+            session: session
+        )
+
+        session.activate(nil)
+        session.activate(account)
+        let renewedContext = try XCTUnwrap(session.captureRequestContext())
+
+        XCTAssertNotEqual(originalContext.generation, renewedContext.generation)
+        XCTAssertThrowsError(
+            try repository.lastAutoSyncAttempt(for: originalContext, session: session)
+        )
+        XCTAssertThrowsError(
+            try repository.saveHistoricalSyncState(
+                lastSyncAt: .now,
+                message: "stale generation",
+                resultsData: Data([6]),
+                for: originalContext,
+                session: session
+            )
+        )
+        XCTAssertNil(try repository.historicalSyncState(
+            for: renewedContext,
+            session: session
+        ).lastMessage)
+    }
+
 }
