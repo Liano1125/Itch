@@ -51,3 +51,27 @@ Diagnostics must be stable codes such as `reference.missingGame` or `scope.uncla
 ## Current integration status
 
 The V3 preflight and the AppState/library converters currently expose separate report types. This manifest is the shared envelope for a later orchestration layer; wiring that layer, persisting the manifest, and verifying every model family remain future work. Calendar ownership splitting, update-watch ownership, Patreon identity isolation, and SQLite staging/recovery are not considered complete by this metadata contract.
+
+## Report aggregation
+
+`V4MigrationManifestBuilder` composes the existing V3 preflight, legacy library,
+and legacy AppState converter reports. It is metadata-only and performs no
+database reads or writes itself.
+
+- The root source count and structural digest come from the V3 preflight report.
+- The library domain uses the converter's stable-identity digest and records
+  converted rows under the explicit `account-unassigned` destination bucket.
+- The AppState domain uses the converter's key-only digest and the actual
+  length-prefixed `AppStateScope.scopeID` values for device, app-global, and
+  legacy-unclassified counts.
+- Converter reports are not payload verification. Both domains remain
+  `notRun` with every destination row unverified.
+- Preflight issue identifiers are stripped before diagnostics are serialized.
+  Unhandled update-watch or calendar-event ownership review is retained as a
+  stable promotion-blocking diagnostic.
+- A mismatch between preflight source counts and converter report counts is
+  recorded as a stable diagnostic.
+
+The builder does not orchestrate conversion, persist manifests, open SQLite
+snapshots, or authorize promotion. Field-by-field canonical payload comparison
+is still a separate future step.
