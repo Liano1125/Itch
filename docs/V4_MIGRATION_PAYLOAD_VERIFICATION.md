@@ -28,3 +28,5 @@ Only exact source/destination record matches count as verified. A clean context 
 ## Remaining integration
 
 A later isolated migration orchestrator must call the verifier after conversion and before writing the verification summaries into the Manifest. That orchestrator still needs backup/snapshot validation, SQLite integrity checks, crash recovery, atomic promotion, and rollback. V3 remains authoritative until all gates are independently implemented and tested.
+
+CI coverage is provided by the repository iOS Build workflow for this stacked PR base branch.
