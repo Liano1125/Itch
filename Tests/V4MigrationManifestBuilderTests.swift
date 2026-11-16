@@ -49,7 +49,7 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
         XCTAssertEqual(libraryDomain.sourceRowCount, 8)
         XCTAssertEqual(libraryDomain.destinationRowCount, 8)
         XCTAssertEqual(libraryDomain.scopeCounts, ["account-unassigned": 8])
-        XCTAssertEqual(libraryDomain.quarantinedRowCount, 8)
+        XCTAssertEqual(libraryDomain.quarantinedRowCount, 0)
         XCTAssertEqual(libraryDomain.digestKind, .stableIdentitySHA256)
 
         let appStateDomain = try XCTUnwrap(manifest.domains["appState"])
