@@ -19,6 +19,20 @@ enum V4MigrationManifestBuilder {
         let totalSourceRows = preflight.rowCounts.values.reduce(0, +)
 
         var diagnostics = preflight.integrityIssues.map(Self.stableDiagnosticCode)
+
+        // Only library and AppState converter reports are currently supplied.
+        // Do not let those two verified domains imply whole-store coverage.
+        let reportedSourceTables: Set<String> = [
+            "libraryEntries", "collections", "collectionItems",
+            "libraryStatusEvents", "appStates"
+        ]
+        let uncoveredSourceRows = preflight.rowCounts
+            .filter { !reportedSourceTables.contains($0.key) }
+            .values
+            .reduce(0, +)
+        if uncoveredSourceRows > 0 {
+            diagnostics.append("migration.domainCoverage.incomplete")
+        }
         if librarySourceRows != library.totalRows {
             diagnostics.append("migration.library.sourceCountMismatch")
         }
