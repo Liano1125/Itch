@@ -62,6 +62,7 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
         XCTAssertEqual(appStateDomain.payloadVerification.status, .notRun)
         XCTAssertEqual(appStateDomain.payloadVerification.method, .none)
         XCTAssertEqual(appStateDomain.payloadVerification.unverifiedRows, 3)
+        XCTAssertTrue(manifest.integrityDiagnostics.contains("migration.domainCoverage.incomplete"))
         XCTAssertFalse(manifest.isPromotionEligible)
     }
 
