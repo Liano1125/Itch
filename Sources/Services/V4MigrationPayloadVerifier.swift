@@ -91,8 +91,8 @@ enum V4MigrationPayloadVerifier {
             duplicateCode: String,
             mismatchCode: String
         ) -> (Int, Int) {
-            let sourceGroups = Dictionary(grouping: source, by: \.0)
-            let destinationGroups = Dictionary(grouping: destination, by: \.0)
+            let sourceGroups = Dictionary(grouping: source, by: { $0.0 })
+            let destinationGroups = Dictionary(grouping: destination, by: { $0.0 })
             let keys = Set(sourceGroups.keys).union(destinationGroups.keys)
             var verified = 0
             var unverified = 0
