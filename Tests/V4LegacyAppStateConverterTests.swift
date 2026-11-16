@@ -41,6 +41,11 @@ final class V4LegacyAppStateConverterTests: XCTestCase {
             dataValue: payload,
             updatedAt: date
         ))
+        source.insert(DBAppState(
+            key: "detailPrefetch.lastSuccess.game-123",
+            dateValue: date,
+            updatedAt: date
+        ))
         try sourceDatabase.save()
 
         let destination = try makeV4Container()
@@ -48,14 +53,14 @@ final class V4LegacyAppStateConverterTests: XCTestCase {
             source: source, destination: destination.mainContext
         )
 
-        XCTAssertEqual(report.totalRows, 4)
+        XCTAssertEqual(report.totalRows, 5)
         XCTAssertEqual(report.deviceScopedRows, 1)
         XCTAssertEqual(report.appGlobalRows, 1)
-        XCTAssertEqual(report.quarantinedRows, 2)
+        XCTAssertEqual(report.quarantinedRows, 3)
         XCTAssertEqual(report.inventoryDigest.count, 64)
 
         let rows = try destination.mainContext.fetch(FetchDescriptor<DBScopedAppState>())
-        XCTAssertEqual(rows.count, 4)
+        XCTAssertEqual(rows.count, 5)
         let byKey = Dictionary(uniqueKeysWithValues: rows.map { ($0.logicalKey, $0) })
 
         let device = try XCTUnwrap(byKey["itchPocket.sparkLastSyncAt.v2"])
@@ -74,9 +79,15 @@ final class V4LegacyAppStateConverterTests: XCTestCase {
         XCTAssertEqual(unknown.scopeID, AppStateScope.legacyUnclassified.scopeID)
         XCTAssertEqual(unknown.dataValue, payload)
 
+        // Provisional aliases are retained for review rather than promoted
+        // automatically into app-global state.
+        let provisionalAlias = try XCTUnwrap(byKey["detailPrefetch.lastSuccess.game-123"])
+        XCTAssertEqual(provisionalAlias.scopeID, AppStateScope.legacyUnclassified.scopeID)
+        XCTAssertEqual(provisionalAlias.dateValue, date)
+
         // V3 remains unchanged and account-scoped keys are never assigned to
         // whichever itch account happens to be active during migration.
-        XCTAssertEqual(try source.fetchCount(FetchDescriptor<DBAppState>()), 4)
+        XCTAssertEqual(try source.fetchCount(FetchDescriptor<DBAppState>()), 5)
         XCTAssertFalse(rows.contains { $0.scopeID == "itch:1" || $0.scopeID == "patreon:1" })
     }
 
