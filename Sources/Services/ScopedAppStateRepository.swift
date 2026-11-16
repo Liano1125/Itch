@@ -96,6 +96,13 @@ final class ScopedAppStateRepository {
         self.context = context
     }
 
+    /// Persists all pending scoped-state mutations in one SwiftData save.
+    /// Callers can pass `save: false` to typed setters and commit a logical
+    /// multi-key update atomically at the persistence boundary.
+    func save() throws {
+        try context.save()
+    }
+
     func state(for key: String, in scope: AppStateScope) throws -> StoredScopedAppState? {
         try existingRows(for: key, in: scope).first.map(StoredScopedAppState.init)
     }

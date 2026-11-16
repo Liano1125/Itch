@@ -48,6 +48,8 @@ on:
       - feat/v4-library-migration-parity-gate
       # Validate the V3 AppState ownership audit branch.
       - audit/v4-appstate-ownership
+      # Validate the V4 account-scoped Devlog implementation.
+      - feat/v4-account-scoped-devlog-state
   pull_request:
     branches:
       # PR #56 is stacked on this migration/status-history branch.
