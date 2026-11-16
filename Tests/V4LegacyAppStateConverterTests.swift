@@ -150,4 +150,43 @@ final class V4LegacyAppStateConverterTests: XCTestCase {
             )
         }
     }
+
+    @MainActor
+    func testQuarantinesEveryCurrentlyRegisteredProvisionalClassification() throws {
+        // Keep this list aligned with every .provisional registry entry:
+        // four itch-account keys and the legacy detail-prefetch alias.
+        let provisionalKeys = [
+            "devlogSync.lastDate",
+            "devlogSync.lastMessage",
+            "devlogSync.lastResults",
+            "itchPocket.devlogAutoSync.lastAttempt",
+            "detailPrefetch.lastSuccess.game-456"
+        ]
+
+        let sourceDatabase = try AppDatabase(inMemory: true)
+        let source = sourceDatabase.context
+        for key in provisionalKeys {
+            source.insert(DBAppState(key: key, stringValue: "preserve"))
+        }
+        try sourceDatabase.save()
+
+        let destination = try makeV4Container()
+        let report = try V4LegacyAppStateConverter.convert(
+            source: source, destination: destination.mainContext
+        )
+
+        XCTAssertEqual(report.totalRows, provisionalKeys.count)
+        XCTAssertEqual(report.deviceScopedRows, 0)
+        XCTAssertEqual(report.appGlobalRows, 0)
+        XCTAssertEqual(report.quarantinedRows, provisionalKeys.count)
+
+        let rows = try destination.mainContext.fetch(FetchDescriptor<DBScopedAppState>())
+        XCTAssertEqual(rows.count, provisionalKeys.count)
+        for key in provisionalKeys {
+            let row = try XCTUnwrap(rows.first { $0.logicalKey == key })
+            XCTAssertEqual(row.scopeID, AppStateScope.legacyUnclassified.scopeID, key)
+            XCTAssertEqual(row.stringValue, "preserve", key)
+        }
+    }
+
 }
