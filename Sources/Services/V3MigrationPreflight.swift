@@ -21,7 +21,7 @@ struct V3MigrationPreflightReport: Codable, Equatable {
         ownershipReviewCounts.values.contains { $0 > 0 }
     }
 
-    fileprivate init(
+    init(
         sourceSchemaVersion: String,
         rowCounts: [String: Int],
         ownershipReviewCounts: [String: Int],
