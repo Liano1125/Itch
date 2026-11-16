@@ -59,9 +59,13 @@ final class V4DevlogAccountStateRepository {
         session: ItchAccountSession
     ) throws {
         let scope = try validatedScope(for: requestContext, session: session)
-        try repository.setDate(lastSyncAt, for: Key.historicalDate, in: scope)
-        try repository.setString(message, for: Key.historicalMessage, in: scope)
-        try repository.setData(resultsData, for: Key.historicalResults, in: scope)
+        // These three fields form one historical-sync snapshot. Stage all
+        // mutations first, then persist them with a single SwiftData save so
+        // readers never observe a partially committed projection after restart.
+        try repository.setDate(lastSyncAt, for: Key.historicalDate, in: scope, save: false)
+        try repository.setString(message, for: Key.historicalMessage, in: scope, save: false)
+        try repository.setData(resultsData, for: Key.historicalResults, in: scope, save: false)
+        try repository.save()
     }
 
     func lastAutoSyncAttempt(
