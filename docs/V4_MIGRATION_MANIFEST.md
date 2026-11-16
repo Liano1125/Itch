@@ -61,6 +61,8 @@ database reads or writes itself.
 - The root source count and structural digest come from the V3 preflight report.
 - The library domain uses the converter's stable-identity digest and records
   converted rows under the explicit `account-unassigned` destination bucket.
+  This is an ownership state, not quarantine: `quarantinedRowCount` remains zero
+  unless rows are actually withheld in a quarantine destination.
 - The AppState domain uses the converter's key-only digest and the actual
   length-prefixed `AppStateScope.scopeID` values for device, app-global, and
   legacy-unclassified counts.
