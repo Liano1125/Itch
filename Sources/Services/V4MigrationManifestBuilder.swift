@@ -51,8 +51,10 @@ enum V4MigrationManifestBuilder {
         let libraryDomain = V4MigrationDomainManifest(
             sourceRowCount: librarySourceRows,
             destinationRowCount: library.totalRows,
+            // Nil account ownership is an explicit unassigned destination
+            // state, not a quarantine. Keep the two concepts separate.
             scopeCounts: ["account-unassigned": library.totalRows],
-            quarantinedRowCount: library.totalRows,
+            quarantinedRowCount: 0,
             inventoryDigest: library.inventoryDigest,
             digestKind: .stableIdentitySHA256,
             payloadVerification: notRunVerification(rowCount: library.totalRows),
