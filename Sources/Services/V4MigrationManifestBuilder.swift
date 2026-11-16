@@ -6,6 +6,7 @@ enum V4MigrationManifestBuilder {
         preflight: V3MigrationPreflightReport,
         library: V4LegacyLibraryMigrationReport,
         appState: V4LegacyAppStateMigrationReport,
+        verification: V4MigrationPayloadVerificationReport? = nil,
         runID: String,
         generatedAt: Date,
         destinationSchemaVersion: String
@@ -19,6 +20,7 @@ enum V4MigrationManifestBuilder {
         let totalSourceRows = preflight.rowCounts.values.reduce(0, +)
 
         var diagnostics = preflight.integrityIssues.map(Self.stableDiagnosticCode)
+        diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
 
         // Only library and AppState converter reports are currently supplied.
         // Do not let those two verified domains imply whole-store coverage.
@@ -57,7 +59,7 @@ enum V4MigrationManifestBuilder {
             quarantinedRowCount: 0,
             inventoryDigest: library.inventoryDigest,
             digestKind: .stableIdentitySHA256,
-            payloadVerification: notRunVerification(rowCount: library.totalRows),
+            payloadVerification: verification?.library ?? notRunVerification(rowCount: library.totalRows),
             integrityDiagnostics: librarySourceRows == library.totalRows
                 ? [] : ["migration.library.sourceCountMismatch"]
         )
@@ -75,7 +77,7 @@ enum V4MigrationManifestBuilder {
             quarantinedRowCount: appState.quarantinedRows,
             inventoryDigest: appState.inventoryDigest,
             digestKind: .keyOnlySHA256,
-            payloadVerification: notRunVerification(rowCount: appState.totalRows),
+            payloadVerification: verification?.appState ?? notRunVerification(rowCount: appState.totalRows),
             integrityDiagnostics: appStateSourceRows == appState.totalRows
                 ? [] : ["migration.appState.sourceCountMismatch"]
         )

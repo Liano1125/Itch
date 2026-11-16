@@ -96,4 +96,89 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
         XCTAssertFalse(json.contains("private-game-id"))
         XCTAssertFalse(manifest.isPromotionEligible)
     }
+
+    func testBuilderIntegratesFieldByFieldVerificationIntoPromotionGate() throws {
+        let preflight = try makePreflight(
+            rowCounts: [
+                "libraryEntries": 1, "collections": 0, "collectionItems": 0,
+                "libraryStatusEvents": 0, "appStates": 1
+            ]
+        )
+        let library = V4LegacyLibraryMigrationReport(
+            libraryEntryCount: 1, collectionCount: 0, collectionItemCount: 0,
+            statusEventCount: 0, inventoryDigest: String(repeating: "e", count: 64)
+        )
+        let appState = V4LegacyAppStateMigrationReport(
+            totalRows: 1, deviceScopedRows: 1, appGlobalRows: 0,
+            quarantinedRows: 0, inventoryDigest: String(repeating: "f", count: 64)
+        )
+        let verification = V4MigrationPayloadVerificationReport(
+            library: V4MigrationPayloadVerificationSummary(
+                status: .verified, method: .fieldByFieldCanonicalValues,
+                verifiedRows: 1, unverifiedRows: 0
+            ),
+            appState: V4MigrationPayloadVerificationSummary(
+                status: .verified, method: .fieldByFieldCanonicalValues,
+                verifiedRows: 1, unverifiedRows: 0
+            ),
+            integrityDiagnostics: []
+        )
+
+        let manifest = V4MigrationManifestBuilder.build(
+            preflight: preflight, library: library, appState: appState,
+            verification: verification,
+            runID: "verified-builder-test",
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            destinationSchemaVersion: "4.0.0"
+        )
+
+        XCTAssertEqual(manifest.domains["library"]?.payloadVerification.status, .verified)
+        XCTAssertEqual(manifest.domains["appState"]?.payloadVerification.status, .verified)
+        XCTAssertTrue(manifest.integrityDiagnostics.isEmpty)
+        XCTAssertTrue(manifest.isPromotionEligible)
+    }
+
+    func testBuilderCarriesVerifierDiagnosticsAndBlocksPromotion() throws {
+        let preflight = try makePreflight(
+            rowCounts: [
+                "libraryEntries": 1, "collections": 0, "collectionItems": 0,
+                "libraryStatusEvents": 0, "appStates": 1
+            ]
+        )
+        let library = V4LegacyLibraryMigrationReport(
+            libraryEntryCount: 1, collectionCount: 0, collectionItemCount: 0,
+            statusEventCount: 0, inventoryDigest: String(repeating: "1", count: 64)
+        )
+        let appState = V4LegacyAppStateMigrationReport(
+            totalRows: 1, deviceScopedRows: 0, appGlobalRows: 0,
+            quarantinedRows: 1, inventoryDigest: String(repeating: "2", count: 64)
+        )
+        let verification = V4MigrationPayloadVerificationReport(
+            library: V4MigrationPayloadVerificationSummary(
+                status: .failed, method: .fieldByFieldCanonicalValues,
+                verifiedRows: 0, unverifiedRows: 2
+            ),
+            appState: V4MigrationPayloadVerificationSummary(
+                status: .verified, method: .fieldByFieldCanonicalValues,
+                verifiedRows: 1, unverifiedRows: 0
+            ),
+            integrityDiagnostics: ["migration.library.entry.payloadMismatch"]
+        )
+
+        let manifest = V4MigrationManifestBuilder.build(
+            preflight: preflight, library: library, appState: appState,
+            verification: verification,
+            runID: "failed-builder-test",
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            destinationSchemaVersion: "4.0.0"
+        )
+
+        XCTAssertEqual(manifest.domains["library"]?.payloadVerification.status, .failed)
+        XCTAssertEqual(manifest.domains["appState"]?.payloadVerification.status, .verified)
+        XCTAssertTrue(manifest.integrityDiagnostics.contains(
+            "migration.library.entry.payloadMismatch"
+        ))
+        XCTAssertFalse(manifest.isPromotionEligible)
+    }
+
 }

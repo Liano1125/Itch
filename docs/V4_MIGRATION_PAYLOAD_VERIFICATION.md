@@ -30,3 +30,14 @@ Only exact source/destination record matches count as verified. A clean context 
 A later isolated migration orchestrator must call the verifier after conversion and before writing the verification summaries into the Manifest. That orchestrator still needs backup/snapshot validation, SQLite integrity checks, crash recovery, atomic promotion, and rollback. V3 remains authoritative until all gates are independently implemented and tested.
 
 CI coverage is provided by the repository iOS Build workflow for this stacked PR base branch.
+
+
+## Manifest integration
+
+The field-by-field verifier report can be supplied to
+`V4MigrationManifestBuilder.build(..., verification:)`. The builder copies
+the per-domain verification summaries into the manifest and carries stable
+verifier diagnostics to the root promotion-blocking list. A mismatch in one
+domain does not falsify the other domain's comparison result, but any verifier
+diagnostic still blocks whole-manifest promotion. Omitting the report keeps
+both domains explicitly `notRun`.
