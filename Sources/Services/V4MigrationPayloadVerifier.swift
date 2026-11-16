@@ -246,9 +246,13 @@ enum V4MigrationPayloadVerifier {
         )
 
         let librarySummary = summary(
-            verified: libraryVerified, unverified: libraryUnverified
+            verified: libraryVerified, unverified: libraryUnverified,
+            forceFailed: !diagnostics.isEmpty
         )
-        let appStateSummary = summary(verified: appState.0, unverified: appState.1)
+        let appStateSummary = summary(
+            verified: appState.0, unverified: appState.1,
+            forceFailed: !diagnostics.isEmpty
+        )
         return V4MigrationPayloadVerificationReport(
             library: librarySummary,
             appState: appStateSummary,
@@ -257,10 +261,10 @@ enum V4MigrationPayloadVerifier {
     }
 
     private static func summary(
-        verified: Int, unverified: Int
+        verified: Int, unverified: Int, forceFailed: Bool
     ) -> V4MigrationPayloadVerificationSummary {
         V4MigrationPayloadVerificationSummary(
-            status: unverified == 0 ? .verified : .failed,
+            status: unverified == 0 && !forceFailed ? .verified : .failed,
             method: .fieldByFieldCanonicalValues,
             verifiedRows: verified,
             unverifiedRows: unverified
