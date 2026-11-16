@@ -46,16 +46,22 @@ struct V4MigrationDomainManifest: Codable, Equatable {
         scopeCounts.values.reduce(0, +) == destinationRowCount
     }
 
+    private var hasValidDigest: Bool {
+        guard let inventoryDigest, digestKind != nil else { return false }
+        return V4MigrationManifest.isSHA256Hex(inventoryDigest)
+    }
+
     var isPromotionEligible: Bool {
         sourceRowCount >= 0 &&
         destinationRowCount >= 0 &&
         quarantinedRowCount >= 0 &&
         quarantinedRowCount <= destinationRowCount &&
         hasConsistentScopeCounts &&
-        integrityDiagnostics.isEmpty &&
+        hasValidDigest &&
         payloadVerification.status == .verified &&
         payloadVerification.unverifiedRows == 0 &&
-        payloadVerification.verifiedRows >= destinationRowCount
+        payloadVerification.verifiedRows >= destinationRowCount &&
+        integrityDiagnostics.isEmpty
     }
 }
 
@@ -102,6 +108,12 @@ struct V4MigrationManifest: Codable, Equatable {
         self.integrityDiagnostics = integrityDiagnostics.sorted()
     }
 
+    static func isSHA256Hex(_ value: String) -> Bool {
+        value.count == 64 && value.unicodeScalars.allSatisfy {
+            CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains($0)
+        }
+    }
+
     /// A descriptive safety predicate only. Production promotion still requires
     /// independent backup, SQLite, restart-recovery, and rollback gates.
     var isPromotionEligible: Bool {
@@ -111,7 +123,7 @@ struct V4MigrationManifest: Codable, Equatable {
         !destinationSchemaVersion.isEmpty &&
         registryVersion > 0 &&
         sourceRowCount >= 0 &&
-        sourceInventoryDigest.count == 64 &&
+        Self.isSHA256Hex(sourceInventoryDigest) &&
         integrityDiagnostics.isEmpty &&
         !domains.isEmpty &&
         domains.values.allSatisfy(\.isPromotionEligible)
