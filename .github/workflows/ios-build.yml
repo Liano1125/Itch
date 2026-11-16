@@ -46,7 +46,9 @@ on:
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
       - feat/v4-field-by-field-payload-verifier
+      - feat/v4-migration-coordinator
       - feat/v4-manifest-verifier-integration
+      - feat/v4-migration-coordinator
       - feat/v4-legacy-appstate-scope-conversion
   pull_request:
     branches:
@@ -99,6 +101,7 @@ on:
       - fix/v4-session-stale-side-effect-guards
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
+      - feat/v4-manifest-verifier-integration
       - feat/v4-field-by-field-payload-verifier
       - feat/v4-legacy-appstate-scope-conversion
       - feat/v4-scoped-appstate-repository
