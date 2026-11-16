@@ -99,6 +99,39 @@ final class V4MigrationManifestTests: XCTestCase {
         XCTAssertFalse(diagnosed.isPromotionEligible)
     }
 
+
+    func testManifestRejectsMalformedOrUntypedDigests() {
+        let valid = verifiedDomain(
+            sourceRows: 1,
+            destinationRows: 1,
+            scopes: ["app-global": 1]
+        )
+        let malformed = V4MigrationDomainManifest(
+            sourceRowCount: valid.sourceRowCount,
+            destinationRowCount: valid.destinationRowCount,
+            scopeCounts: valid.scopeCounts,
+            quarantinedRowCount: valid.quarantinedRowCount,
+            inventoryDigest: "not-a-digest",
+            digestKind: .stableIdentitySHA256,
+            payloadVerification: valid.payloadVerification,
+            integrityDiagnostics: []
+        )
+        XCTAssertFalse(makeManifest(domain: malformed).isPromotionEligible)
+
+        let untyped = V4MigrationDomainManifest(
+            sourceRowCount: valid.sourceRowCount,
+            destinationRowCount: valid.destinationRowCount,
+            scopeCounts: valid.scopeCounts,
+            quarantinedRowCount: valid.quarantinedRowCount,
+            inventoryDigest: valid.inventoryDigest,
+            digestKind: nil,
+            payloadVerification: valid.payloadVerification,
+            integrityDiagnostics: []
+        )
+        XCTAssertFalse(makeManifest(domain: untyped).isPromotionEligible)
+    }
+
+
     func testManifestSerializationDoesNotContainPrivatePayloads() throws {
         let manifest = makeManifest(domain: verifiedDomain(
             sourceRows: 1,
