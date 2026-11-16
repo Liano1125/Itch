@@ -73,15 +73,17 @@ enum V4LegacyAppStateConverter {
                 let scopeID: String
 
                 switch classification.scope {
-                case .device:
+                case .device where classification.confidence == .established:
                     scopeID = deviceScope
                     deviceCount += 1
-                case .appGlobal:
+                case .appGlobal where classification.confidence == .established:
                     scopeID = appGlobalScope
                     appGlobalCount += 1
-                case .itchAccount, .patreonAccount, .legacyUnclassified:
-                    // The historical row has no durable account owner.
-                    // Never infer one from the currently signed-in identity.
+                case .device, .appGlobal, .itchAccount, .patreonAccount, .legacyUnclassified:
+                    // Provisional classifications are not sufficient proof
+                    // for automatic placement. Preserve them for review just
+                    // like account-owned and unknown historical keys.
+                    // Never infer account ownership from the active session.
                     scopeID = legacyScope
                     quarantinedCount += 1
                 }
