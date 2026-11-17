@@ -23,13 +23,16 @@ final class V4MigrationCoordinatorTests: XCTestCase {
     func testEmptyStoreCompletesCoveredMigrationPipelineWithoutProductionPromotion() throws {
         let source = try AppDatabase(inMemory: true)
         let destination = try makeV4Container()
+        let lockURL = makeOwnerLockURL()
         let attempt = try V4MigrationCoordinator.run(
             source: source.context,
             destination: destination.mainContext,
             runID: "empty-store-test",
             generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
-            ownerLockURL: makeOwnerLockURL()
+            ownerLockURL: lockURL
         )
+        let reacquiredLease = try V4MigrationOwnerLock.acquire(at: lockURL)
+        reacquiredLease.release()
         XCTAssertTrue(attempt.verification.isVerified)
         XCTAssertTrue(attempt.manifest.isPromotionEligible)
         XCTAssertEqual(attempt.outcome, .manifestEligibleForIndependentSafetyGates)
