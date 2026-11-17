@@ -52,6 +52,7 @@ on:
       - feat/v4-staging-snapshot-lifecycle
       - feat/v4-journal-staging-lifecycle-coordinator
       - feat/v4-cross-process-migration-owner-lock
+      - test/v4-migration-owner-lock-process-crash
       - feat/v4-manifest-verifier-integration
       - feat/v4-migration-coordinator
       - feat/v4-migration-journal-state-machine
@@ -64,6 +65,7 @@ on:
       - feat/v4-persistent-migration-journal
       - feat/v4-staging-snapshot-lifecycle
       - feat/v4-journal-staging-lifecycle-coordinator
+      - feat/v4-cross-process-migration-owner-lock
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
@@ -266,6 +268,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             test
+
+      # Exercise Darwin flock across real independent processes and forced process exit.
+      - name: Verify cross-process migration owner lock recovery
+        run: |
+          set -euo pipefail
+          PROBE="$RUNNER_TEMP/V4MigrationOwnerLockProcessProbe"
+          swiftc -parse-as-library \
+            Sources/Services/V4MigrationOwnerLock.swift \
+            Scripts/V4MigrationOwnerLockProcessProbe.swift \
+            -o "$PROBE"
+          "$PROBE"
 
       # 7. 编译 iPhone 真机 Release 版本
       - name: Build for physical iOS devices
