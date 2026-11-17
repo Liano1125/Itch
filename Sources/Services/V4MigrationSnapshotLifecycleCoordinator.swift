@@ -6,18 +6,27 @@ struct V4MigrationSnapshotLifecycleCoordinator {
 
     private let journal: V4MigrationJournalRepository
     private let stagingManager: V4MigrationStagingStoreManager
+    private let ownerLockURL: URL
 
-    init(journal: V4MigrationJournalRepository, stagingManager: V4MigrationStagingStoreManager) {
+    init(
+        journal: V4MigrationJournalRepository,
+        stagingManager: V4MigrationStagingStoreManager,
+        ownerLockURL: URL
+    ) {
         self.journal = journal
         self.stagingManager = stagingManager
+        self.ownerLockURL = ownerLockURL.standardizedFileURL
     }
 
-    /// Persists the staging identity before touching the filesystem.
+    /// Holds the OS-level owner lock across journal and filesystem operations.
     func createStagingSnapshot(
         from sourceURL: URL, runID: String, idempotencyKey: String,
         sourceSchemaVersion: String, destinationSchemaVersion: String,
         stagingStoreID: String, at date: Date, attemptNumber: Int = 1
     ) async throws -> V4MigrationStagingStore {
+        let ownerLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
+        defer { ownerLease.release() }
+
         let creation = try await journal.createOrGet(
             runID: runID, idempotencyKey: idempotencyKey,
             sourceSchemaVersion: sourceSchemaVersion,
@@ -41,10 +50,12 @@ struct V4MigrationSnapshotLifecycleCoordinator {
         }
     }
 
-    /// Only recover pre-staging states. Caller must first hold an exclusive
-    /// migration-owner lock; the journal actor is not a cross-process lock.
-    /// Completed stagingCreated attempts are preserved for the next phase.
+    /// Recovery acquires the same kernel lock as snapshot creation before it
+    /// inspects records or removes staging directories.
     func recoverInterruptedSnapshotAttempts(at date: Date) async throws -> [String] {
+        let ownerLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
+        defer { ownerLease.release() }
+
         let records = try await journal.allRecords()
         var recovered: [String] = []
         for record in records where record.state == .requested || record.state == .snapshotting || record.state == .snapshotReady {

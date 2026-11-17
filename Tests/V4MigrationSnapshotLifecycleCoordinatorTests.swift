@@ -18,7 +18,7 @@ final class V4MigrationSnapshotLifecycleCoordinatorTests: XCTestCase {
         let journalURL = root.appendingPathComponent("control/journal.json")
         let journal = V4MigrationJournalRepository(fileURL: journalURL)
         let manager = V4MigrationStagingStoreManager(rootURL: root.appendingPathComponent("staging"))
-        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager)
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager, ownerLockURL: root.appendingPathComponent("control/migration-owner.lock"))
 
         let staging = try await coordinator.createStagingSnapshot(
             from: sourceURL, runID: "run-101", idempotencyKey: "request-101",
@@ -42,7 +42,7 @@ final class V4MigrationSnapshotLifecycleCoordinatorTests: XCTestCase {
         let journalURL = root.appendingPathComponent("control/journal.json")
         let manager = V4MigrationStagingStoreManager(rootURL: root.appendingPathComponent("staging"))
         let journal = V4MigrationJournalRepository(fileURL: journalURL)
-        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager)
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager, ownerLockURL: root.appendingPathComponent("control/migration-owner.lock"))
 
         do {
             _ = try await coordinator.createStagingSnapshot(
@@ -80,7 +80,7 @@ final class V4MigrationSnapshotLifecycleCoordinatorTests: XCTestCase {
         let unrelated = stagingRoot.appendingPathComponent("run-other-staging-stage-other", isDirectory: true)
         try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
 
-        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager)
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager, ownerLockURL: root.appendingPathComponent("control/migration-owner.lock"))
         let recovered = try await coordinator.recoverInterruptedSnapshotAttempts(at: epoch.addingTimeInterval(10))
         XCTAssertEqual(recovered, ["run-103"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: interrupted.path))
@@ -95,7 +95,7 @@ final class V4MigrationSnapshotLifecycleCoordinatorTests: XCTestCase {
         let sourceURL = try makeDatabase(in: root)
         let journal = V4MigrationJournalRepository(fileURL: root.appendingPathComponent("control/journal.json"))
         let manager = V4MigrationStagingStoreManager(rootURL: root.appendingPathComponent("staging"))
-        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager)
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(journal: journal, stagingManager: manager, ownerLockURL: root.appendingPathComponent("control/migration-owner.lock"))
         _ = try await coordinator.createStagingSnapshot(
             from: sourceURL, runID: "run-104", idempotencyKey: "request-104",
             sourceSchemaVersion: "3", destinationSchemaVersion: "4",
