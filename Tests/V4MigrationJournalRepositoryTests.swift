@@ -105,6 +105,83 @@ final class V4MigrationJournalRepositoryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
+    func testTransitionWriteFailureKeepsLastCommittedRecordAndEventHistory() async throws {
+        enum WriteFailure: Error { case injected }
+        let url = try temporaryStoreURL()
+        let repository = V4MigrationJournalRepository(
+            fileURL: url,
+            writeData: { data, destination in
+                let serialized = String(decoding: data, as: UTF8.self)
+                if serialized.contains("\\"state\\":\\"snapshotting\\"") {
+                    throw WriteFailure.injected
+                }
+                try data.write(to: destination, options: [.atomic])
+            }
+        )
+        _ = try await repository.createOrGet(
+            runID: "run-a", idempotencyKey: "request-a",
+            sourceSchemaVersion: "3", destinationSchemaVersion: "4", at: epoch
+        )
+
+        do {
+            _ = try await repository.transition(
+                runID: "run-a", from: .requested, to: .snapshotting,
+                at: epoch.addingTimeInterval(1), code: "snapshot.started"
+            )
+            XCTFail("Expected injected transition write failure")
+        } catch {
+            XCTAssertTrue(error is WriteFailure)
+        }
+
+        let current = try await repository.record(runID: "run-a")
+        XCTAssertEqual(current?.state, .requested)
+        let events = try await repository.events(runID: "run-a")
+        XCTAssertEqual(events.map(\\.sequence), [1])
+
+        let restarted = V4MigrationJournalRepository(fileURL: url)
+        XCTAssertEqual(try await restarted.record(runID: "run-a")?.state, .requested)
+        XCTAssertEqual(try await restarted.events(runID: "run-a").map(\\.sequence), [1])
+    }
+
+    func testCorruptJournalFailsClosedWithoutReplacingTheFile() async throws {
+        let url = try temporaryStoreURL()
+        let corruptBytes = Data("not-a-valid-journal".utf8)
+        try corruptBytes.write(to: url)
+
+        let repository = V4MigrationJournalRepository(fileURL: url)
+        do {
+            _ = try await repository.allRecords()
+            XCTFail("Expected corrupt journal to be rejected")
+        } catch {
+            XCTAssertEqual(error as? V4MigrationJournalRepository.RepositoryError, .corruptStore)
+        }
+        XCTAssertEqual(try Data(contentsOf: url), corruptBytes)
+    }
+
+    func testUnsafePersistedEventCodeIsRejectedDuringRecovery() async throws {
+        let url = try temporaryStoreURL()
+        let repository = V4MigrationJournalRepository(fileURL: url)
+        _ = try await repository.createOrGet(
+            runID: "run-a", idempotencyKey: "request-a",
+            sourceSchemaVersion: "3", destinationSchemaVersion: "4", at: epoch
+        )
+        let bytes = try Data(contentsOf: url)
+        var serialized = String(decoding: bytes, as: UTF8.self)
+        serialized = serialized.replacingOccurrences(
+            of: "migration.requested",
+            with: "private/path"
+        )
+        try Data(serialized.utf8).write(to: url, options: [.atomic])
+
+        let restarted = V4MigrationJournalRepository(fileURL: url)
+        do {
+            _ = try await restarted.allRecords()
+            XCTFail("Expected unsafe event code to be rejected")
+        } catch {
+            XCTAssertEqual(error as? V4MigrationJournalRepository.RepositoryError, .corruptStore)
+        }
+    }
+
     func testIdempotencyKeyCannotBeReusedForDifferentSchemaRequest() async throws {
         let repository = V4MigrationJournalRepository(fileURL: try temporaryStoreURL())
         _ = try await repository.createOrGet(
