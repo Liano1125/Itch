@@ -56,8 +56,14 @@ enum V4MigrationCoordinator {
         destination: ModelContext,
         runID: String,
         generatedAt: Date = Date(),
-        destinationSchemaVersion: String = "4.0.0"
+        destinationSchemaVersion: String = "4.0.0",
+        ownerLockURL: URL
     ) throws -> V4MigrationAttempt {
+        // This must be the same stable lock-file URL used by snapshot creation
+        // and recovery. Acquire before any staging write and hold through verify.
+        let ownerLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
+        defer { ownerLease.release() }
+
         guard !source.hasChanges else {
             throw CoordinatorError.sourceHasPendingChanges
         }

@@ -29,6 +29,21 @@ implemented V3 Library and AppState converters. It performs:
 - Only Library and AppState are currently converted. Any other non-empty V3
   domain is retained as uncovered by the Manifest builder and blocks promotion.
 
+## Cross-process ownership
+
+Every call to `V4MigrationCoordinator.run` requires an explicit
+`ownerLockURL`. It must be the same stable lock-file URL used by
+`V4MigrationSnapshotLifecycleCoordinator` for snapshot creation and recovery.
+The coordinator acquires the OS-level exclusive lock before preflight and holds
+it across both domain conversions, payload verification, final source
+inventory, and manifest construction. If another process owns the lock, the
+run fails before any staging write.
+
+The lock file is persistent and must not be unlinked or replaced while the app
+may be running. Any future migration writer or recovery entry point must use
+this same lock. Direct calls to lower-level converters remain implementation
+details and must not be exposed as independent migration entry points.
+
 ## Source consistency
 
 The coordinator compares the privacy-safe preflight inventory digest before
