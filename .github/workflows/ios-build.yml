@@ -58,6 +58,7 @@ on:
     branches:
       - design/v4-migration-journal-recovery
       - feat/v4-migration-journal-state-machine
+      - feat/v4-persistent-migration-journal
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
