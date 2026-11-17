@@ -107,7 +107,8 @@ struct V4MigrationJournalRecord: Codable, Equatable, Identifiable {
         sourceSchemaVersion: String,
         destinationSchemaVersion: String,
         createdAt: Date,
-        attemptNumber: Int = 1
+        attemptNumber: Int = 1,
+        stagingStoreID: String? = nil
     ) {
         self.journalVersion = Self.currentJournalVersion
         self.runID = runID
@@ -118,7 +119,7 @@ struct V4MigrationJournalRecord: Codable, Equatable, Identifiable {
         self.sourceSnapshotDigest = nil
         self.sourceInventoryDigest = nil
         self.destinationSchemaVersion = destinationSchemaVersion
-        self.stagingStoreID = nil
+        self.stagingStoreID = stagingStoreID
         self.completedDomains = []
         self.manifestDigest = nil
         self.createdAt = createdAt

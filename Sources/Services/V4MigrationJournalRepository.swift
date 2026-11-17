@@ -59,12 +59,14 @@ actor V4MigrationJournalRepository {
         sourceSchemaVersion: String,
         destinationSchemaVersion: String,
         at date: Date,
-        attemptNumber: Int = 1
+        attemptNumber: Int = 1,
+        stagingStoreID: String? = nil
     ) throws -> CreationResult {
         guard Self.isValidIdentifier(runID),
               Self.isValidIdentifier(idempotencyKey),
               Self.isValidIdentifier(sourceSchemaVersion),
               Self.isValidIdentifier(destinationSchemaVersion),
+              stagingStoreID.map(Self.isValidIdentifier) ?? true,
               attemptNumber > 0 else {
             throw RepositoryError.invalidIdentifier
         }
@@ -73,7 +75,8 @@ actor V4MigrationJournalRepository {
         if let existing = current.records.values.first(where: { $0.idempotencyKey == idempotencyKey }) {
             guard existing.sourceSchemaVersion == sourceSchemaVersion,
                   existing.destinationSchemaVersion == destinationSchemaVersion,
-                  existing.attemptNumber == attemptNumber else {
+                  existing.attemptNumber == attemptNumber,
+                  existing.stagingStoreID == stagingStoreID else {
                 throw RepositoryError.idempotencyKeyConflict
             }
             return CreationResult(record: existing, wasCreated: false)
@@ -88,7 +91,8 @@ actor V4MigrationJournalRepository {
             sourceSchemaVersion: sourceSchemaVersion,
             destinationSchemaVersion: destinationSchemaVersion,
             createdAt: date,
-            attemptNumber: attemptNumber
+            attemptNumber: attemptNumber,
+            stagingStoreID: stagingStoreID
         )
         let event = V4MigrationJournalEvent(
             runID: runID,
