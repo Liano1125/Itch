@@ -18,14 +18,44 @@ struct V4MigrationSnapshotLifecycleCoordinator {
         self.ownerLockURL = ownerLockURL.standardizedFileURL
     }
 
-    /// Holds the OS-level owner lock across journal and filesystem operations.
+    /// Runs an entire migration pipeline under one OS-level lease.
+    /// The lease remains valid across awaited journal/filesystem work and the
+    /// caller's synchronous conversion/verification work inside the closure.
+    func withExclusiveMigrationOwnership<T>(
+        _ operation: (V4MigrationOwnerLock.Lease) async throws -> T
+    ) async throws -> T {
+        let ownerLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
+        defer { ownerLease.release() }
+        return try await operation(ownerLease)
+    }
+
+    /// Convenience entry point for snapshot-only callers. A full migration
+    /// should instead call this from withExclusiveMigrationOwnership and pass
+    /// that same lease to both snapshot creation and V4MigrationCoordinator.
     func createStagingSnapshot(
         from sourceURL: URL, runID: String, idempotencyKey: String,
         sourceSchemaVersion: String, destinationSchemaVersion: String,
         stagingStoreID: String, at date: Date, attemptNumber: Int = 1
     ) async throws -> V4MigrationStagingStore {
-        let ownerLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
-        defer { ownerLease.release() }
+        try await withExclusiveMigrationOwnership { ownerLease in
+            try await createStagingSnapshot(
+                from: sourceURL, runID: runID, idempotencyKey: idempotencyKey,
+                sourceSchemaVersion: sourceSchemaVersion,
+                destinationSchemaVersion: destinationSchemaVersion,
+                stagingStoreID: stagingStoreID, at: date,
+                attemptNumber: attemptNumber, ownerLease: ownerLease
+            )
+        }
+    }
+
+    /// Caller must pass the live lease yielded by withExclusiveMigrationOwnership.
+    func createStagingSnapshot(
+        from sourceURL: URL, runID: String, idempotencyKey: String,
+        sourceSchemaVersion: String, destinationSchemaVersion: String,
+        stagingStoreID: String, at date: Date, attemptNumber: Int = 1,
+        ownerLease: V4MigrationOwnerLock.Lease
+    ) async throws -> V4MigrationStagingStore {
+        try ownerLease.validateOwnership(at: ownerLockURL)
 
         let creation = try await journal.createOrGet(
             runID: runID, idempotencyKey: idempotencyKey,
@@ -50,12 +80,20 @@ struct V4MigrationSnapshotLifecycleCoordinator {
         }
     }
 
-    /// Recovery acquires the same kernel lock as snapshot creation before it
-    /// inspects records or removes staging directories.
+    /// Convenience entry point for recovery that owns its own lock scope.
     func recoverInterruptedSnapshotAttempts(at date: Date) async throws -> [String] {
-        let ownerLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
-        defer { ownerLease.release() }
+        try await withExclusiveMigrationOwnership { ownerLease in
+            try await recoverInterruptedSnapshotAttempts(at: date, ownerLease: ownerLease)
+        }
+    }
 
+    /// Recovery variant for a top-level migration owner that already holds the
+    /// shared lease across recovery and any subsequent migration work.
+    func recoverInterruptedSnapshotAttempts(
+        at date: Date,
+        ownerLease: V4MigrationOwnerLock.Lease
+    ) async throws -> [String] {
+        try ownerLease.validateOwnership(at: ownerLockURL)
         let records = try await journal.allRecords()
         var recovered: [String] = []
         for record in records where record.state == .requested || record.state == .snapshotting || record.state == .snapshotReady {

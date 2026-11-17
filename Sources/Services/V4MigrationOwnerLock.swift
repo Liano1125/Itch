@@ -11,15 +11,27 @@ enum V4MigrationOwnerLock {
         case openFailed(Int32)
         case lockFailed(Int32)
         case invalidLockFile
+        case leaseNotActive
     }
 
     final class Lease: @unchecked Sendable {
         private let descriptor: Int32
+        private let lockFilePath: String
         private let stateLock = NSLock()
         private var released = false
 
-        fileprivate init(descriptor: Int32) {
+        fileprivate init(descriptor: Int32, lockFilePath: String) {
             self.descriptor = descriptor
+            self.lockFilePath = lockFilePath
+        }
+
+        /// Confirms this live lease protects the exact stable lock path expected by the caller.
+        func validateOwnership(at lockFileURL: URL) throws {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            guard !released, lockFileURL.standardizedFileURL.path == lockFilePath else {
+                throw LockError.leaseNotActive
+            }
         }
 
         /// Idempotent. The kernel also releases flock when the owning process exits.
@@ -72,6 +84,6 @@ enum V4MigrationOwnerLock {
             throw LockError.lockFailed(code)
         }
 
-        return Lease(descriptor: descriptor)
+        return Lease(descriptor: descriptor, lockFilePath: standardizedURL.path)
     }
 }

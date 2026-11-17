@@ -113,6 +113,39 @@ final class V4MigrationSnapshotLifecycleCoordinatorTests: XCTestCase {
         }
     }
 
+
+    func testSharedLeaseCanSpanSnapshotAndFollowingPipelineWork() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceURL = try makeDatabase(in: root)
+        let lockURL = root.appendingPathComponent("control/migration-owner.lock")
+        let journal = V4MigrationJournalRepository(fileURL: root.appendingPathComponent("control/journal.json"))
+        let manager = V4MigrationStagingStoreManager(rootURL: root.appendingPathComponent("staging"))
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(
+            journal: journal, stagingManager: manager, ownerLockURL: lockURL
+        )
+
+        let staging = try await coordinator.withExclusiveMigrationOwnership { lease in
+            let created = try await coordinator.createStagingSnapshot(
+                from: sourceURL, runID: "run-shared-lock", idempotencyKey: "request-shared-lock",
+                sourceSchemaVersion: "3", destinationSchemaVersion: "4",
+                stagingStoreID: "stage-shared-lock", at: epoch, ownerLease: lease
+            )
+            XCTAssertTrue(FileManager.default.fileExists(atPath: created.storeURL.path))
+            XCTAssertNoThrow(try lease.validateOwnership(at: lockURL))
+            XCTAssertThrowsError(try V4MigrationOwnerLock.acquire(at: lockURL)) { error in
+                XCTAssertEqual(error as? V4MigrationOwnerLock.LockError, .alreadyHeld)
+            }
+            // The caller performs conversion and verification here with this
+            // exact lease before leaving the closure.
+            return created
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staging.storeURL.path))
+        let nextLease = try V4MigrationOwnerLock.acquire(at: lockURL)
+        nextLease.release()
+    }
+
     private func makeDatabase(in directory: URL) throws -> URL {
         let url = directory.appendingPathComponent("source-\(UUID().uuidString).sqlite")
         var database: OpaquePointer?
