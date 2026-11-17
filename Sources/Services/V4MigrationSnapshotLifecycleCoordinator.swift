@@ -61,20 +61,21 @@ struct V4MigrationSnapshotLifecycleCoordinator {
             runID: runID, idempotencyKey: idempotencyKey,
             sourceSchemaVersion: sourceSchemaVersion,
             destinationSchemaVersion: destinationSchemaVersion,
-            at: date, attemptNumber: attemptNumber, stagingStoreID: stagingStoreID
+            at: date, attemptNumber: attemptNumber, stagingStoreID: stagingStoreID,
+            ownerLease: ownerLease
         )
         guard creation.wasCreated else { throw CoordinatorError.attemptAlreadyExists }
 
         do {
-            _ = try await journal.transition(runID: runID, from: .requested, to: .snapshotting, at: date, code: "snapshot.started")
+            _ = try await journal.transition(runID: runID, from: .requested, to: .snapshotting, at: date, code: "snapshot.started", ownerLease: ownerLease)
             let staging = try stagingManager.createSnapshot(from: sourceURL, runID: runID, stagingStoreID: stagingStoreID)
-            _ = try await journal.transition(runID: runID, from: .snapshotting, to: .snapshotReady, at: date, code: "snapshot.ready")
-            _ = try await journal.transition(runID: runID, from: .snapshotReady, to: .stagingCreated, at: date, code: "staging.created")
+            _ = try await journal.transition(runID: runID, from: .snapshotting, to: .snapshotReady, at: date, code: "snapshot.ready", ownerLease: ownerLease)
+            _ = try await journal.transition(runID: runID, from: .snapshotReady, to: .stagingCreated, at: date, code: "staging.created", ownerLease: ownerLease)
             return staging
         } catch {
             try? stagingManager.discard(runID: runID, stagingStoreID: stagingStoreID)
             if let current = try? await journal.record(runID: runID), !current.state.isTerminal {
-                try? await journal.transition(runID: runID, from: current.state, to: .failed, at: date, code: "staging.failed")
+                try? await journal.transition(runID: runID, from: current.state, to: .failed, at: date, code: "staging.failed", ownerLease: ownerLease)
             }
             throw error
         }
@@ -100,7 +101,7 @@ struct V4MigrationSnapshotLifecycleCoordinator {
             if let stagingStoreID = record.stagingStoreID {
                 _ = try stagingManager.discard(runID: record.runID, stagingStoreID: stagingStoreID)
             }
-            _ = try await journal.transition(runID: record.runID, from: record.state, to: .failed, at: date, code: "recovery.interrupted")
+            _ = try await journal.transition(runID: record.runID, from: record.state, to: .failed, at: date, code: "recovery.interrupted", ownerLease: ownerLease)
             recovered.append(record.runID)
         }
         return recovered
