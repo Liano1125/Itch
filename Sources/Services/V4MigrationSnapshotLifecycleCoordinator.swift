@@ -34,8 +34,7 @@ struct V4MigrationSnapshotLifecycleCoordinator {
             return staging
         } catch {
             try? stagingManager.discard(runID: runID, stagingStoreID: stagingStoreID)
-            if let current = try? await journal.record(runID: runID),
-               let current, !current.state.isTerminal {
+            if let current = try? await journal.record(runID: runID), !current.state.isTerminal {
                 try? await journal.transition(runID: runID, from: current.state, to: .failed, at: date, code: "staging.failed")
             }
             throw error
