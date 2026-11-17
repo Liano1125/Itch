@@ -166,11 +166,13 @@ struct V4MigrationJournalRecord: Codable, Equatable, Identifiable {
     func transitioning(
         to next: V4MigrationJournalState,
         at date: Date,
+        sequence: Int,
         code: String
     ) throws -> (record: V4MigrationJournalRecord, event: V4MigrationJournalEvent) {
         guard V4MigrationJournalStateMachine.canTransition(from: state, to: next) else {
             throw TransitionError.invalidTransition
         }
+        guard sequence > 0 else { throw TransitionError.invalidSequence }
         guard Self.isSafeCode(code) else {
             throw TransitionError.invalidDiagnosticCode
         }
@@ -195,7 +197,7 @@ struct V4MigrationJournalRecord: Codable, Equatable, Identifiable {
         )
         let event = V4MigrationJournalEvent(
             runID: runID,
-            sequence: 1,
+            sequence: sequence,
             fromState: state,
             toState: next,
             code: code,
@@ -214,5 +216,6 @@ struct V4MigrationJournalRecord: Codable, Equatable, Identifiable {
     enum TransitionError: Error, Equatable {
         case invalidTransition
         case invalidDiagnosticCode
+        case invalidSequence
     }
 }
