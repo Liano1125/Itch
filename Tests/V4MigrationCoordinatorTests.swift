@@ -3,6 +3,11 @@ import SwiftData
 @testable import itchPocket
 
 final class V4MigrationCoordinatorTests: XCTestCase {
+    private func makeOwnerLockURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("v4-coordinator-lock-\(UUID().uuidString)/migration-owner.lock")
+    }
+
     @MainActor
     private func makeV4Container() throws -> ModelContainer {
         let schema = Schema(versionedSchema: ItchPocketSchemaV4.self)
@@ -22,7 +27,8 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             source: source.context,
             destination: destination.mainContext,
             runID: "empty-store-test",
-            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            ownerLockURL: makeOwnerLockURL()
         )
         XCTAssertTrue(attempt.verification.isVerified)
         XCTAssertTrue(attempt.manifest.isPromotionEligible)
@@ -40,7 +46,8 @@ final class V4MigrationCoordinatorTests: XCTestCase {
 
         XCTAssertThrowsError(try V4MigrationCoordinator.run(
             source: source.context, destination: destination.mainContext,
-            runID: "invalid-source-test"
+            runID: "invalid-source-test",
+            ownerLockURL: makeOwnerLockURL()
         )) { error in
             XCTAssertEqual(error as? V4MigrationCoordinator.CoordinatorError, .sourcePreflightFailed)
         }
@@ -60,7 +67,8 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         let destination = try makeV4Container()
         let attempt = try V4MigrationCoordinator.run(
             source: source.context, destination: destination.mainContext,
-            runID: "uncovered-domain-test"
+            runID: "uncovered-domain-test",
+            ownerLockURL: makeOwnerLockURL()
         )
         XCTAssertTrue(attempt.verification.isVerified)
         XCTAssertFalse(attempt.manifest.isPromotionEligible)
@@ -77,9 +85,34 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         let destination = try makeV4Container()
         XCTAssertThrowsError(try V4MigrationCoordinator.run(
             source: source.context, destination: destination.mainContext,
-            runID: "dirty-context-test"
+            runID: "dirty-context-test",
+            ownerLockURL: makeOwnerLockURL()
         )) { error in
             XCTAssertEqual(error as? V4MigrationCoordinator.CoordinatorError, .sourceHasPendingChanges)
         }
     }
+    @MainActor
+    func testOwnerLockContentionAbortsBeforeAnyStagingWrite() throws {
+        let source = try AppDatabase(inMemory: true)
+        let destination = try makeV4Container()
+        let lockURL = makeOwnerLockURL()
+        let heldLease = try V4MigrationOwnerLock.acquire(at: lockURL)
+        defer { heldLease.release() }
+
+        XCTAssertThrowsError(try V4MigrationCoordinator.run(
+            source: source.context,
+            destination: destination.mainContext,
+            runID: "owner-lock-contention-test",
+            ownerLockURL: lockURL
+        )) { error in
+            XCTAssertEqual(error as? V4MigrationOwnerLock.LockError, .alreadyHeld)
+        }
+        XCTAssertEqual(try destination.mainContext.fetchCount(
+            FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()
+        ), 0)
+        XCTAssertEqual(try destination.mainContext.fetchCount(
+            FetchDescriptor<DBScopedAppState>()
+        ), 0)
+    }
+
 }
