@@ -6,7 +6,7 @@ final class V4MigrationJournalRepositoryTests: XCTestCase {
 
     private func temporaryStoreURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("V4JournalTests-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("V4JournalTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("journal.json")
     }
