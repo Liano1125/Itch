@@ -55,6 +55,7 @@ on:
       - feat/v4-legacy-appstate-scope-conversion
   pull_request:
     branches:
+      - design/v4-migration-journal-recovery
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
