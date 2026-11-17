@@ -68,6 +68,7 @@ on:
       - feat/v4-journal-staging-lifecycle-coordinator
       - feat/v4-cross-process-migration-owner-lock
       - feat/v4-lock-conversion-pipeline
+      - test/v4-migration-owner-lock-process-crash
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
