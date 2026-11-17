@@ -47,7 +47,10 @@ on:
       - feat/v4-unassigned-library-migration-converter
       - feat/v4-field-by-field-payload-verifier
       - feat/v4-migration-coordinator
+      - feat/v4-migration-journal-state-machine
       - feat/v4-manifest-verifier-integration
+      - feat/v4-migration-coordinator
+      - feat/v4-migration-journal-state-machine
       - feat/v4-migration-coordinator
       - feat/v4-legacy-appstate-scope-conversion
   pull_request:
