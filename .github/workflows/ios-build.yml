@@ -49,6 +49,7 @@ on:
       - feat/v4-migration-coordinator
       - feat/v4-migration-journal-state-machine
       - feat/v4-persistent-migration-journal
+      - feat/v4-staging-snapshot-lifecycle
       - feat/v4-manifest-verifier-integration
       - feat/v4-migration-coordinator
       - feat/v4-migration-journal-state-machine
