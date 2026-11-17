@@ -21,6 +21,7 @@ implemented V3 Library and AppState converters. It performs:
   discard the entire staging store; do not retry against that partially written
   context.
 - The coordinator never opens or mutates the production database.
+- Conversion refuses to start without a live lease for the configured migration lock.
 - It does not persist run checkpoints, implement resume, create backups, run
   SQLite integrity checks, atomically switch stores, or roll back production.
 - `manifestEligibleForIndependentSafetyGates` is not production promotion
@@ -28,6 +29,26 @@ implemented V3 Library and AppState converters. It performs:
   coverage, and account-isolation acceptance remain separate gates.
 - Only Library and AppState are currently converted. Any other non-empty V3
   domain is retained as uncovered by the Manifest builder and blocks promotion.
+
+## Exclusive migration ownership
+
+Every conversion entry point requires a live `V4MigrationOwnerLock.Lease`
+and validates that it protects the exact configured lock-file path. The
+snapshot lifecycle coordinator exposes `withExclusiveMigrationOwnership`,
+which acquires one lease and keeps it alive across an asynchronous closure.
+A full pipeline must use that same lease for:
+
+1. Staging snapshot creation via the lease-taking overload.
+2. Library and AppState conversion plus payload verification via
+   `V4MigrationCoordinator.run(ownerLockURL:ownerLease:)`.
+3. Any subsequent journal transitions and staging validation.
+
+Do not call the convenience snapshot method and then start conversion after
+it returns: that method intentionally releases its own lock when snapshot
+creation ends. Do not acquire a second lock inside the closure. Recovery must
+also use the lease-taking overload when it is part of a larger owned operation.
+The lock file path must be stable and shared by every process and migration
+entry point.
 
 ## Source consistency
 
