@@ -58,7 +58,7 @@ struct V4MigrationStagingStoreManager {
             try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
 
             let attributes = try fileManager.attributesOfItem(atPath: storeURL.path)
-            guard (attributes[.size] as? NSNumber)?.intValue ?? 0 > 0 else {
+            guard ((attributes[.size] as? NSNumber)?.intValue ?? 0) > 0 else {
                 throw StagingError.stagingStoreMissing
             }
 
