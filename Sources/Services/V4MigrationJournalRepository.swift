@@ -1,6 +1,6 @@
 import Foundation
 
-/// A process-serialized, file-backed control store for migration metadata.
+/// An actor-isolated, file-backed control store for migration metadata.
 ///
 /// The complete record/event snapshot is replaced in one atomic file write.
 /// It is independent from both the authoritative V3 store and each disposable
