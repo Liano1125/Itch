@@ -48,6 +48,7 @@ on:
       - feat/v4-field-by-field-payload-verifier
       - feat/v4-migration-coordinator
       - feat/v4-migration-journal-state-machine
+      - feat/v4-persistent-migration-journal
       - feat/v4-manifest-verifier-integration
       - feat/v4-migration-coordinator
       - feat/v4-migration-journal-state-machine
@@ -56,6 +57,7 @@ on:
   pull_request:
     branches:
       - design/v4-migration-journal-recovery
+      - feat/v4-migration-journal-state-machine
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
