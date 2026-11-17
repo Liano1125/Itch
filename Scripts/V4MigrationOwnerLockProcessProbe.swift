@@ -35,7 +35,7 @@ struct V4MigrationOwnerLockProcessProbe {
             Thread.sleep(forTimeInterval: 0.02)
         }
         guard FileManager.default.fileExists(atPath: readyURL.path) else {
-            child.terminate()
+            _ = kill(child.processIdentifier, SIGKILL)
             child.waitUntilExit()
             throw ProbeError.childReadyTimeout
         }
@@ -43,19 +43,19 @@ struct V4MigrationOwnerLockProcessProbe {
         do {
             let unexpectedLease = try V4MigrationOwnerLock.acquire(at: lockURL)
             unexpectedLease.release()
-            child.terminate()
+            _ = kill(child.processIdentifier, SIGKILL)
             child.waitUntilExit()
             throw ProbeError.parentAcquiredWhileChildHeldLock
         } catch V4MigrationOwnerLock.LockError.alreadyHeld {
             // Expected: the independent child process owns the kernel lock.
         }
 
-        child.terminate()
+        _ = kill(child.processIdentifier, SIGKILL)
         child.waitUntilExit()
 
         let recoveredLease = try V4MigrationOwnerLock.acquire(at: lockURL)
         recoveredLease.release()
-        print("PASS: independent process contention and SIGTERM lock release")
+        print("PASS: independent process contention and SIGKILL crash release")
     }
 
     enum ProbeError: Error {
