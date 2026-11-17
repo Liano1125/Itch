@@ -205,8 +205,24 @@ actor V4MigrationJournalRepository {
 
     private static func isConsistent(_ value: Snapshot) -> Bool {
         guard value.records.allSatisfy({ key, record in
-            key == record.runID && isValidIdentifier(record.runID) &&
-            isValidIdentifier(record.idempotencyKey)
+            key == record.runID &&
+            record.journalVersion == V4MigrationJournalRecord.currentJournalVersion &&
+            isValidIdentifier(record.runID) &&
+            isValidIdentifier(record.idempotencyKey) &&
+            isValidIdentifier(record.sourceSchemaVersion) &&
+            isValidIdentifier(record.destinationSchemaVersion) &&
+            record.attemptNumber > 0 &&
+            record.completedDomains.allSatisfy(isValidIdentifier) &&
+            [record.sourceSnapshotID, record.sourceSnapshotDigest,
+             record.sourceInventoryDigest, record.stagingStoreID,
+             record.manifestDigest, record.failureCode]
+                .compactMap({ $0 }).allSatisfy(isValidIdentifier)
+        }) else { return false }
+
+        guard value.events.allSatisfy({
+            isValidIdentifier($0.runID) &&
+            $0.sequence > 0 &&
+            Self.isSafeCode($0.code)
         }) else { return false }
 
         let keys = value.records.values.map(\.idempotencyKey)
@@ -234,6 +250,13 @@ actor V4MigrationJournalRepository {
 
     private static func isValidIdentifier(_ value: String) -> Bool {
         guard !value.isEmpty, value.count <= 128 else { return false }
+        return value.unicodeScalars.allSatisfy {
+            CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").contains($0)
+        }
+    }
+
+    private static func isSafeCode(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 96 else { return false }
         return value.unicodeScalars.allSatisfy {
             CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").contains($0)
         }
