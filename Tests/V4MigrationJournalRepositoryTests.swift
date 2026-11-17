@@ -112,7 +112,7 @@ final class V4MigrationJournalRepositoryTests: XCTestCase {
             fileURL: url,
             writeData: { data, destination in
                 let serialized = String(decoding: data, as: UTF8.self)
-                if serialized.contains("\\"state\\":\\"snapshotting\\"") {
+                if serialized.contains("\"state\":\"snapshotting\"") {
                     throw WriteFailure.injected
                 }
                 try data.write(to: destination, options: [.atomic])
@@ -136,13 +136,13 @@ final class V4MigrationJournalRepositoryTests: XCTestCase {
         let current = try await repository.record(runID: "run-a")
         XCTAssertEqual(current?.state, .requested)
         let events = try await repository.events(runID: "run-a")
-        XCTAssertEqual(events.map(\\.sequence), [1])
+        XCTAssertEqual(events.map(\.sequence), [1])
 
         let restarted = V4MigrationJournalRepository(fileURL: url)
         let restartedRecord = try await restarted.record(runID: "run-a")
         let restartedEvents = try await restarted.events(runID: "run-a")
         XCTAssertEqual(restartedRecord?.state, .requested)
-        XCTAssertEqual(restartedEvents.map(\\.sequence), [1])
+        XCTAssertEqual(restartedEvents.map(\.sequence), [1])
     }
 
     func testCorruptJournalFailsClosedWithoutReplacingTheFile() async throws {
