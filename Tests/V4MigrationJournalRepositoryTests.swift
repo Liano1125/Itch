@@ -139,8 +139,10 @@ final class V4MigrationJournalRepositoryTests: XCTestCase {
         XCTAssertEqual(events.map(\\.sequence), [1])
 
         let restarted = V4MigrationJournalRepository(fileURL: url)
-        XCTAssertEqual(try await restarted.record(runID: "run-a")?.state, .requested)
-        XCTAssertEqual(try await restarted.events(runID: "run-a").map(\\.sequence), [1])
+        let restartedRecord = try await restarted.record(runID: "run-a")
+        let restartedEvents = try await restarted.events(runID: "run-a")
+        XCTAssertEqual(restartedRecord?.state, .requested)
+        XCTAssertEqual(restartedEvents.map(\\.sequence), [1])
     }
 
     func testCorruptJournalFailsClosedWithoutReplacingTheFile() async throws {
