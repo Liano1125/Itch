@@ -55,9 +55,15 @@ enum V4MigrationCoordinator {
         source: ModelContext,
         destination: ModelContext,
         runID: String,
+        ownerLockURL: URL,
+        ownerLease: V4MigrationOwnerLock.Lease,
         generatedAt: Date = Date(),
         destinationSchemaVersion: String = "4.0.0"
     ) throws -> V4MigrationAttempt {
+        // A conversion must never run outside the same owner lease used for
+        // snapshot creation and journal transitions.
+        try ownerLease.validateOwnership(at: ownerLockURL)
+
         guard !source.hasChanges else {
             throw CoordinatorError.sourceHasPendingChanges
         }
