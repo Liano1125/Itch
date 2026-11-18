@@ -47,6 +47,28 @@ struct V4MigrationDomainManifest: Codable, Equatable {
     /// Stable diagnostic codes only. Never include keys, notes, tokens, or payload values.
     let integrityDiagnostics: [String]
 
+    init(
+        disposition: V4MigrationDomainDisposition = .migrated,
+        sourceRowCount: Int,
+        destinationRowCount: Int,
+        scopeCounts: [String: Int],
+        quarantinedRowCount: Int,
+        inventoryDigest: String?,
+        digestKind: V4MigrationDigestKind?,
+        payloadVerification: V4MigrationPayloadVerificationSummary,
+        integrityDiagnostics: [String]
+    ) {
+        self.disposition = disposition
+        self.sourceRowCount = sourceRowCount
+        self.destinationRowCount = destinationRowCount
+        self.scopeCounts = scopeCounts
+        self.quarantinedRowCount = quarantinedRowCount
+        self.inventoryDigest = inventoryDigest
+        self.digestKind = digestKind
+        self.payloadVerification = payloadVerification
+        self.integrityDiagnostics = integrityDiagnostics
+    }
+
     var hasConsistentScopeCounts: Bool {
         scopeCounts.values.allSatisfy { $0 >= 0 } &&
         scopeCounts.values.reduce(0, +) == destinationRowCount
