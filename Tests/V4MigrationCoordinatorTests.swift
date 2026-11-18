@@ -46,7 +46,7 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(attempt.manifest.referenceVerification?.isValid == true)
         XCTAssertTrue(attempt.manifest.isPromotionEligible)
         XCTAssertEqual(attempt.outcome, .manifestEligibleForIndependentSafetyGates)
-        XCTAssertEqual(attempt.library.totalRows, 0)
+        XCTAssertEqual(attempt.sharedCatalog.totalRows, 0)\n        XCTAssertTrue(attempt.sharedCatalogVerification.isVerified)\n        XCTAssertEqual(attempt.library.totalRows, 0)
         XCTAssertEqual(attempt.appState.totalRows, 0)
     }
 
@@ -88,6 +88,9 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             )
         }
         XCTAssertTrue(attempt.verification.isVerified)
+        XCTAssertEqual(attempt.sharedCatalog.gameCount, 1)
+        XCTAssertTrue(attempt.sharedCatalogVerification.isVerified)
+        XCTAssertEqual(attempt.manifest.domains["sharedCatalog"]?.payloadVerification.status, .verified)
         XCTAssertFalse(attempt.manifest.isPromotionEligible)
         XCTAssertEqual(attempt.outcome, .blockedByManifest)
         XCTAssertTrue(attempt.manifest.integrityDiagnostics.contains(
