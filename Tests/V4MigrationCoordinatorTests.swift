@@ -181,6 +181,31 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(report.diagnostics.contains("migration.sparkMetadata.rowMismatch"))
     }
 
+
+    @MainActor
+    func testCoordinatorRecordsSparkMigrationUnderDeviceScope() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "spark-game", title: "Spark game"))
+        source.context.insert(DBSparkMetadata(
+            gameID: "spark-game", runtimeSeconds: 321,
+            scannedAt: Date(timeIntervalSince1970: 321)
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        let attempt = try withOwnerLock { lockURL, lease in
+            try V4MigrationCoordinator.run(
+                source: source.context, destination: destination.mainContext,
+                runID: "spark-device-scope-test",
+                ownerLockURL: lockURL, ownerLease: lease
+            )
+        }
+        XCTAssertTrue(attempt.sparkMetadataVerification.isVerified)
+        XCTAssertEqual(attempt.sparkMetadata.rowCount, 1)
+        XCTAssertEqual(attempt.manifest.domains["sparkMetadata"]?.scopeCounts["device"], 1)
+        XCTAssertEqual(attempt.manifest.domains["sparkMetadata"]?.payloadVerification.status, .verified)
+        XCTAssertTrue(attempt.manifest.isPromotionEligible)
+    }
+
     @MainActor
     func testGameUpdatesMigrateAndVerifyEveryStoredField() throws {
         let source = try AppDatabase(inMemory: true)
