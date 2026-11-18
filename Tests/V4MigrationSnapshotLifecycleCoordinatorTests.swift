@@ -146,6 +146,135 @@ final class V4MigrationSnapshotLifecycleCoordinatorTests: XCTestCase {
         nextLease.release()
     }
 
+
+    func testRecoveryDiscardsEveryUnvalidatedInterruptedStageAndIsIdempotent() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let journal = V4MigrationJournalRepository(fileURL: root.appendingPathComponent("control/journal.json"))
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
+        let manager = V4MigrationStagingStoreManager(rootURL: stagingRoot)
+        let interruptedStates: [V4MigrationJournalState] = [
+            .snapshotting, .snapshotReady, .stagingCreated, .converting, .verifying, .manifestWritten
+        ]
+        let transitionPath: [V4MigrationJournalState] = [
+            .snapshotting, .snapshotReady, .stagingCreated, .converting, .verifying, .manifestWritten
+        ]
+
+        for (index, target) in interruptedStates.enumerated() {
+            let runID = "crash-run-\(index)"
+            let stageID = "crash-stage-\(index)"
+            _ = try await journal.createOrGet(
+                runID: runID, idempotencyKey: "crash-request-\(index)",
+                sourceSchemaVersion: "3", destinationSchemaVersion: "4",
+                at: epoch.addingTimeInterval(TimeInterval(index)), stagingStoreID: stageID
+            )
+            var current = V4MigrationJournalState.requested
+            for next in transitionPath {
+                _ = try await journal.transition(
+                    runID: runID, from: current, to: next,
+                    at: epoch, code: "test.crash.transition"
+                )
+                current = next
+                if current == target { break }
+            }
+            let directory = stagingRoot.appendingPathComponent(
+                "run-\(runID)-staging-\(stageID)", isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+
+        let validatedID = "validated-run"
+        let validatedStageID = "validated-stage"
+        _ = try await journal.createOrGet(
+            runID: validatedID, idempotencyKey: "validated-request",
+            sourceSchemaVersion: "3", destinationSchemaVersion: "4",
+            at: epoch.addingTimeInterval(100), stagingStoreID: validatedStageID
+        )
+        var validatedState = V4MigrationJournalState.requested
+        for next in transitionPath + [.stagingValidated] {
+            _ = try await journal.transition(
+                runID: validatedID, from: validatedState, to: next,
+                at: epoch, code: "test.validated.transition"
+            )
+            validatedState = next
+        }
+        let validatedDirectory = stagingRoot.appendingPathComponent(
+            "run-\(validatedID)-staging-\(validatedStageID)", isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: validatedDirectory, withIntermediateDirectories: true)
+
+        let unrelated = stagingRoot.appendingPathComponent("unrelated-data", isDirectory: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(
+            journal: journal, stagingManager: manager,
+            ownerLockURL: root.appendingPathComponent("control/migration-owner.lock")
+        )
+
+        let recovered = try await coordinator.recoverInterruptedSnapshotAttempts(at: epoch.addingTimeInterval(200))
+        XCTAssertEqual(Set(recovered), Set(interruptedStates.indices.map { "crash-run-\($0)" }))
+        XCTAssertEqual(recovered.count, interruptedStates.count)
+        for index in interruptedStates.indices {
+            let record = try await journal.record(runID: "crash-run-\(index)")
+            XCTAssertEqual(record?.state, .failed)
+            let directory = stagingRoot.appendingPathComponent(
+                "run-crash-run-\(index)-staging-crash-stage-\(index)", isDirectory: true
+            )
+            XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        }
+
+        let validatedRecord = try await journal.record(runID: validatedID)
+        XCTAssertEqual(validatedRecord?.state, .stagingValidated)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: validatedDirectory.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+
+        let repeated = try await coordinator.recoverInterruptedSnapshotAttempts(at: epoch.addingTimeInterval(300))
+        XCTAssertTrue(repeated.isEmpty)
+        let finalValidatedRecord = try await journal.record(runID: validatedID)
+        XCTAssertEqual(finalValidatedRecord?.state, .stagingValidated)
+    }
+
+    func testRecoveryFailureCanBeRetriedWithFreshAttemptIdentity() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceURL = try makeDatabase(in: root)
+        let journal = V4MigrationJournalRepository(fileURL: root.appendingPathComponent("control/journal.json"))
+        let manager = V4MigrationStagingStoreManager(rootURL: root.appendingPathComponent("staging"))
+        _ = try await journal.createOrGet(
+            runID: "retry-run", idempotencyKey: "retry-request",
+            sourceSchemaVersion: "3", destinationSchemaVersion: "4",
+            at: epoch, stagingStoreID: "retry-stage"
+        )
+        _ = try await journal.transition(
+            runID: "retry-run", from: .requested, to: .snapshotting,
+            at: epoch, code: "snapshot.started"
+        )
+        let interrupted = root.appendingPathComponent(
+            "staging/run-retry-run-staging-retry-stage", isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: interrupted, withIntermediateDirectories: true)
+        let unrelated = root.appendingPathComponent("staging/keep-me", isDirectory: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        let coordinator = V4MigrationSnapshotLifecycleCoordinator(
+            journal: journal, stagingManager: manager,
+            ownerLockURL: root.appendingPathComponent("control/migration-owner.lock")
+        )
+
+        _ = try await coordinator.recoverInterruptedSnapshotAttempts(at: epoch.addingTimeInterval(1))
+        let failedRecord = try await journal.record(runID: "retry-run")
+        XCTAssertEqual(failedRecord?.state, .failed)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+
+        let retry = try await journal.createOrGet(
+            runID: "retry-run-2", idempotencyKey: "retry-request-2",
+            sourceSchemaVersion: "3", destinationSchemaVersion: "4",
+            at: epoch.addingTimeInterval(2), attemptNumber: 2, stagingStoreID: "retry-stage-2"
+        )
+        XCTAssertTrue(retry.wasCreated)
+        XCTAssertNotEqual(retry.record.runID, "retry-run")
+        XCTAssertNotEqual(retry.record.stagingStoreID, "retry-stage")
+    }
+
     private func makeDatabase(in directory: URL) throws -> URL {
         let url = directory.appendingPathComponent("source-\(UUID().uuidString).sqlite")
         var database: OpaquePointer?
