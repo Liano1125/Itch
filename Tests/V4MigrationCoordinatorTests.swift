@@ -131,6 +131,56 @@ final class V4MigrationCoordinatorTests: XCTestCase {
     }
 
     
+
+    @MainActor
+    func testSparkMetadataMigratesAsDeviceScopedDataAndVerifiesAllFields() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "spark-game", title: "Spark game"))
+        source.context.insert(DBSparkMetadata(
+            gameID: "spark-game", runtimeSeconds: 987.5,
+            lastSaveAt: Date(timeIntervalSince1970: 100),
+            renpyVersion: "8.2.1", saveCount: 7,
+            scannedAt: Date(timeIntervalSince1970: 200)
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        let report = try V4SparkMetadataConverter.convert(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertEqual(report.rowCount, 1)
+        let copied = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBSparkMetadata>()).first)
+        XCTAssertEqual(copied.gameID, "spark-game")
+        XCTAssertEqual(copied.runtimeSeconds, 987.5)
+        XCTAssertEqual(copied.lastSaveAt, Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(copied.renpyVersion, "8.2.1")
+        XCTAssertEqual(copied.saveCount, 7)
+        XCTAssertEqual(copied.scannedAt, Date(timeIntervalSince1970: 200))
+        let verification = try V4SparkMetadataVerifier.verify(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertTrue(verification.isVerified)
+        XCTAssertEqual(verification.verifiedRows, 1)
+    }
+
+    @MainActor
+    func testSparkMetadataVerifierDetectsMutatedDestinationField() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "spark-game", title: "Spark game"))
+        source.context.insert(DBSparkMetadata(
+            gameID: "spark-game", runtimeSeconds: 10, scannedAt: Date(timeIntervalSince1970: 100)
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        _ = try V4SparkMetadataConverter.convert(source: source.context, destination: destination.mainContext)
+        let copied = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBSparkMetadata>()).first)
+        copied.runtimeSeconds = 999
+        try destination.mainContext.save()
+        let report = try V4SparkMetadataVerifier.verify(source: source.context, destination: destination.mainContext)
+        XCTAssertFalse(report.isVerified)
+        XCTAssertEqual(report.unverifiedRows, 2)
+        XCTAssertTrue(report.diagnostics.contains("migration.sparkMetadata.rowMismatch"))
+    }
+
     @MainActor
     func testGameUpdatesMigrateAndVerifyEveryStoredField() throws {
         let source = try AppDatabase(inMemory: true)
