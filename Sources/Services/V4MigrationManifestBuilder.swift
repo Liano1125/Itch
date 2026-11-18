@@ -6,6 +6,8 @@ enum V4MigrationManifestBuilder {
         preflight: V3MigrationPreflightReport,
         sharedCatalog: V4SharedCatalogMigrationReport? = nil,
         sharedCatalogVerification: V4SharedCatalogVerificationReport? = nil,
+        gameUpdates: V4GameUpdateMigrationReport? = nil,
+        gameUpdateVerification: V4GameUpdateVerificationReport? = nil,
         library: V4LegacyLibraryMigrationReport,
         appState: V4LegacyAppStateMigrationReport,
         verification: V4MigrationPayloadVerificationReport? = nil,
@@ -25,6 +27,7 @@ enum V4MigrationManifestBuilder {
         var diagnostics = preflight.integrityIssues.map(Self.stableDiagnosticCode)
         diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
         diagnostics.append(contentsOf: sharedCatalogVerification?.diagnostics ?? [])
+        diagnostics.append(contentsOf: gameUpdateVerification?.diagnostics ?? [])
         if let referenceVerification {
             diagnostics.append(contentsOf: referenceVerification.diagnostics)
         } else {
@@ -49,6 +52,18 @@ enum V4MigrationManifestBuilder {
             }
         } else if catalogSourceRows > 0 {
             diagnostics.append("migration.sharedCatalog.notRun")
+        }
+        let gameUpdateSourceRows = preflight.rowCounts["gameUpdates"] ?? 0
+        if let gameUpdates, let gameUpdateVerification {
+            reportedSourceTables.insert("gameUpdates")
+            if gameUpdates.rowCount != gameUpdateSourceRows
+                || gameUpdateVerification.unverifiedRows != 0
+                || !gameUpdateVerification.isVerified
+                || gameUpdateVerification.verifiedRows < gameUpdates.rowCount {
+                diagnostics.append("migration.gameUpdates.verificationFailed")
+            }
+        } else if gameUpdateSourceRows > 0 {
+            diagnostics.append("migration.gameUpdates.notRun")
         }
         let uncoveredSourceRows = preflight.rowCounts
             .filter { !reportedSourceTables.contains($0.key) }
@@ -124,6 +139,25 @@ enum V4MigrationManifestBuilder {
                     unverifiedRows: sharedCatalogVerification.unverifiedRows
                 ),
                 integrityDiagnostics: sharedCatalogVerification.diagnostics
+            )
+        }
+
+        if let gameUpdates, let gameUpdateVerification {
+            domains["gameUpdates"] = V4MigrationDomainManifest(
+                sourceRowCount: gameUpdateSourceRows,
+                destinationRowCount: gameUpdates.rowCount,
+                scopeCounts: ["shared": gameUpdates.rowCount],
+                quarantinedRowCount: 0,
+                inventoryDigest: gameUpdates.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: gameUpdateVerification.isVerified
+                        && gameUpdateVerification.verifiedRows >= gameUpdates.rowCount ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: gameUpdateVerification.verifiedRows,
+                    unverifiedRows: gameUpdateVerification.unverifiedRows
+                ),
+                integrityDiagnostics: gameUpdateVerification.diagnostics
             )
         }
 

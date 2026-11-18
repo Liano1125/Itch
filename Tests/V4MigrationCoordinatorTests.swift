@@ -96,10 +96,9 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         ))
         // Keep one non-empty, not-yet-migrated domain in the fixture. Empty
         // uncovered tables do not block migration; populated ones must.
-        source.context.insert(DBGameUpdate(
-            id: "update-a", gameID: "game-a",
-            summary: "A pending legacy update",
-            detectedAt: Date(timeIntervalSince1970: 400)
+        source.context.insert(DBCalendarEvent(
+            id: "calendar-a", gameID: "game-a", title: "Legacy event",
+            date: Date(timeIntervalSince1970: 500), kind: "release"
         ))
         try source.save()
         let destination = try makeV4Container()
@@ -129,6 +128,57 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(attempt.manifest.integrityDiagnostics.contains(
             "migration.domainCoverage.incomplete"
         ))
+    }
+
+    
+    @MainActor
+    func testGameUpdatesMigrateAndVerifyEveryStoredField() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "update-game", title: "Update game"))
+        source.context.insert(DBGameUpdate(
+            id: "update-1", gameID: "update-game", title: "Version 2",
+            summary: "A detailed update", detectedAt: Date(timeIntervalSince1970: 100),
+            publishedAt: Date(timeIntervalSince1970: 200),
+            url: "https://example.com/update", sourceID: "feed-1", isHistorical: true
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        let report = try V4GameUpdateConverter.convert(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertEqual(report.rowCount, 1)
+        let copied = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBGameUpdate>()).first)
+        XCTAssertEqual(copied.title, "Version 2")
+        XCTAssertEqual(copied.summary, "A detailed update")
+        XCTAssertEqual(copied.detectedAt, Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(copied.publishedAt, Date(timeIntervalSince1970: 200))
+        XCTAssertEqual(copied.url, "https://example.com/update")
+        XCTAssertEqual(copied.sourceID, "feed-1")
+        XCTAssertTrue(copied.isHistorical)
+        let verification = try V4GameUpdateVerifier.verify(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertTrue(verification.isVerified)
+        XCTAssertEqual(verification.verifiedRows, 1)
+    }
+
+    @MainActor
+    func testGameUpdateVerifierDetectsMutatedDestinationField() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "update-game", title: "Update game"))
+        source.context.insert(DBGameUpdate(
+            id: "update-1", gameID: "update-game", summary: "Original summary"
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        _ = try V4GameUpdateConverter.convert(source: source.context, destination: destination.mainContext)
+        let copied = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBGameUpdate>()).first)
+        copied.summary = "Mutated summary"
+        try destination.mainContext.save()
+        let report = try V4GameUpdateVerifier.verify(source: source.context, destination: destination.mainContext)
+        XCTAssertFalse(report.isVerified)
+        XCTAssertEqual(report.unverifiedRows, 2)
+        XCTAssertTrue(report.diagnostics.contains("migration.gameUpdates.rowMismatch"))
     }
 
     @MainActor

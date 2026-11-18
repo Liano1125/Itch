@@ -13,6 +13,8 @@ struct V4MigrationAttempt: Equatable {
     let preflight: V3MigrationPreflightReport
     let sharedCatalog: V4SharedCatalogMigrationReport
     let sharedCatalogVerification: V4SharedCatalogVerificationReport
+    let gameUpdates: V4GameUpdateMigrationReport
+    let gameUpdateVerification: V4GameUpdateVerificationReport
     let library: V4LegacyLibraryMigrationReport
     let appState: V4LegacyAppStateMigrationReport
     let verification: V4MigrationPayloadVerificationReport
@@ -83,6 +85,7 @@ enum V4MigrationCoordinator {
         let sharedCatalog = try V4SharedCatalogConverter.convert(
             source: source, destination: destination
         )
+        let gameUpdates = try V4GameUpdateConverter.convert(source: source, destination: destination)
         let library = try V4LegacyLibraryConverter.convert(
             source: source, destination: destination
         )
@@ -93,6 +96,7 @@ enum V4MigrationCoordinator {
         let sharedCatalogVerification = try V4SharedCatalogVerifier.verify(
             source: source, destination: destination
         )
+        let gameUpdateVerification = try V4GameUpdateVerifier.verify(source: source, destination: destination)
         let verification = try V4MigrationPayloadVerifier.verify(
             source: source, destination: destination
         )
@@ -111,6 +115,8 @@ enum V4MigrationCoordinator {
             preflight: finalPreflight,
             sharedCatalog: sharedCatalog,
             sharedCatalogVerification: sharedCatalogVerification,
+            gameUpdates: gameUpdates,
+            gameUpdateVerification: gameUpdateVerification,
             library: library,
             appState: appState,
             verification: verification,
@@ -125,6 +131,8 @@ enum V4MigrationCoordinator {
             preflight: finalPreflight,
             sharedCatalog: sharedCatalog,
             sharedCatalogVerification: sharedCatalogVerification,
+            gameUpdates: gameUpdates,
+            gameUpdateVerification: gameUpdateVerification,
             library: library,
             appState: appState,
             verification: verification,
