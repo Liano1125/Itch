@@ -26,7 +26,7 @@ struct V4MigrationStagingStoreManager {
         self.fileManager = fileManager
     }
 
-    /// Copies the source into a fresh staging directory and runs SQLite quick_check.
+    /// Copies the source into a fresh staging directory and runs full SQLite integrity checks.
     /// The caller must coordinate source-store writers and SwiftData lifetimes.
     func createSnapshot(
         from sourceURL: URL,
@@ -55,7 +55,7 @@ struct V4MigrationStagingStoreManager {
         let storeURL = directoryURL.appendingPathComponent("v4-staging.sqlite", isDirectory: false)
         do {
             try SQLiteStoreSnapshotCopier.copy(from: sourceURL, to: storeURL)
-            try SQLiteStoreIntegrityChecker.quickCheck(at: storeURL)
+            try SQLiteStoreIntegrityChecker.fullCheck(at: storeURL)
 
             let attributes = try fileManager.attributesOfItem(atPath: storeURL.path)
             guard ((attributes[.size] as? NSNumber)?.intValue ?? 0) > 0 else {
