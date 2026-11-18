@@ -27,6 +27,7 @@ enum V4StoreReferenceVerifier {
         let statusEvents = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryStatusEvent>())
         let appStates = try context.fetch(FetchDescriptor<DBScopedAppState>())
         let updates = try context.fetch(FetchDescriptor<DBGameUpdate>())
+        let sparkMetadata = try context.fetch(FetchDescriptor<DBSparkMetadata>())
         let sourceEvents = try context.fetch(FetchDescriptor<DBCalendarSourceEvent>())
         let accountEvents = try context.fetch(FetchDescriptor<DBAccountCalendarEvent>())
         let overlays = try context.fetch(FetchDescriptor<DBAccountCalendarOverlay>())
@@ -97,6 +98,10 @@ enum V4StoreReferenceVerifier {
                   state.id == DBScopedAppState.stableID(
                     scopeID: state.scopeID, logicalKey: state.logicalKey
                   ), "v4.appState.stableIdentityMismatch")
+        }
+
+        for metadata in sparkMetadata {
+            check(gameIDs.contains(metadata.gameID), "v4.sparkMetadata.missingGame")
         }
 
         for event in sourceEvents {
