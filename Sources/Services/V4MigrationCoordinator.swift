@@ -11,6 +11,8 @@ struct V4MigrationAttempt: Equatable {
 
     let runID: String
     let preflight: V3MigrationPreflightReport
+    let sharedCatalog: V4SharedCatalogMigrationReport
+    let sharedCatalogVerification: V4SharedCatalogVerificationReport
     let library: V4LegacyLibraryMigrationReport
     let appState: V4LegacyAppStateMigrationReport
     let verification: V4MigrationPayloadVerificationReport
@@ -49,9 +51,8 @@ enum V4MigrationCoordinator {
         }
     }
 
-    /// Runs only the currently implemented Library and AppState converters.
-    /// Any other non-empty V3 domain remains explicitly uncovered in Manifest
-    /// and therefore blocks its promotion predicate.
+    /// Runs the shared catalog, Library, and AppState converters. Other non-empty
+    /// V3 domains remain explicitly uncovered in Manifest and block promotion.
     static func run(
         source: ModelContext,
         destination: ModelContext,
@@ -79,6 +80,9 @@ enum V4MigrationCoordinator {
 
         // Each converter commits its own domain into this disposable staging
         // store. No production database is touched by this coordinator.
+        let sharedCatalog = try V4SharedCatalogConverter.convert(
+            source: source, destination: destination
+        )
         let library = try V4LegacyLibraryConverter.convert(
             source: source, destination: destination
         )
@@ -86,6 +90,9 @@ enum V4MigrationCoordinator {
             source: source, destination: destination
         )
 
+        let sharedCatalogVerification = try V4SharedCatalogVerifier.verify(
+            source: source, destination: destination
+        )
         let verification = try V4MigrationPayloadVerifier.verify(
             source: source, destination: destination
         )
@@ -102,6 +109,8 @@ enum V4MigrationCoordinator {
 
         let manifest = V4MigrationManifestBuilder.build(
             preflight: finalPreflight,
+            sharedCatalog: sharedCatalog,
+            sharedCatalogVerification: sharedCatalogVerification,
             library: library,
             appState: appState,
             verification: verification,
@@ -114,6 +123,8 @@ enum V4MigrationCoordinator {
         return V4MigrationAttempt(
             runID: runID,
             preflight: finalPreflight,
+            sharedCatalog: sharedCatalog,
+            sharedCatalogVerification: sharedCatalogVerification,
             library: library,
             appState: appState,
             verification: verification,
