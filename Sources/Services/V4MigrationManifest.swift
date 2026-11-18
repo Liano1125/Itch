@@ -88,6 +88,7 @@ struct V4MigrationDomainManifest: Codable, Equatable {
         case .discardedRebuildableCache:
             dispositionIsValid = destinationRowCount == 0
                 && quarantinedRowCount == 0
+                && payloadVerification.status == .verified
                 && payloadVerification.method == .identityAndCounts
                 && payloadVerification.verifiedRows >= sourceRowCount
         }
