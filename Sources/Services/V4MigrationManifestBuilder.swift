@@ -10,6 +10,10 @@ enum V4MigrationManifestBuilder {
         gameUpdateVerification: V4GameUpdateVerificationReport? = nil,
         sparkMetadata: V4SparkMetadataMigrationReport? = nil,
         sparkMetadataVerification: V4SparkMetadataVerificationReport? = nil,
+        translations: V4TranslationCacheMigrationReport? = nil,
+        translationVerification: V4TranslationCacheVerificationReport? = nil,
+        discoveryCacheDisposition: V4DiscoveryCacheDispositionReport? = nil,
+        discoveryCacheVerified: Bool = false,
         library: V4LegacyLibraryMigrationReport,
         appState: V4LegacyAppStateMigrationReport,
         verification: V4MigrationPayloadVerificationReport? = nil,
@@ -31,6 +35,7 @@ enum V4MigrationManifestBuilder {
         diagnostics.append(contentsOf: sharedCatalogVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: gameUpdateVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: sparkMetadataVerification?.diagnostics ?? [])
+        diagnostics.append(contentsOf: translationVerification?.diagnostics ?? [])
         if let referenceVerification {
             diagnostics.append(contentsOf: referenceVerification.diagnostics)
         } else {
@@ -79,6 +84,27 @@ enum V4MigrationManifestBuilder {
             }
         } else if sparkSourceRows > 0 {
             diagnostics.append("migration.sparkMetadata.notRun")
+        }
+        let translationSourceRows = preflight.rowCounts["translations"] ?? 0
+        if let translations, let translationVerification {
+            reportedSourceTables.insert("translations")
+            if translations.rowCount != translationSourceRows
+                || translationVerification.unverifiedRows != 0
+                || !translationVerification.isVerified
+                || translationVerification.verifiedRows < translations.rowCount {
+                diagnostics.append("migration.translations.verificationFailed")
+            }
+        } else if translationSourceRows > 0 {
+            diagnostics.append("migration.translations.notRun")
+        }
+        let discoverySourceRows = preflight.rowCounts["discoverySnapshots"] ?? 0
+        if let discoveryCacheDisposition {
+            reportedSourceTables.insert("discoverySnapshots")
+            if discoveryCacheDisposition.discardedRowCount != discoverySourceRows || !discoveryCacheVerified {
+                diagnostics.append("migration.discoveryCache.discardVerificationFailed")
+            }
+        } else if discoverySourceRows > 0 {
+            diagnostics.append("migration.discoveryCache.dispositionNotRun")
         }
         let uncoveredSourceRows = preflight.rowCounts
             .filter { !reportedSourceTables.contains($0.key) }
@@ -192,6 +218,44 @@ enum V4MigrationManifestBuilder {
                     unverifiedRows: sparkMetadataVerification.unverifiedRows
                 ),
                 integrityDiagnostics: sparkMetadataVerification.diagnostics
+            )
+        }
+
+        if let translations, let translationVerification {
+            domains["translations"] = V4MigrationDomainManifest(
+                sourceRowCount: translationSourceRows,
+                destinationRowCount: translations.rowCount,
+                scopeCounts: ["shared-public-content": translations.rowCount],
+                quarantinedRowCount: 0,
+                inventoryDigest: translations.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: translationVerification.isVerified
+                        && translationVerification.verifiedRows >= translations.rowCount ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: translationVerification.verifiedRows,
+                    unverifiedRows: translationVerification.unverifiedRows
+                ),
+                integrityDiagnostics: translationVerification.diagnostics
+            )
+        }
+
+        if let discoveryCacheDisposition {
+            domains["discoverySnapshots"] = V4MigrationDomainManifest(
+                disposition: .discardedRebuildableCache,
+                sourceRowCount: discoverySourceRows,
+                destinationRowCount: 0,
+                scopeCounts: [:],
+                quarantinedRowCount: 0,
+                inventoryDigest: discoveryCacheDisposition.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: discoveryCacheVerified ? .verified : .failed,
+                    method: .identityAndCounts,
+                    verifiedRows: discoveryCacheDisposition.discardedRowCount,
+                    unverifiedRows: discoveryCacheVerified ? 0 : 1
+                ),
+                integrityDiagnostics: discoveryCacheVerified ? [] : ["migration.discoveryCache.discardVerificationFailed"]
             )
         }
 
