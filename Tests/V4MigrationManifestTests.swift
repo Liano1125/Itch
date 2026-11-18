@@ -38,7 +38,8 @@ final class V4MigrationManifestTests: XCTestCase {
             sourceRowCount: 3,
             sourceInventoryDigest: String(repeating: "b", count: 64),
             domains: ["appState": domain],
-            integrityDiagnostics: diagnostics
+            integrityDiagnostics: diagnostics,
+            referenceVerification: V4StoreReferenceVerificationReport(checksPerformed: 1, diagnostics: [])
         )
     }
 
