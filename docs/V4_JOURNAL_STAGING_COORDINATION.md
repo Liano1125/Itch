@@ -24,3 +24,20 @@ Journal creation and state transitions acquire the same persistent owner lock us
 Every mutation reloads and validates the latest on-disk journal snapshot after ownership is established, then applies the idempotency/state compare-and-swap checks and atomically replaces the file. This is required because Swift actor isolation serializes only one repository instance; it cannot prevent another actor or process from changing the file. Read operations also reload the current file instead of trusting a process-local cached snapshot.
 
 The lock serializes cooperative writers, while atomic replacement keeps the record/event snapshot together. This does not claim stronger power-loss durability than the underlying filesystem write operation.
+
+
+## Recovery after conversion or verification interruption
+
+Recovery now treats requested, snapshotting, snapshotReady, stagingCreated,
+converting, verifying, and manifestWritten as interrupted, unvalidated attempts.
+Under the exclusive owner lease it removes only the staging directory identified
+by that record's runID/stagingStoreID, then commits a terminal failed transition.
+If removal or the journal commit fails, recovery throws and does not report that
+attempt as recovered; rerunning recovery is safe because discard is idempotent
+and the journal compare-and-swap is checked against the latest on-disk state.
+
+A stagingValidated artifact is deliberately retained: conversion and payload
+validation have completed, while independent safety gates may be rerun. Terminal
+states are never cleaned by this recovery path. A retry always creates a fresh
+runID, idempotency key, and stagingStoreID; a failed staging directory is never
+reused. V3 source data and unrelated staging directories remain untouched.
