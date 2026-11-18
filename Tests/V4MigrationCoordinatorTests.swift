@@ -42,6 +42,8 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             )
         }
         XCTAssertTrue(attempt.verification.isVerified)
+        XCTAssertTrue(attempt.referenceVerification.isValid)
+        XCTAssertTrue(attempt.manifest.referenceVerification?.isValid == true)
         XCTAssertTrue(attempt.manifest.isPromotionEligible)
         XCTAssertEqual(attempt.outcome, .manifestEligibleForIndependentSafetyGates)
         XCTAssertEqual(attempt.library.totalRows, 0)
