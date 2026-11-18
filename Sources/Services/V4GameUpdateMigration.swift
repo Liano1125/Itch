@@ -36,7 +36,7 @@ enum V4GameUpdateConverter {
         guard !source.hasChanges else { throw ConversionError.sourceHasPendingChanges }
         guard !destination.hasChanges else { throw ConversionError.destinationHasPendingChanges }
         let updates = try source.fetch(FetchDescriptor<DBGameUpdate>())
-        let gameIDs = Set(try source.fetch(FetchDescriptor<DBGame>()).map(\\.id))
+        let gameIDs = Set(try source.fetch(FetchDescriptor<DBGame>()).map(\.id))
         for update in updates where !gameIDs.contains(update.gameID) {
             throw ConversionError.missingGame(update.id)
         }
@@ -45,8 +45,8 @@ enum V4GameUpdateConverter {
         }
 
         let sorted = updates.sorted { $0.id < $1.id }
-        let identityLines = sorted.map { "game-update:\\($0.id)" }
-        let digest = SHA256.hash(data: Data(identityLines.joined(separator: "\\n").utf8))
+        let identityLines = sorted.map { "game-update:\($0.id)" }
+        let digest = SHA256.hash(data: Data(identityLines.joined(separator: "\n").utf8))
             .map { String(format: "%02x", $0) }.joined()
         do {
             for row in sorted {
@@ -95,8 +95,8 @@ enum V4GameUpdateVerifier {
         }
         let sourceRows = try source.fetch(FetchDescriptor<DBGameUpdate>())
         let destinationRows = try destination.fetch(FetchDescriptor<DBGameUpdate>())
-        let lhs = Dictionary(grouping: sourceRows.map(Value.init), by: \\.id)
-        let rhs = Dictionary(grouping: destinationRows.map(Value.init), by: \\.id)
+        let lhs = Dictionary(grouping: sourceRows.map(Value.init), by: \.id)
+        let rhs = Dictionary(grouping: destinationRows.map(Value.init), by: \.id)
         var verified = 0
         var unverified = 0
         var diagnostics = Set<String>()
