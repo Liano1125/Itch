@@ -61,7 +61,6 @@ on:
       - feat/v4-store-reference-integrity-verifier
       - feat/v4-reference-gate-manifest-integration
       - feat/v4-shared-catalog-migration
-      - feat/v4-shared-catalog-migration
       - feat/v4-game-update-migration
       - feat/v4-manifest-verifier-integration
       - feat/v4-migration-coordinator
@@ -83,6 +82,7 @@ on:
       - feat/v4-staging-readonly-reopen-validation
       - feat/v4-store-reference-integrity-verifier
       - feat/v4-reference-gate-manifest-integration
+      - feat/v4-shared-catalog-migration
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
