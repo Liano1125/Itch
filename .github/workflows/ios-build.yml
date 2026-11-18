@@ -85,6 +85,7 @@ on:
       - feat/v4-reference-gate-manifest-integration
       - feat/v4-shared-catalog-migration
       - feat/v4-game-update-migration
+      - feat/v4-spark-device-metadata-migration
       # PR #56 is stacked on this migration/status-history branch.
       - fix/preserve-library-status-history
       - main
