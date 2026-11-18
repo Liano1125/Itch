@@ -221,4 +221,70 @@ final class DatabaseV4AccountModelTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccount>()), 2)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1)
     }
+
+    @MainActor
+    func testV4PersistentStoreReopensReadOnlyWithAccountOwnershipIntact() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("V4ReadOnlyReopen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let storeURL = root.appendingPathComponent("v4-staging.sqlite")
+        let schema = Schema(versionedSchema: ItchPocketSchemaV4.self)
+
+        do {
+            let writableConfiguration = ModelConfiguration(
+                "v4-staging-writable-\(UUID().uuidString)",
+                schema: schema,
+                url: storeURL
+            )
+            let writableContainer = try ModelContainer(
+                for: schema,
+                configurations: [writableConfiguration]
+            )
+            let context = writableContainer.mainContext
+            let accountA = DBAccount(itchUserID: 701, username: "account-a")
+            let accountB = DBAccount(itchUserID: 702, username: "account-b")
+            context.insert(accountA)
+            context.insert(accountB)
+            context.insert(DBGame(id: "shared-game", title: "Shared"))
+            context.insert(ItchPocketSchemaV4.DBLibraryEntry(
+                accountID: accountA.id, gameID: "shared-game", status: "playing"
+            ))
+            context.insert(ItchPocketSchemaV4.DBLibraryEntry(
+                accountID: accountB.id, gameID: "shared-game", status: "completed"
+            ))
+            context.insert(ItchPocketSchemaV4.DBLibraryEntry(
+                accountID: nil, gameID: "legacy-game", status: "playing"
+            ))
+            try context.save()
+        }
+
+        let readOnlyConfiguration = ModelConfiguration(
+            "v4-staging-readonly-\(UUID().uuidString)",
+            schema: schema,
+            url: storeURL,
+            allowsSave: false
+        )
+        let readOnlyContainer = try ModelContainer(
+            for: schema,
+            configurations: [readOnlyConfiguration]
+        )
+        let readOnlyContext = readOnlyContainer.mainContext
+
+        let accounts = try readOnlyContext.fetch(FetchDescriptor<DBAccount>())
+        let entries = try readOnlyContext.fetch(
+            FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()
+        )
+        XCTAssertEqual(Set(accounts.map(\.id)), ["itch:701", "itch:702"])
+        XCTAssertEqual(entries.count, 3)
+        XCTAssertEqual(Set(entries.compactMap(\.accountID)), ["itch:701", "itch:702"])
+        XCTAssertEqual(entries.filter { $0.accountID == nil }.count, 1)
+        XCTAssertEqual(entries.first { $0.accountID == "itch:701" }?.status, "playing")
+        XCTAssertEqual(entries.first { $0.accountID == "itch:702" }?.status, "completed")
+
+        readOnlyContext.insert(DBAccount(itchUserID: 703, username: "must-not-save"))
+        XCTAssertThrowsError(try readOnlyContext.save())
+    }
+
 }
