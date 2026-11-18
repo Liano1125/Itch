@@ -21,6 +21,7 @@ final class V4StoreReferenceVerifierTests: XCTestCase {
         let account = DBAccount(itchUserID: 801, username: "account")
         context.insert(account)
         context.insert(DBGame(id: "game-1", title: "Game"))
+        context.insert(DBSparkMetadata(gameID: "game-1", runtimeSeconds: 12, scannedAt: Date(timeIntervalSince1970: 10)))
         let collection = ItchPocketSchemaV4.DBLibraryCollection(
             accountID: account.id, collectionKey: "favorites", title: "Favorites"
         )
@@ -79,6 +80,7 @@ final class V4StoreReferenceVerifierTests: XCTestCase {
         context.insert(DBAccountCalendarEvent(
             accountID: "itch:999", eventKey: "orphan", gameID: "missing-game", kind: "custom"
         ))
+        context.insert(DBSparkMetadata(gameID: "missing-game", runtimeSeconds: 1))
         try context.save()
 
         let report = try V4StoreReferenceVerifier.verify(context: context)
@@ -88,6 +90,7 @@ final class V4StoreReferenceVerifierTests: XCTestCase {
         XCTAssertTrue(report.diagnostics.contains("v4.collectionItem.missingCollection"))
         XCTAssertTrue(report.diagnostics.contains("v4.appState.stableIdentityMismatch"))
         XCTAssertTrue(report.diagnostics.contains("v4.accountCalendarEvent.unknownAccount"))
+        XCTAssertTrue(report.diagnostics.contains("v4.sparkMetadata.missingGame"))
     }
 
     @MainActor

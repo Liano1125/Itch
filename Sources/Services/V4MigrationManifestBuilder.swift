@@ -8,6 +8,8 @@ enum V4MigrationManifestBuilder {
         sharedCatalogVerification: V4SharedCatalogVerificationReport? = nil,
         gameUpdates: V4GameUpdateMigrationReport? = nil,
         gameUpdateVerification: V4GameUpdateVerificationReport? = nil,
+        sparkMetadata: V4SparkMetadataMigrationReport? = nil,
+        sparkMetadataVerification: V4SparkMetadataVerificationReport? = nil,
         library: V4LegacyLibraryMigrationReport,
         appState: V4LegacyAppStateMigrationReport,
         verification: V4MigrationPayloadVerificationReport? = nil,
@@ -28,6 +30,7 @@ enum V4MigrationManifestBuilder {
         diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
         diagnostics.append(contentsOf: sharedCatalogVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: gameUpdateVerification?.diagnostics ?? [])
+        diagnostics.append(contentsOf: sparkMetadataVerification?.diagnostics ?? [])
         if let referenceVerification {
             diagnostics.append(contentsOf: referenceVerification.diagnostics)
         } else {
@@ -64,6 +67,18 @@ enum V4MigrationManifestBuilder {
             }
         } else if gameUpdateSourceRows > 0 {
             diagnostics.append("migration.gameUpdates.notRun")
+        }
+        let sparkSourceRows = preflight.rowCounts["sparkMetadata"] ?? 0
+        if let sparkMetadata, let sparkMetadataVerification {
+            reportedSourceTables.insert("sparkMetadata")
+            if sparkMetadata.rowCount != sparkSourceRows
+                || sparkMetadataVerification.unverifiedRows != 0
+                || !sparkMetadataVerification.isVerified
+                || sparkMetadataVerification.verifiedRows < sparkMetadata.rowCount {
+                diagnostics.append("migration.sparkMetadata.verificationFailed")
+            }
+        } else if sparkSourceRows > 0 {
+            diagnostics.append("migration.sparkMetadata.notRun")
         }
         let uncoveredSourceRows = preflight.rowCounts
             .filter { !reportedSourceTables.contains($0.key) }
@@ -158,6 +173,25 @@ enum V4MigrationManifestBuilder {
                     unverifiedRows: gameUpdateVerification.unverifiedRows
                 ),
                 integrityDiagnostics: gameUpdateVerification.diagnostics
+            )
+        }
+
+        if let sparkMetadata, let sparkMetadataVerification {
+            domains["sparkMetadata"] = V4MigrationDomainManifest(
+                sourceRowCount: sparkSourceRows,
+                destinationRowCount: sparkMetadata.rowCount,
+                scopeCounts: ["device": sparkMetadata.rowCount],
+                quarantinedRowCount: 0,
+                inventoryDigest: sparkMetadata.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: sparkMetadataVerification.isVerified
+                        && sparkMetadataVerification.verifiedRows >= sparkMetadata.rowCount ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: sparkMetadataVerification.verifiedRows,
+                    unverifiedRows: sparkMetadataVerification.unverifiedRows
+                ),
+                integrityDiagnostics: sparkMetadataVerification.diagnostics
             )
         }
 

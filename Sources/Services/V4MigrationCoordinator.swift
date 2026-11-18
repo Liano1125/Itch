@@ -15,6 +15,8 @@ struct V4MigrationAttempt: Equatable {
     let sharedCatalogVerification: V4SharedCatalogVerificationReport
     let gameUpdates: V4GameUpdateMigrationReport
     let gameUpdateVerification: V4GameUpdateVerificationReport
+    let sparkMetadata: V4SparkMetadataMigrationReport
+    let sparkMetadataVerification: V4SparkMetadataVerificationReport
     let library: V4LegacyLibraryMigrationReport
     let appState: V4LegacyAppStateMigrationReport
     let verification: V4MigrationPayloadVerificationReport
@@ -86,6 +88,7 @@ enum V4MigrationCoordinator {
             source: source, destination: destination
         )
         let gameUpdates = try V4GameUpdateConverter.convert(source: source, destination: destination)
+        let sparkMetadata = try V4SparkMetadataConverter.convert(source: source, destination: destination)
         let library = try V4LegacyLibraryConverter.convert(
             source: source, destination: destination
         )
@@ -97,6 +100,7 @@ enum V4MigrationCoordinator {
             source: source, destination: destination
         )
         let gameUpdateVerification = try V4GameUpdateVerifier.verify(source: source, destination: destination)
+        let sparkMetadataVerification = try V4SparkMetadataVerifier.verify(source: source, destination: destination)
         let verification = try V4MigrationPayloadVerifier.verify(
             source: source, destination: destination
         )
@@ -117,6 +121,8 @@ enum V4MigrationCoordinator {
             sharedCatalogVerification: sharedCatalogVerification,
             gameUpdates: gameUpdates,
             gameUpdateVerification: gameUpdateVerification,
+            sparkMetadata: sparkMetadata,
+            sparkMetadataVerification: sparkMetadataVerification,
             library: library,
             appState: appState,
             verification: verification,
@@ -133,6 +139,8 @@ enum V4MigrationCoordinator {
             sharedCatalogVerification: sharedCatalogVerification,
             gameUpdates: gameUpdates,
             gameUpdateVerification: gameUpdateVerification,
+            sparkMetadata: sparkMetadata,
+            sparkMetadataVerification: sparkMetadataVerification,
             library: library,
             appState: appState,
             verification: verification,
