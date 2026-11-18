@@ -84,6 +84,8 @@ struct V4MigrationManifest: Codable, Equatable {
     let domains: [String: V4MigrationDomainManifest]
     /// Stable diagnostic codes only; no source payload or identity values.
     let integrityDiagnostics: [String]
+    /// Must be present and valid before the manifest can pass its safety predicate.
+    let referenceVerification: V4StoreReferenceVerificationReport?
 
     init(
         runID: String,
@@ -94,7 +96,8 @@ struct V4MigrationManifest: Codable, Equatable {
         sourceRowCount: Int,
         sourceInventoryDigest: String,
         domains: [String: V4MigrationDomainManifest],
-        integrityDiagnostics: [String] = []
+        integrityDiagnostics: [String] = [],
+        referenceVerification: V4StoreReferenceVerificationReport? = nil
     ) {
         self.manifestVersion = Self.currentManifestVersion
         self.runID = runID
@@ -106,6 +109,7 @@ struct V4MigrationManifest: Codable, Equatable {
         self.sourceInventoryDigest = sourceInventoryDigest
         self.domains = domains
         self.integrityDiagnostics = integrityDiagnostics.sorted()
+        self.referenceVerification = referenceVerification
     }
 
     static func isSHA256Hex(_ value: String) -> Bool {
@@ -125,6 +129,7 @@ struct V4MigrationManifest: Codable, Equatable {
         sourceRowCount >= 0 &&
         Self.isSHA256Hex(sourceInventoryDigest) &&
         integrityDiagnostics.isEmpty &&
+        referenceVerification?.isValid == true &&
         !domains.isEmpty &&
         domains.values.allSatisfy(\.isPromotionEligible)
     }
