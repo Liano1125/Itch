@@ -2,6 +2,11 @@ import Foundation
 
 /// Describes what a migration run observed without storing source payloads.
 /// Diagnostics must be stable machine-readable codes, never user-authored text.
+enum V4MigrationDomainDisposition: String, Codable, Equatable {
+    case migrated
+    case discardedRebuildableCache
+}
+
 enum V4MigrationDigestKind: String, Codable, Equatable {
     case structuralSHA256
     case stableIdentitySHA256
@@ -29,6 +34,7 @@ struct V4MigrationPayloadVerificationSummary: Codable, Equatable {
 }
 
 struct V4MigrationDomainManifest: Codable, Equatable {
+    let disposition: V4MigrationDomainDisposition
     let sourceRowCount: Int
     let destinationRowCount: Int
     /// Counts are partitioned by destination scope; values must sum to destinationRowCount.
@@ -52,16 +58,44 @@ struct V4MigrationDomainManifest: Codable, Equatable {
     }
 
     var isPromotionEligible: Bool {
-        sourceRowCount >= 0 &&
+        let dispositionIsValid: Bool
+        switch disposition {
+        case .migrated:
+            dispositionIsValid = payloadVerification.status == .verified
+                && payloadVerification.verifiedRows >= destinationRowCount
+        case .discardedRebuildableCache:
+            dispositionIsValid = destinationRowCount == 0
+                && quarantinedRowCount == 0
+                && payloadVerification.method == .identityAndCounts
+                && payloadVerification.verifiedRows >= sourceRowCount
+        }
+        return sourceRowCount >= 0 &&
         destinationRowCount >= 0 &&
         quarantinedRowCount >= 0 &&
         quarantinedRowCount <= destinationRowCount &&
         hasConsistentScopeCounts &&
         hasValidDigest &&
-        payloadVerification.status == .verified &&
+        dispositionIsValid &&
         payloadVerification.unverifiedRows == 0 &&
-        payloadVerification.verifiedRows >= destinationRowCount &&
         integrityDiagnostics.isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case disposition, sourceRowCount, destinationRowCount, scopeCounts, quarantinedRowCount
+        case inventoryDigest, digestKind, payloadVerification, integrityDiagnostics
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        disposition = try values.decodeIfPresent(V4MigrationDomainDisposition.self, forKey: .disposition) ?? .migrated
+        sourceRowCount = try values.decode(Int.self, forKey: .sourceRowCount)
+        destinationRowCount = try values.decode(Int.self, forKey: .destinationRowCount)
+        scopeCounts = try values.decode([String: Int].self, forKey: .scopeCounts)
+        quarantinedRowCount = try values.decode(Int.self, forKey: .quarantinedRowCount)
+        inventoryDigest = try values.decodeIfPresent(String.self, forKey: .inventoryDigest)
+        digestKind = try values.decodeIfPresent(V4MigrationDigestKind.self, forKey: .digestKind)
+        payloadVerification = try values.decode(V4MigrationPayloadVerificationSummary.self, forKey: .payloadVerification)
+        integrityDiagnostics = try values.decode([String].self, forKey: .integrityDiagnostics)
     }
 }
 
