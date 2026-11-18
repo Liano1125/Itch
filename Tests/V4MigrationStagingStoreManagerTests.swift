@@ -45,6 +45,7 @@ final class V4MigrationStagingStoreManagerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: staging.storeURL.path + "-wal"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: staging.storeURL.path + "-shm"))
         try SQLiteStoreIntegrityChecker.quickCheck(at: staging.storeURL)
+        XCTAssertNoThrow(try SQLiteStoreIntegrityChecker.reopenReadOnly(at: staging.storeURL))
         XCTAssertEqual(try readValue(from: staging.storeURL), "committed-in-wal")
 
         XCTAssertTrue(try manager.discard(runID: "run-001", stagingStoreID: "stage-001"))
