@@ -17,10 +17,10 @@ The migration preserves these rows as device metadata. It must never attach them
 - The Manifest records the domain scope as `device` and requires a successful field-by-field report before counting the domain as covered.
 - V4 reference validation independently checks that every Spark row references an existing game.
 
-## Deliberately not migrated in this slice
+## Cache migration and disposition policy
 
-- `DBTranslation` is a bounded translation cache (maximum 1,200 entries; retention trims toward 1,000). It is reconstructible from source text and target language, so it should be treated as disposable cache data, not canonical user data. Before dropping it, the migration policy must explicitly record cache discard and ensure it cannot block canonical-data promotion.
-- `DBDiscoverySnapshot` is a TTL cache whose payloads are decoded through `DiscoveryCacheStore`. Expired entries are discarded on read. It is rebuildable and should not be treated as canonical game or account data.
+- `DBTranslation` is a bounded cache (maximum 1,200 entries; retention trims toward 1,000). Current call sites use only public game-description and devlog scopes. Preserve these rows field-by-field in V4 to avoid needless translation-provider requests and possible API/quota costs. Unknown scopes fail closed rather than being copied into a shared cache.
+- `DBDiscoverySnapshot` is a TTL cache whose payloads are decoded through `DiscoveryCacheStore`. Expired entries are discarded on read. It is intentionally omitted from V4 staging; the manifest records its source row count and key-only inventory digest with an explicit `discardedRebuildableCache` disposition, and verifies that the destination cache remains empty.
 - `DiscoveryFeedSnapshotCache` is already a separate cache file with a 30-day maximum age and stale-while-refresh behavior. It is outside the SwiftData migration and should remain so.
 - `DBUpdateWatch` mixes polling validators with an enable/disable preference. Its ownership must be split or explicitly classified before migration; do not infer it belongs to the current account.
 

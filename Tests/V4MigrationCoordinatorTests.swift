@@ -319,4 +319,69 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()
         ), 0)
     }
+    @MainActor
+    func testCoordinatorPreservesPublicTranslationCacheAndExplicitlyDiscardsDiscoverySnapshots() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "cache-game", title: "Cache game"))
+        source.context.insert(DBTranslation(
+            cacheKey: String(repeating: "a", count: 64),
+            scope: "game-description:cache-game",
+            sourceHash: String(repeating: "b", count: 64),
+            sourceText: "Public game description",
+            targetLanguage: "zh-CN",
+            translatedText: "公开游戏介绍",
+            updatedAt: Date(timeIntervalSince1970: 100)
+        ))
+        source.context.insert(DBDiscoverySnapshot(
+            key: "curated:popular",
+            payload: Data("rebuildable".utf8),
+            fetchedAt: Date(timeIntervalSince1970: 100),
+            expiresAt: Date(timeIntervalSince1970: 200)
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        let attempt = try withOwnerLock { lockURL, lease in
+            try V4MigrationCoordinator.run(
+                source: source.context, destination: destination.mainContext,
+                runID: "cache-disposition-test",
+                ownerLockURL: lockURL, ownerLease: lease
+            )
+        }
+
+        let copiedTranslations = try destination.mainContext.fetch(FetchDescriptor<DBTranslation>())
+        XCTAssertEqual(copiedTranslations.count, 1)
+        XCTAssertEqual(copiedTranslations.first?.translatedText, "公开游戏介绍")
+        XCTAssertTrue(attempt.translationVerification.isVerified)
+        XCTAssertEqual(attempt.manifest.domains["translations"]?.disposition, .migrated)
+
+        XCTAssertEqual(try destination.mainContext.fetchCount(FetchDescriptor<DBDiscoverySnapshot>()), 0)
+        XCTAssertTrue(attempt.discoveryCacheVerified)
+        let discoveryDomain = try XCTUnwrap(attempt.manifest.domains["discoverySnapshots"])
+        XCTAssertEqual(discoveryDomain.disposition, .discardedRebuildableCache)
+        XCTAssertEqual(discoveryDomain.sourceRowCount, 1)
+        XCTAssertEqual(discoveryDomain.destinationRowCount, 0)
+        XCTAssertEqual(discoveryDomain.payloadVerification.method, .identityAndCounts)
+        XCTAssertTrue(attempt.manifest.isPromotionEligible)
+    }
+
+    @MainActor
+    func testTranslationCacheConverterRejectsUnknownScope() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBTranslation(
+            cacheKey: "unknown",
+            scope: "user-private:unknown",
+            sourceHash: "hash",
+            sourceText: "private",
+            targetLanguage: "zh-CN",
+            translatedText: "private"
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        XCTAssertThrowsError(try V4TranslationCacheConverter.convert(
+            source: source.context, destination: destination.mainContext
+        )) { error in
+            XCTAssertEqual(error as? V4TranslationCacheConverter.ConversionError, .unsupportedScope)
+        }
+    }
+
 }

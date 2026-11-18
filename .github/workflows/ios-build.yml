@@ -63,6 +63,7 @@ on:
       - feat/v4-shared-catalog-migration
       - feat/v4-game-update-migration
       - feat/v4-spark-device-metadata-migration
+      - feat/v4-cache-migration-policy
       - feat/v4-manifest-verifier-integration
       - feat/v4-migration-coordinator
       - feat/v4-migration-journal-state-machine
