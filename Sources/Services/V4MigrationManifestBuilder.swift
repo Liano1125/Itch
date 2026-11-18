@@ -4,6 +4,8 @@ import Foundation
 enum V4MigrationManifestBuilder {
     static func build(
         preflight: V3MigrationPreflightReport,
+        sharedCatalog: V4SharedCatalogMigrationReport? = nil,
+        sharedCatalogVerification: V4SharedCatalogVerificationReport? = nil,
         library: V4LegacyLibraryMigrationReport,
         appState: V4LegacyAppStateMigrationReport,
         verification: V4MigrationPayloadVerificationReport? = nil,
@@ -22,6 +24,7 @@ enum V4MigrationManifestBuilder {
 
         var diagnostics = preflight.integrityIssues.map(Self.stableDiagnosticCode)
         diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
+        diagnostics.append(contentsOf: sharedCatalogVerification?.diagnostics ?? [])
         if let referenceVerification {
             diagnostics.append(contentsOf: referenceVerification.diagnostics)
         } else {
@@ -30,10 +33,24 @@ enum V4MigrationManifestBuilder {
 
         // Only library and AppState converter reports are currently supplied.
         // Do not let those two verified domains imply whole-store coverage.
-        let reportedSourceTables: Set<String> = [
+        var reportedSourceTables: Set<String> = [
             "libraryEntries", "collections", "collectionItems",
             "libraryStatusEvents", "appStates"
         ]
+        let catalogSourceRows = (preflight.rowCounts["developers"] ?? 0)
+            + (preflight.rowCounts["games"] ?? 0)
+            + (preflight.rowCounts["gameDetails"] ?? 0)
+        if let sharedCatalog, let sharedCatalogVerification {
+            reportedSourceTables.formUnion(["developers", "games", "gameDetails"])
+            if sharedCatalog.totalRows != catalogSourceRows
+                || sharedCatalogVerification.unverifiedRows != 0
+                || !sharedCatalogVerification.isVerified
+                || sharedCatalogVerification.verifiedRows < sharedCatalog.totalRows {
+                diagnostics.append("migration.sharedCatalog.verificationFailed")
+            }
+        } else if catalogSourceRows > 0 {
+            diagnostics.append("migration.sharedCatalog.notRun")
+        }
         let uncoveredSourceRows = preflight.rowCounts
             .filter { !reportedSourceTables.contains($0.key) }
             .values
@@ -96,7 +113,7 @@ enum V4MigrationManifestBuilder {
             registryVersion: AppStateScopeRegistry.registryVersion,
             sourceRowCount: totalSourceRows,
             sourceInventoryDigest: preflight.inventoryDigest,
-            domains: ["library": libraryDomain, "appState": appStateDomain],
+            domains: domains,
             integrityDiagnostics: diagnostics,
             referenceVerification: referenceVerification
         )
