@@ -94,6 +94,14 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             discoveryTagsData: Data([1, 2, 3]),
             fetchedAt: Date(timeIntervalSince1970: 300), isComplete: true
         ))
+        // Keep one non-empty, not-yet-migrated domain in the fixture. Empty
+        // uncovered tables do not block migration; populated ones must.
+        let update = DBGameUpdate()
+        update.id = "update-a"
+        update.gameID = "game-a"
+        update.summary = "A pending legacy update"
+        update.detectedAt = Date(timeIntervalSince1970: 400)
+        source.context.insert(update)
         try source.save()
         let destination = try makeV4Container()
         let attempt = try withOwnerLock { lockURL, lease in
