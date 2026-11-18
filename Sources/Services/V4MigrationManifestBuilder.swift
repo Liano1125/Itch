@@ -31,8 +31,7 @@ enum V4MigrationManifestBuilder {
             diagnostics.append("migration.references.notRun")
         }
 
-        // Only library and AppState converter reports are currently supplied.
-        // Do not let those two verified domains imply whole-store coverage.
+        // A source table counts as covered only when its converter and field verifier ran.
         var reportedSourceTables: Set<String> = [
             "libraryEntries", "collections", "collectionItems",
             "libraryStatusEvents", "appStates"
@@ -104,6 +103,29 @@ enum V4MigrationManifestBuilder {
             integrityDiagnostics: appStateSourceRows == appState.totalRows
                 ? [] : ["migration.appState.sourceCountMismatch"]
         )
+
+        var domains: [String: V4MigrationDomainManifest] = [
+            "library": libraryDomain,
+            "appState": appStateDomain
+        ]
+        if let sharedCatalog, let sharedCatalogVerification {
+            domains["sharedCatalog"] = V4MigrationDomainManifest(
+                sourceRowCount: catalogSourceRows,
+                destinationRowCount: sharedCatalog.totalRows,
+                scopeCounts: ["shared": sharedCatalog.totalRows],
+                quarantinedRowCount: 0,
+                inventoryDigest: sharedCatalog.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: sharedCatalogVerification.isVerified
+                        && sharedCatalogVerification.verifiedRows >= sharedCatalog.totalRows ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: sharedCatalogVerification.verifiedRows,
+                    unverifiedRows: sharedCatalogVerification.unverifiedRows
+                ),
+                integrityDiagnostics: sharedCatalogVerification.diagnostics
+            )
+        }
 
         return V4MigrationManifest(
             runID: runID,
