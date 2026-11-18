@@ -125,6 +125,29 @@ final class V4MigrationCoordinatorTests: XCTestCase {
     }
 
     @MainActor
+    func testSharedCatalogVerifierDetectsMutatedDestinationPayload() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "catalog-game", title: "Original title"))
+        try source.save()
+        let destination = try makeV4Container()
+
+        let migration = try V4SharedCatalogConverter.convert(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertEqual(migration.gameCount, 1)
+        let copied = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBGame>()).first)
+        copied.title = "Mutated title"
+        try destination.mainContext.save()
+
+        let report = try V4SharedCatalogVerifier.verify(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertFalse(report.isVerified)
+        XCTAssertEqual(report.unverifiedRows, 2)
+        XCTAssertTrue(report.diagnostics.contains("migration.sharedCatalog.gameMismatch"))
+    }
+
+    @MainActor
     func testRejectsDirtyContextsBeforeStarting() throws {
         let source = try AppDatabase(inMemory: true)
         source.context.insert(DBAppState(key: "pending"))
