@@ -200,4 +200,35 @@ final class V4MigrationJournalRepositoryTests: XCTestCase {
             XCTAssertEqual(error as? V4MigrationJournalRepository.RepositoryError, .idempotencyKeyConflict)
         }
     }
+
+    func testSeparateRepositoryInstancesReloadLatestDiskStateUnderSharedOwnerLock() async throws {
+        let url = try temporaryStoreURL()
+        let first = V4MigrationJournalRepository(fileURL: url)
+        let second = V4MigrationJournalRepository(fileURL: url)
+
+        _ = try await first.createOrGet(
+            runID: "run-shared", idempotencyKey: "request-shared",
+            sourceSchemaVersion: "3", destinationSchemaVersion: "4", at: epoch
+        )
+        _ = try await second.transition(
+            runID: "run-shared", from: .requested, to: .snapshotting,
+            at: epoch.addingTimeInterval(1), code: "snapshot.started"
+        )
+
+        do {
+            _ = try await first.transition(
+                runID: "run-shared", from: .requested, to: .snapshotting,
+                at: epoch.addingTimeInterval(2), code: "stale.writer"
+            )
+            XCTFail("A repository instance must not write from a stale cached snapshot")
+        } catch {
+            XCTAssertEqual(error as? V4MigrationJournalRepository.RepositoryError, .stateConflict)
+        }
+
+        let latest = try await first.record(runID: "run-shared")
+        XCTAssertEqual(latest?.state, .snapshotting)
+        let events = try await first.events(runID: "run-shared")
+        XCTAssertEqual(events.map(\.sequence), [1, 2])
+    }
+
 }

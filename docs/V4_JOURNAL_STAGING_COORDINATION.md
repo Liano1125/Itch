@@ -15,3 +15,12 @@ This is an advisory lock: every writer/recovery path must use it. It does not pr
 recoverInterruptedSnapshotAttempts handles only requested, snapshotting, and snapshotReady attempts. It discards the recorded staging directory if present and transitions that attempt to failed. A new attempt must use a new runID, idempotency key, and stagingStoreID. Successfully created staging stores are preserved for the next migration phase.
 
 This slice does not run Library/AppState conversion, verify payload parity, promote a production store, or change app startup. V3 remains authoritative.
+
+
+## Journal write serialization and freshness
+
+Journal creation and state transitions acquire the same persistent owner lock used by snapshot creation and recovery. When a caller already holds the end-to-end migration lease, it passes that exact lease to each journal write so the repository does not attempt a nested lock acquisition. Standalone repository writes acquire and release the configured lock around their own read-modify-write operation.
+
+Every mutation reloads and validates the latest on-disk journal snapshot after ownership is established, then applies the idempotency/state compare-and-swap checks and atomically replaces the file. This is required because Swift actor isolation serializes only one repository instance; it cannot prevent another actor or process from changing the file. Read operations also reload the current file instead of trusting a process-local cached snapshot.
+
+The lock serializes cooperative writers, while atomic replacement keeps the record/event snapshot together. This does not claim stronger power-loss durability than the underlying filesystem write operation.

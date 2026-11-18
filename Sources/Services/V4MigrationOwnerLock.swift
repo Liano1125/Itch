@@ -32,6 +32,22 @@ enum V4MigrationOwnerLock {
             guard !released, lockFileURL.standardizedFileURL.path == lockFilePath else {
                 throw LockError.leaseNotActive
             }
+
+            // A matching path string is not sufficient: replacing the lock file
+            // would let another process lock a new inode at the same path.
+            var descriptorInfo = stat()
+            guard fstat(descriptor, &descriptorInfo) == 0,
+                  (descriptorInfo.st_mode & S_IFMT) == S_IFREG else {
+                throw LockError.leaseNotActive
+            }
+            var pathInfo = stat()
+            let pathStatus = lockFilePath.withCString { lstat($0, &pathInfo) }
+            guard pathStatus == 0,
+                  (pathInfo.st_mode & S_IFMT) == S_IFREG,
+                  descriptorInfo.st_dev == pathInfo.st_dev,
+                  descriptorInfo.st_ino == pathInfo.st_ino else {
+                throw LockError.leaseNotActive
+            }
         }
 
         /// Idempotent. The kernel also releases flock when the owning process exits.
@@ -82,6 +98,17 @@ enum V4MigrationOwnerLock {
                 throw LockError.alreadyHeld
             }
             throw LockError.lockFailed(code)
+        }
+
+        var pathInformation = stat()
+        let pathStatus = standardizedURL.path.withCString { lstat($0, &pathInformation) }
+        guard pathStatus == 0,
+              (pathInformation.st_mode & S_IFMT) == S_IFREG,
+              information.st_dev == pathInformation.st_dev,
+              information.st_ino == pathInformation.st_ino else {
+            _ = flock(descriptor, LOCK_UN)
+            _ = close(descriptor)
+            throw LockError.invalidLockFile
         }
 
         return Lease(descriptor: descriptor, lockFilePath: standardizedURL.path)

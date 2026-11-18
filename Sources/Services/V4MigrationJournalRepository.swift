@@ -33,6 +33,7 @@ actor V4MigrationJournalRepository {
     }
 
     private let fileURL: URL
+    private let ownerLockURL: URL
     private let fileManager: FileManager
     private let writeData: (Data, URL) throws -> Void
     private var snapshot: Snapshot?
@@ -41,12 +42,14 @@ actor V4MigrationJournalRepository {
     /// source or a V4 staging database.
     init(
         fileURL: URL,
+        ownerLockURL: URL? = nil,
         fileManager: FileManager = .default,
         writeData: @escaping (Data, URL) throws -> Void = { data, url in
             try data.write(to: url, options: [.atomic])
         }
     ) {
         self.fileURL = fileURL
+        self.ownerLockURL = (ownerLockURL ?? fileURL.deletingLastPathComponent().appendingPathComponent("migration-owner.lock")).standardizedFileURL
         self.fileManager = fileManager
         self.writeData = writeData
     }
@@ -60,8 +63,17 @@ actor V4MigrationJournalRepository {
         destinationSchemaVersion: String,
         at date: Date,
         attemptNumber: Int = 1,
-        stagingStoreID: String? = nil
+        stagingStoreID: String? = nil,
+        ownerLease: V4MigrationOwnerLock.Lease? = nil
     ) throws -> CreationResult {
+        let acquiredLease: V4MigrationOwnerLock.Lease?
+        if let ownerLease {
+            try ownerLease.validateOwnership(at: ownerLockURL)
+            acquiredLease = nil
+        } else {
+            acquiredLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
+        }
+        defer { acquiredLease?.release() }
         guard Self.isValidIdentifier(runID),
               Self.isValidIdentifier(idempotencyKey),
               Self.isValidIdentifier(sourceSchemaVersion),
@@ -117,8 +129,17 @@ actor V4MigrationJournalRepository {
         from expectedState: V4MigrationJournalState,
         to nextState: V4MigrationJournalState,
         at date: Date,
-        code: String
+        code: String,
+        ownerLease: V4MigrationOwnerLock.Lease? = nil
     ) throws -> V4MigrationJournalRecord {
+        let acquiredLease: V4MigrationOwnerLock.Lease?
+        if let ownerLease {
+            try ownerLease.validateOwnership(at: ownerLockURL)
+            acquiredLease = nil
+        } else {
+            acquiredLease = try V4MigrationOwnerLock.acquire(at: ownerLockURL)
+        }
+        defer { acquiredLease?.release() }
         var current = try loadIfNeeded()
         guard let record = current.records[runID] else {
             throw RepositoryError.recordNotFound
@@ -163,7 +184,6 @@ actor V4MigrationJournalRepository {
     }
 
     private func loadIfNeeded() throws -> Snapshot {
-        if let snapshot { return snapshot }
         guard fileManager.fileExists(atPath: fileURL.path) else {
             let empty = Snapshot.empty
             snapshot = empty
