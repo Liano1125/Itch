@@ -39,7 +39,7 @@ enum V4SparkMetadataConverter {
         guard !destination.hasChanges else { throw ConversionError.destinationHasPendingChanges }
 
         let rows = try source.fetch(FetchDescriptor<DBSparkMetadata>())
-        let gameIDs = Set(try source.fetch(FetchDescriptor<DBGame>()).map(\\.id))
+        let gameIDs = Set(try source.fetch(FetchDescriptor<DBGame>()).map(\.id))
         guard rows.allSatisfy({ gameIDs.contains($0.gameID) }) else {
             throw ConversionError.missingGame
         }
@@ -48,8 +48,8 @@ enum V4SparkMetadataConverter {
         }
 
         let sorted = rows.sorted { $0.gameID < $1.gameID }
-        let identityLines = sorted.map { "spark-device:\\($0.gameID)" }
-        let digest = SHA256.hash(data: Data(identityLines.joined(separator: "\\n").utf8))
+        let identityLines = sorted.map { "spark-device:\($0.gameID)" }
+        let digest = SHA256.hash(data: Data(identityLines.joined(separator: "\n").utf8))
             .map { String(format: "%02x", $0) }.joined()
         do {
             for row in sorted {
@@ -100,8 +100,8 @@ enum V4SparkMetadataVerifier {
         }
         let sourceRows = try source.fetch(FetchDescriptor<DBSparkMetadata>())
         let destinationRows = try destination.fetch(FetchDescriptor<DBSparkMetadata>())
-        let lhs = Dictionary(grouping: sourceRows.map(Value.init), by: \\.gameID)
-        let rhs = Dictionary(grouping: destinationRows.map(Value.init), by: \\.gameID)
+        let lhs = Dictionary(grouping: sourceRows.map(Value.init), by: \.gameID)
+        let rhs = Dictionary(grouping: destinationRows.map(Value.init), by: \.gameID)
         var verified = 0
         var unverified = 0
         var diagnostics = Set<String>()
