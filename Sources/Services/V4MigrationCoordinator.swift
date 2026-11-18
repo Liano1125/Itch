@@ -14,6 +14,7 @@ struct V4MigrationAttempt: Equatable {
     let library: V4LegacyLibraryMigrationReport
     let appState: V4LegacyAppStateMigrationReport
     let verification: V4MigrationPayloadVerificationReport
+    let referenceVerification: V4StoreReferenceVerificationReport
     let manifest: V4MigrationManifest
     let outcome: Outcome
 }
@@ -88,6 +89,9 @@ enum V4MigrationCoordinator {
         let verification = try V4MigrationPayloadVerifier.verify(
             source: source, destination: destination
         )
+        // Validate ownership and cross-record references in the clean staging
+        // store before allowing the manifest to report independent-gate eligibility.
+        let referenceVerification = try V4StoreReferenceVerifier.verify(context: destination)
 
         // Detect concurrent source mutations across the conversion window.
         // A mismatch invalidates this staging attempt; it is never promoted.
@@ -101,6 +105,7 @@ enum V4MigrationCoordinator {
             library: library,
             appState: appState,
             verification: verification,
+            referenceVerification: referenceVerification,
             runID: runID,
             generatedAt: generatedAt,
             destinationSchemaVersion: destinationSchemaVersion
@@ -112,6 +117,7 @@ enum V4MigrationCoordinator {
             library: library,
             appState: appState,
             verification: verification,
+            referenceVerification: referenceVerification,
             manifest: manifest,
             outcome: manifest.isPromotionEligible
                 ? .manifestEligibleForIndependentSafetyGates

@@ -124,9 +124,13 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
             integrityDiagnostics: []
         )
 
+        let referenceVerification = V4StoreReferenceVerificationReport(
+            checksPerformed: 1, diagnostics: []
+        )
         let manifest = V4MigrationManifestBuilder.build(
             preflight: preflight, library: library, appState: appState,
             verification: verification,
+            referenceVerification: referenceVerification,
             runID: "verified-builder-test",
             generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
             destinationSchemaVersion: "4.0.0"
@@ -135,6 +139,7 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
         XCTAssertEqual(manifest.domains["library"]?.payloadVerification.status, .verified)
         XCTAssertEqual(manifest.domains["appState"]?.payloadVerification.status, .verified)
         XCTAssertTrue(manifest.integrityDiagnostics.isEmpty)
+        XCTAssertEqual(manifest.referenceVerification, referenceVerification)
         XCTAssertTrue(manifest.isPromotionEligible)
     }
 
@@ -165,9 +170,13 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
             integrityDiagnostics: ["migration.library.entry.payloadMismatch"]
         )
 
+        let referenceVerification = V4StoreReferenceVerificationReport(
+            checksPerformed: 2, diagnostics: ["v4.libraryEntry.unknownAccount"]
+        )
         let manifest = V4MigrationManifestBuilder.build(
             preflight: preflight, library: library, appState: appState,
             verification: verification,
+            referenceVerification: referenceVerification,
             runID: "failed-builder-test",
             generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
             destinationSchemaVersion: "4.0.0"
@@ -178,6 +187,36 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
         XCTAssertTrue(manifest.integrityDiagnostics.contains(
             "migration.library.entry.payloadMismatch"
         ))
+        XCTAssertTrue(manifest.integrityDiagnostics.contains("v4.libraryEntry.unknownAccount"))
+        XCTAssertFalse(manifest.isPromotionEligible)
+    }
+
+    func testBuilderBlocksPromotionWhenReferenceVerificationWasNotRun() throws {
+        let preflight = try makePreflight(rowCounts: [
+            "libraryEntries": 0, "collections": 0, "collectionItems": 0,
+            "libraryStatusEvents": 0, "appStates": 0
+        ])
+        let library = V4LegacyLibraryMigrationReport(
+            libraryEntryCount: 0, collectionCount: 0, collectionItemCount: 0,
+            statusEventCount: 0, inventoryDigest: String(repeating: "3", count: 64)
+        )
+        let appState = V4LegacyAppStateMigrationReport(
+            totalRows: 0, deviceScopedRows: 0, appGlobalRows: 0,
+            quarantinedRows: 0, inventoryDigest: String(repeating: "4", count: 64)
+        )
+        let payload = V4MigrationPayloadVerificationReport(
+            library: V4MigrationPayloadVerificationSummary(status: .verified, method: .fieldByFieldCanonicalValues, verifiedRows: 0, unverifiedRows: 0),
+            appState: V4MigrationPayloadVerificationSummary(status: .verified, method: .fieldByFieldCanonicalValues, verifiedRows: 0, unverifiedRows: 0),
+            integrityDiagnostics: []
+        )
+        let manifest = V4MigrationManifestBuilder.build(
+            preflight: preflight, library: library, appState: appState,
+            verification: payload,
+            runID: "reference-not-run", generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            destinationSchemaVersion: "4.0.0"
+        )
+        XCTAssertNil(manifest.referenceVerification)
+        XCTAssertTrue(manifest.integrityDiagnostics.contains("migration.references.notRun"))
         XCTAssertFalse(manifest.isPromotionEligible)
     }
 

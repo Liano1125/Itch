@@ -3,7 +3,7 @@ import SwiftData
 
 /// Read-only validation of V4 account ownership and cross-record references.
 /// Diagnostics expose stable codes only; row values and account identifiers are never emitted.
-struct V4StoreReferenceVerificationReport: Equatable {
+struct V4StoreReferenceVerificationReport: Codable, Equatable {
     let checksPerformed: Int
     let diagnostics: [String]
     var isValid: Bool { diagnostics.isEmpty }
