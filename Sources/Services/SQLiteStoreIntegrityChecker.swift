@@ -1,47 +1,47 @@
 import Foundation
 import SQLite3
 
-/// Performs a read-only SQLite quick_check after all SwiftData containers have
-/// released the store. A failed or unavailable check is treated as a hard error.
+/// Performs read-only SQLite integrity and foreign-key validation.
+/// The caller must release all writable SwiftData/SQLite handles first.
 enum SQLiteStoreIntegrityChecker {
     enum CheckError: LocalizedError {
         case openFailed(String)
         case queryFailed(String)
         case integrityFailed(String)
+        case foreignKeyFailed(String)
 
         var errorDescription: String? {
             switch self {
-            case .openFailed(let detail): return "SQLite database could not be opened read-only: \(detail)"
-            case .queryFailed(let detail): return "SQLite quick_check could not run: \(detail)"
-            case .integrityFailed(let detail): return "SQLite quick_check reported corruption: \(detail)"
+            case .openFailed(let detail):
+                return "SQLite database could not be opened read-only: \(detail)"
+            case .queryFailed(let detail):
+                return "SQLite integrity validation query failed: \(detail)"
+            case .integrityFailed(let detail):
+                return "SQLite integrity_check reported corruption: \(detail)"
+            case .foreignKeyFailed(let detail):
+                return "SQLite foreign_key_check found violations: \(detail)"
             }
         }
     }
 
+    /// Compatibility check retained for existing callers.
     static func quickCheck(at storeURL: URL) throws {
-        var database: OpaquePointer?
-        let openResult = sqlite3_open_v2(
-            storeURL.path,
-            &database,
-            SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
-            nil
-        )
-        guard openResult == SQLITE_OK, let database else {
-            let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "SQLite returned no connection"
-            if let database { sqlite3_close_v2(database) }
-            throw CheckError.openFailed(message)
-        }
+        try runIntegrityPragma("PRAGMA quick_check;", at: storeURL, label: "quick_check")
+    }
+
+    /// Full validation for a staging database before it can advance.
+    /// integrity_check checks b-tree/page consistency; foreign_key_check checks
+    /// relational constraints even when the writer had foreign_keys disabled.
+    static func fullCheck(at storeURL: URL) throws {
+        try runIntegrityPragma("PRAGMA integrity_check;", at: storeURL, label: "integrity_check")
+        try runForeignKeyCheck(at: storeURL)
+    }
+
+    private static func runIntegrityPragma(_ sql: String, at storeURL: URL, label: String) throws {
+        let database = try openReadOnly(storeURL)
         defer { sqlite3_close_v2(database) }
 
-        // SwiftData may be finishing a short-lived store transaction while
-        // the independent read-only integrity connection starts. Let SQLite
-        // resolve transient BUSY contention natively instead of failing
-        // immediately; this is a bounded busy handler, not an application retry.
-        sqlite3_extended_result_codes(database, 1)
-        sqlite3_busy_timeout(database, 5_000)
-
         var statement: OpaquePointer?
-        let sql = "PRAGMA quick_check;"
         let prepareResult = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
         guard prepareResult == SQLITE_OK, let statement else {
             throw CheckError.queryFailed("SQLite error \(sqlite3_extended_errcode(database)): \(String(cString: sqlite3_errmsg(database)))")
@@ -61,7 +61,58 @@ enum SQLiteStoreIntegrityChecker {
         }
 
         guard rows == ["ok"] else {
-            throw CheckError.integrityFailed(rows.joined(separator: "; ").isEmpty ? "No result returned" : rows.joined(separator: "; "))
+            let detail = rows.joined(separator: "; ").isEmpty ? "No result returned" : rows.joined(separator: "; ")
+            throw CheckError.integrityFailed("\(label): \(detail)")
         }
+    }
+
+    private static func runForeignKeyCheck(at storeURL: URL) throws {
+        let database = try openReadOnly(storeURL)
+        defer { sqlite3_close_v2(database) }
+
+        var statement: OpaquePointer?
+        let prepareResult = sqlite3_prepare_v2(database, "PRAGMA foreign_key_check;", -1, &statement, nil)
+        guard prepareResult == SQLITE_OK, let statement else {
+            throw CheckError.queryFailed("SQLite error \(sqlite3_extended_errcode(database)): \(String(cString: sqlite3_errmsg(database)))")
+        }
+        defer { sqlite3_finalize(statement) }
+
+        var violations: [String] = []
+        while true {
+            let stepResult = sqlite3_step(statement)
+            if stepResult == SQLITE_DONE { break }
+            guard stepResult == SQLITE_ROW else {
+                throw CheckError.queryFailed("SQLite error \(sqlite3_extended_errcode(database)): \(String(cString: sqlite3_errmsg(database)))")
+            }
+            let table = sqlite3_column_text(statement, 0).map { String(cString: $0) } ?? "unknown"
+            let rowID = sqlite3_column_type(statement, 1) == SQLITE_NULL
+                ? "WITHOUT ROWID"
+                : String(sqlite3_column_int64(statement, 1))
+            let parent = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "unknown"
+            let constraint = sqlite3_column_int(statement, 3)
+            violations.append("table=\(table), row=\(rowID), parent=\(parent), constraint=\(constraint)")
+        }
+
+        guard violations.isEmpty else {
+            throw CheckError.foreignKeyFailed(violations.prefix(10).joined(separator: "; "))
+        }
+    }
+
+    private static func openReadOnly(_ storeURL: URL) throws -> OpaquePointer {
+        var database: OpaquePointer?
+        let openResult = sqlite3_open_v2(
+            storeURL.path,
+            &database,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
+            nil
+        )
+        guard openResult == SQLITE_OK, let database else {
+            let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "SQLite returned no connection"
+            if let database { sqlite3_close_v2(database) }
+            throw CheckError.openFailed(message)
+        }
+        sqlite3_extended_result_codes(database, 1)
+        sqlite3_busy_timeout(database, 5_000)
+        return database
     }
 }

@@ -53,6 +53,56 @@ final class V4MigrationStagingStoreManagerTests: XCTestCase {
         XCTAssertEqual(try readValue(from: sourceURL), "committed-in-wal")
     }
 
+
+    func testFullCheckRejectsForeignKeyViolationsAndCleansStaging() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourceURL = root.appendingPathComponent("foreign-key-violation.sqlite")
+        var database: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_open_v2(
+                sourceURL.path, &database,
+                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil
+            ),
+            SQLITE_OK
+        )
+        let handle = try XCTUnwrap(database)
+        try execute(
+            """
+            CREATE TABLE parent (id INTEGER PRIMARY KEY);
+            CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id));
+            INSERT INTO child (id, parent_id) VALUES (1, 999);
+            """,
+            on: handle
+        )
+        XCTAssertEqual(sqlite3_close_v2(handle), SQLITE_OK)
+
+        let manager = V4MigrationStagingStoreManager(
+            rootURL: root.appendingPathComponent("control", isDirectory: true)
+        )
+        XCTAssertThrowsError(try manager.createSnapshot(
+            from: sourceURL, runID: "run-fk-invalid", stagingStoreID: "stage-fk-invalid"
+        )) { error in
+            guard case SQLiteStoreIntegrityChecker.CheckError.foreignKeyFailed = error else {
+                return XCTFail("Expected foreign-key validation failure, got: \\(error)")
+            }
+        }
+
+        let stagingDirectory = root
+            .appendingPathComponent("control", isDirectory: true)
+            .appendingPathComponent("run-run-fk-invalid-staging-stage-fk-invalid", isDirectory: true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+    }
+
+    func testFullCheckAcceptsConsistentDatabase() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceURL = try makeSourceDatabase(in: root)
+        XCTAssertNoThrow(try SQLiteStoreIntegrityChecker.fullCheck(at: sourceURL))
+    }
+
     func testDuplicateAttemptDoesNotReuseOrOverwriteExistingStaging() throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
