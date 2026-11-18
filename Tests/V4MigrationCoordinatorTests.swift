@@ -77,7 +77,21 @@ final class V4MigrationCoordinatorTests: XCTestCase {
     @MainActor
     func testUnimplementedSourceDomainsRemainManifestBlocked() throws {
         let source = try AppDatabase(inMemory: true)
-        source.context.insert(DBGame(id: "game-a", title: "Game A"))
+        source.context.insert(DBDeveloper(
+            id: "dev-a", name: "Developer A", profileURL: "https://example.com/dev",
+            avatarURL: "https://example.com/avatar.png", updatedAt: Date(timeIntervalSince1970: 100)
+        ))
+        source.context.insert(DBGame(
+            id: "game-a", title: "Game A", gameURL: "https://example.com/game",
+            coverURL: "https://example.com/cover.png", engine: "Ren'Py",
+            developerID: "dev-a", updatedAt: Date(timeIntervalSince1970: 200)
+        ))
+        source.context.insert(DBGameDetail(
+            gameID: "game-a", descriptionText: "A game description",
+            galleryURLs: ["https://example.com/shot.png"],
+            discoveryTagsData: Data([1, 2, 3]),
+            fetchedAt: Date(timeIntervalSince1970: 300), isComplete: true
+        ))
         try source.save()
         let destination = try makeV4Container()
         let attempt = try withOwnerLock { lockURL, lease in
@@ -88,7 +102,17 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             )
         }
         XCTAssertTrue(attempt.verification.isVerified)
+        XCTAssertEqual(attempt.sharedCatalog.developerCount, 1)
         XCTAssertEqual(attempt.sharedCatalog.gameCount, 1)
+        XCTAssertEqual(attempt.sharedCatalog.gameDetailCount, 1)
+        let copiedDeveloper = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBDeveloper>()).first)
+        XCTAssertEqual(copiedDeveloper.name, "Developer A")
+        let copiedGame = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBGame>()).first)
+        XCTAssertEqual(copiedGame.developerID, "dev-a")
+        let copiedDetail = try XCTUnwrap(destination.mainContext.fetch(FetchDescriptor<DBGameDetail>()).first)
+        XCTAssertEqual(copiedDetail.descriptionText, "A game description")
+        XCTAssertEqual(copiedDetail.galleryURLs, ["https://example.com/shot.png"])
+        XCTAssertEqual(copiedDetail.discoveryTagsData, Data([1, 2, 3]))
         XCTAssertTrue(attempt.sharedCatalogVerification.isVerified)
         XCTAssertEqual(attempt.manifest.domains["sharedCatalog"]?.payloadVerification.status, .verified)
         XCTAssertFalse(attempt.manifest.isPromotionEligible)
