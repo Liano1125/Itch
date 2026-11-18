@@ -7,6 +7,7 @@ enum V4MigrationManifestBuilder {
         library: V4LegacyLibraryMigrationReport,
         appState: V4LegacyAppStateMigrationReport,
         verification: V4MigrationPayloadVerificationReport? = nil,
+        referenceVerification: V4StoreReferenceVerificationReport? = nil,
         runID: String,
         generatedAt: Date,
         destinationSchemaVersion: String
@@ -21,6 +22,11 @@ enum V4MigrationManifestBuilder {
 
         var diagnostics = preflight.integrityIssues.map(Self.stableDiagnosticCode)
         diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
+        if let referenceVerification {
+            diagnostics.append(contentsOf: referenceVerification.diagnostics)
+        } else {
+            diagnostics.append("migration.references.notRun")
+        }
 
         // Only library and AppState converter reports are currently supplied.
         // Do not let those two verified domains imply whole-store coverage.
@@ -91,7 +97,8 @@ enum V4MigrationManifestBuilder {
             sourceRowCount: totalSourceRows,
             sourceInventoryDigest: preflight.inventoryDigest,
             domains: ["library": libraryDomain, "appState": appStateDomain],
-            integrityDiagnostics: diagnostics
+            integrityDiagnostics: diagnostics,
+            referenceVerification: referenceVerification
         )
     }
 
