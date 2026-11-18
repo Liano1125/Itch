@@ -97,7 +97,7 @@ struct V4MigrationSnapshotLifecycleCoordinator {
         try ownerLease.validateOwnership(at: ownerLockURL)
         let records = try await journal.allRecords()
         var recovered: [String] = []
-        for record in records where record.state == .requested || record.state == .snapshotting || record.state == .snapshotReady {
+        for record in records where Self.requiresDiscardAfterInterruption(record.state) {
             if let stagingStoreID = record.stagingStoreID {
                 _ = try stagingManager.discard(runID: record.runID, stagingStoreID: stagingStoreID)
             }
@@ -106,4 +106,18 @@ struct V4MigrationSnapshotLifecycleCoordinator {
         }
         return recovered
     }
+    /// Staging artifacts from an interrupted conversion or verification are
+    /// disposable. A stagingValidated artifact is retained so independent
+    /// safety gates can be rerun without repeating conversion.
+    private static func requiresDiscardAfterInterruption(_ state: V4MigrationJournalState) -> Bool {
+        switch state {
+        case .requested, .snapshotting, .snapshotReady, .stagingCreated,
+             .converting, .verifying, .manifestWritten:
+            return true
+        case .stagingValidated, .eligibleForIndependentSafetyGates,
+             .failed, .abandoned, .superseded:
+            return false
+        }
+    }
+
 }
