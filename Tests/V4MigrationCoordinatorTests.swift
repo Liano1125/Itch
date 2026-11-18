@@ -46,7 +46,9 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(attempt.manifest.referenceVerification?.isValid == true)
         XCTAssertTrue(attempt.manifest.isPromotionEligible)
         XCTAssertEqual(attempt.outcome, .manifestEligibleForIndependentSafetyGates)
-        XCTAssertEqual(attempt.sharedCatalog.totalRows, 0)\n        XCTAssertTrue(attempt.sharedCatalogVerification.isVerified)\n        XCTAssertEqual(attempt.library.totalRows, 0)
+        XCTAssertEqual(attempt.sharedCatalog.totalRows, 0)
+        XCTAssertTrue(attempt.sharedCatalogVerification.isVerified)
+        XCTAssertEqual(attempt.library.totalRows, 0)
         XCTAssertEqual(attempt.appState.totalRows, 0)
     }
 
