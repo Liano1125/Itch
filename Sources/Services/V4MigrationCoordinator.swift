@@ -139,6 +139,8 @@ enum V4MigrationCoordinator {
             sharedCatalogVerification: sharedCatalogVerification,
             gameUpdates: gameUpdates,
             gameUpdateVerification: gameUpdateVerification,
+            sparkMetadata: sparkMetadata,
+            sparkMetadataVerification: sparkMetadataVerification,
             library: library,
             appState: appState,
             verification: verification,
