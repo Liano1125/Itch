@@ -9,6 +9,7 @@ enum SQLiteStoreIntegrityChecker {
         case queryFailed(String)
         case integrityFailed(String)
         case foreignKeyFailed(String)
+        case readOnlyReopenFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -20,6 +21,8 @@ enum SQLiteStoreIntegrityChecker {
                 return "SQLite integrity_check reported corruption: \(detail)"
             case .foreignKeyFailed(let detail):
                 return "SQLite foreign_key_check found violations: \(detail)"
+            case .readOnlyReopenFailed(let detail):
+                return "SQLite staging store could not be reopened read-only: \(detail)"
             }
         }
     }
@@ -35,6 +38,34 @@ enum SQLiteStoreIntegrityChecker {
     static func fullCheck(at storeURL: URL) throws {
         try runIntegrityPragma("PRAGMA integrity_check;", at: storeURL, label: "integrity_check")
         try runForeignKeyCheck(at: storeURL)
+        try reopenReadOnly(at: storeURL)
+    }
+
+    /// Closes all validation connections, then proves the completed staging file
+    /// can be independently reopened without write access and has a readable schema.
+    static func reopenReadOnly(at storeURL: URL) throws {
+        let database = try openReadOnly(storeURL)
+        defer { sqlite3_close_v2(database) }
+
+        guard sqlite3_db_readonly(database, "main") == 1 else {
+            throw CheckError.readOnlyReopenFailed("main database is not read-only")
+        }
+
+        var statement: OpaquePointer?
+        let sql = "SELECT schema_version, (SELECT COUNT(*) FROM sqlite_schema) FROM pragma_schema_version;"
+        let prepareResult = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard prepareResult == SQLITE_OK, let statement else {
+            throw CheckError.readOnlyReopenFailed(String(cString: sqlite3_errmsg(database)))
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw CheckError.readOnlyReopenFailed("schema metadata could not be read")
+        }
+        let schemaVersion = sqlite3_column_int64(statement, 0)
+        let schemaObjectCount = sqlite3_column_int64(statement, 1)
+        guard schemaVersion >= 0, schemaObjectCount > 0 else {
+            throw CheckError.readOnlyReopenFailed("schema metadata is empty or invalid")
+        }
     }
 
     private static func runIntegrityPragma(_ sql: String, at storeURL: URL, label: String) throws {
