@@ -4,7 +4,7 @@ import SwiftData
 /// Read-only validation of V4 account ownership and cross-record references.
 /// Diagnostics expose stable codes only; row values and account identifiers are never emitted.
 struct V4StoreReferenceVerificationReport: Equatable {
-    let checkedRows: Int
+    let checksPerformed: Int
     let diagnostics: [String]
     var isValid: Bool { diagnostics.isEmpty }
 }
@@ -14,7 +14,7 @@ enum V4StoreReferenceVerifier {
     static func verify(context: ModelContext) throws -> V4StoreReferenceVerificationReport {
         guard !context.hasChanges else {
             return V4StoreReferenceVerificationReport(
-                checkedRows: 0,
+                checksPerformed: 0,
                 diagnostics: ["v4.references.pendingContextChanges"]
             )
         }
@@ -37,10 +37,10 @@ enum V4StoreReferenceVerifier {
         let gameIDs = Set(games.map(\.id))
         let updateIDs = Set(updates.map(\.id))
         let sourceEventIDs = Set(sourceEvents.map(\.id))
-        var checkedRows = 0
+        var checksPerformed = 0
 
         func check(_ condition: Bool, _ code: String) {
-            checkedRows += 1
+            checksPerformed += 1
             if !condition { diagnostics.insert(code) }
         }
 
@@ -133,7 +133,7 @@ enum V4StoreReferenceVerifier {
         }
 
         return V4StoreReferenceVerificationReport(
-            checkedRows: checkedRows,
+            checksPerformed: checksPerformed,
             diagnostics: diagnostics.sorted()
         )
     }
