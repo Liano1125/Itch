@@ -61,6 +61,21 @@ final class V4MigrationManifestTests: XCTestCase {
         XCTAssertEqual(first, second)
     }
 
+    func testLegacyManifestWithoutReferenceReportDecodesButFailsClosed() throws {
+        let manifest = makeManifest(domain: verifiedDomain(
+            sourceRows: 0, destinationRows: 0, scopes: [:]
+        ))
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: manifest.encodedJSON()) as? [String: Any]
+        )
+        object.removeValue(forKey: "referenceVerification")
+        let legacyData = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        let decoded = try JSONDecoder.iso8601.decode(V4MigrationManifest.self, from: legacyData)
+
+        XCTAssertNil(decoded.referenceVerification)
+        XCTAssertFalse(decoded.isPromotionEligible)
+    }
+
     func testManifestCannotPassPromotionGateBeforePayloadVerification() {
         let unverified = V4MigrationDomainManifest(
             sourceRowCount: 1,
