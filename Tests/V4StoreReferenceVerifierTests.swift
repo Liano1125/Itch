@@ -7,7 +7,7 @@ final class V4StoreReferenceVerifierTests: XCTestCase {
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: ItchPocketSchemaV4.self)
         let configuration = ModelConfiguration(
-            "v4-reference-verifier-\\(UUID().uuidString)",
+            "v4-reference-verifier-\(UUID().uuidString)",
             schema: schema,
             isStoredInMemoryOnly: true
         )
@@ -52,8 +52,8 @@ final class V4StoreReferenceVerifierTests: XCTestCase {
         try context.save()
 
         let report = try V4StoreReferenceVerifier.verify(context: context)
-        XCTAssertTrue(report.isValid, "\\(report.diagnostics)")
-        XCTAssertGreaterThan(report.checkedRows, 0)
+        XCTAssertTrue(report.isValid, "\(report.diagnostics)")
+        XCTAssertGreaterThan(report.checksPerformed, 0)
         XCTAssertTrue(report.diagnostics.isEmpty)
     }
 
