@@ -96,12 +96,11 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         ))
         // Keep one non-empty, not-yet-migrated domain in the fixture. Empty
         // uncovered tables do not block migration; populated ones must.
-        let update = DBGameUpdate()
-        update.id = "update-a"
-        update.gameID = "game-a"
-        update.summary = "A pending legacy update"
-        update.detectedAt = Date(timeIntervalSince1970: 400)
-        source.context.insert(update)
+        source.context.insert(DBGameUpdate(
+            id: "update-a", gameID: "game-a",
+            summary: "A pending legacy update",
+            detectedAt: Date(timeIntervalSince1970: 400)
+        ))
         try source.save()
         let destination = try makeV4Container()
         let attempt = try withOwnerLock { lockURL, lease in
