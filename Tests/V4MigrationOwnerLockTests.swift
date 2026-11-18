@@ -43,4 +43,22 @@ final class V4MigrationOwnerLockTests: XCTestCase {
         lease.release()
         XCTAssertTrue(FileManager.default.fileExists(atPath: lockURL.path))
     }
+
+    func testLeaseRejectsLockFileReplacementAtSamePath() throws {
+        let lockURL = try temporaryLockURL()
+        let root = lockURL.deletingLastPathComponent().deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let lease = try V4MigrationOwnerLock.acquire(at: lockURL)
+        defer { lease.release() }
+
+        let movedURL = lockURL.appendingPathExtension("original")
+        try FileManager.default.moveItem(at: lockURL, to: movedURL)
+        XCTAssertTrue(FileManager.default.createFile(atPath: lockURL.path, contents: Data()))
+
+        XCTAssertThrowsError(try lease.validateOwnership(at: lockURL)) {
+            XCTAssertEqual($0 as? V4MigrationOwnerLock.LockError, .leaseNotActive)
+        }
+    }
+
 }
