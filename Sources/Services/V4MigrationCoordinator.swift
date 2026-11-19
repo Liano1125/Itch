@@ -15,6 +15,8 @@ struct V4MigrationAttempt: Equatable {
     let sharedCatalogVerification: V4SharedCatalogVerificationReport
     let gameUpdates: V4GameUpdateMigrationReport
     let gameUpdateVerification: V4GameUpdateVerificationReport
+    let updateWatches: V4UpdateWatchMigrationReport
+    let updateWatchVerification: V4UpdateWatchVerificationReport
     let sparkMetadata: V4SparkMetadataMigrationReport
     let sparkMetadataVerification: V4SparkMetadataVerificationReport
     let translations: V4TranslationCacheMigrationReport
@@ -92,6 +94,7 @@ enum V4MigrationCoordinator {
             source: source, destination: destination
         )
         let gameUpdates = try V4GameUpdateConverter.convert(source: source, destination: destination)
+        let updateWatches = try V4UpdateWatchConverter.convert(source: source, destination: destination)
         let sparkMetadata = try V4SparkMetadataConverter.convert(source: source, destination: destination)
         let translations = try V4TranslationCacheConverter.convert(source: source, destination: destination)
         let discoveryCacheDisposition = try V4DiscoveryCacheDisposition.discard(source: source, destination: destination)
@@ -106,6 +109,7 @@ enum V4MigrationCoordinator {
             source: source, destination: destination
         )
         let gameUpdateVerification = try V4GameUpdateVerifier.verify(source: source, destination: destination)
+        let updateWatchVerification = try V4UpdateWatchVerifier.verify(source: source, destination: destination)
         let sparkMetadataVerification = try V4SparkMetadataVerifier.verify(source: source, destination: destination)
         let translationVerification = try V4TranslationCacheVerifier.verify(source: source, destination: destination)
         let discoveryCacheVerified = try V4DiscoveryCacheDisposition.verify(
@@ -131,6 +135,8 @@ enum V4MigrationCoordinator {
             sharedCatalogVerification: sharedCatalogVerification,
             gameUpdates: gameUpdates,
             gameUpdateVerification: gameUpdateVerification,
+            updateWatches: updateWatches,
+            updateWatchVerification: updateWatchVerification,
             sparkMetadata: sparkMetadata,
             sparkMetadataVerification: sparkMetadataVerification,
             translations: translations,
@@ -153,6 +159,8 @@ enum V4MigrationCoordinator {
             sharedCatalogVerification: sharedCatalogVerification,
             gameUpdates: gameUpdates,
             gameUpdateVerification: gameUpdateVerification,
+            updateWatches: updateWatches,
+            updateWatchVerification: updateWatchVerification,
             sparkMetadata: sparkMetadata,
             sparkMetadataVerification: sparkMetadataVerification,
             translations: translations,
