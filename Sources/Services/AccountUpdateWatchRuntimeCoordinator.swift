@@ -33,7 +33,7 @@ final class AccountUpdateWatchRuntimeCoordinator {
     func check(
         gameID: String,
         gameTitle: String,
-        fetch: @MainActor (String) async throws -> AccountUpdateWatchFetchResult
+        fetch: (String) async throws -> AccountUpdateWatchFetchResult
     ) async throws -> Bool {
         guard let requestContext = session.captureRequestContext(),
               requestContext.accountID == repository.accountID else { return false }
