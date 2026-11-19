@@ -69,7 +69,9 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
         )
 
         let didPersist = try await coordinator.check(gameID: "game", gameTitle: "Game") { _ in
-            session.activate(ItchAccountIdentity(itchUserID: 202, username: "b"))
+            await MainActor.run {
+                session.activate(ItchAccountIdentity(itchUserID: 202, username: "b"))
+            }
             return AccountUpdateWatchFetchResult(
                 entityTag: "A-etag", lastModified: nil, contentHash: "A-hash",
                 checkedAt: Date(timeIntervalSince1970: 10), hasBaseline: true, detectedChange: true
