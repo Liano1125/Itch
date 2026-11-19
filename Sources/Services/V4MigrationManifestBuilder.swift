@@ -8,6 +8,8 @@ enum V4MigrationManifestBuilder {
         sharedCatalogVerification: V4SharedCatalogVerificationReport? = nil,
         gameUpdates: V4GameUpdateMigrationReport? = nil,
         gameUpdateVerification: V4GameUpdateVerificationReport? = nil,
+        updateWatches: V4UpdateWatchMigrationReport? = nil,
+        updateWatchVerification: V4UpdateWatchVerificationReport? = nil,
         sparkMetadata: V4SparkMetadataMigrationReport? = nil,
         sparkMetadataVerification: V4SparkMetadataVerificationReport? = nil,
         translations: V4TranslationCacheMigrationReport? = nil,
@@ -30,10 +32,13 @@ enum V4MigrationManifestBuilder {
         let appStateSourceRows = preflight.rowCounts["appStates"] ?? 0
         let totalSourceRows = preflight.rowCounts.values.reduce(0, +)
 
-        var diagnostics = preflight.integrityIssues.map(Self.stableDiagnosticCode)
+        var diagnostics = preflight.integrityIssues
+            .filter { !$0.hasPrefix("updateWatch.missingGame:") }
+            .map(Self.stableDiagnosticCode)
         diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
         diagnostics.append(contentsOf: sharedCatalogVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: gameUpdateVerification?.diagnostics ?? [])
+        diagnostics.append(contentsOf: updateWatchVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: sparkMetadataVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: translationVerification?.diagnostics ?? [])
         if let referenceVerification {
@@ -73,7 +78,39 @@ enum V4MigrationManifestBuilder {
         } else if gameUpdateSourceRows > 0 {
             diagnostics.append("migration.gameUpdates.notRun")
         }
+        let updateWatchSourceRows = preflight.rowCounts["updateWatches"] ?? 0
+        if let updateWatches, let updateWatchVerification {
+            reportedSourceTables.insert("updateWatches")
+            if updateWatches.rowCount != updateWatchSourceRows
+                || updateWatchVerification.unverifiedRows != 0
+                || !updateWatchVerification.isVerified
+                || updateWatchVerification.verifiedRows < updateWatches.rowCount
+                || updateWatchVerification.quarantinedRowCount != updateWatches.quarantinedRowCount {
+                diagnostics.append("migration.updateWatches.verificationFailed")
+            }
+        } else if updateWatchSourceRows > 0 {
+            diagnostics.append("migration.updateWatches.notRun")
+        }
         let sparkSourceRows = preflight.rowCounts["sparkMetadata"] ?? 0
+        if let updateWatches, let updateWatchVerification {
+            domains["updateWatches"] = V4MigrationDomainManifest(
+                sourceRowCount: updateWatchSourceRows,
+                destinationRowCount: updateWatches.rowCount,
+                scopeCounts: ["legacy-unassigned": updateWatches.rowCount],
+                quarantinedRowCount: updateWatches.quarantinedRowCount,
+                inventoryDigest: updateWatches.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: updateWatchVerification.isVerified
+                        && updateWatchVerification.verifiedRows >= updateWatches.rowCount ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: updateWatchVerification.verifiedRows,
+                    unverifiedRows: updateWatchVerification.unverifiedRows
+                ),
+                integrityDiagnostics: updateWatchVerification.diagnostics
+            )
+        }
+
         if let sparkMetadata, let sparkMetadataVerification {
             reportedSourceTables.insert("sparkMetadata")
             if sparkMetadata.rowCount != sparkSourceRows
@@ -120,10 +157,9 @@ enum V4MigrationManifestBuilder {
             diagnostics.append("migration.appState.sourceCountMismatch")
         }
 
-        // Update watches and calendar events are not yet handled by these converters.
-        let unhandledOwnershipRows =
-            (preflight.ownershipReviewCounts["updateWatches"] ?? 0) +
-            (preflight.ownershipReviewCounts["calendarEvents"] ?? 0)
+        // Calendar events remain uncovered; update watches are now copied only
+        // into the unassigned legacy quarantine, never claimed by an account.
+        let unhandledOwnershipRows = preflight.ownershipReviewCounts["calendarEvents"] ?? 0
         if unhandledOwnershipRows > 0 {
             diagnostics.append("ownership.unhandledDomainsRequireReview")
         }
