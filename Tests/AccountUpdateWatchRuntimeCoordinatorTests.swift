@@ -84,7 +84,7 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
 
     @MainActor
     func testLateFetchAfterAccountSwitchDoesNotPersistOrNotify() async throws {
-        let (_, repository) = try makeRepository("itch:101")
+        let (container, repository) = try makeRepository("itch:101")
         let session = ItchAccountSession()
         session.activate(ItchAccountIdentity(itchUserID: 101, username: "a"))
         let center = FakeUpdateWatchNotificationCenter()
@@ -92,6 +92,7 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
         let coordinator = AccountUpdateWatchRuntimeCoordinator(
             session: session, repository: repository, notifications: notifications
         )
+        _ = container
 
         let gate = UpdateWatchFetchGate()
         let pendingFetch = AccountUpdateWatchFetchResult(
