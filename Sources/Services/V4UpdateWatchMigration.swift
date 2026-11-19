@@ -5,6 +5,7 @@ import SwiftData
 struct V4UpdateWatchMigrationReport: Equatable {
     let rowCount: Int
     let quarantinedRowCount: Int
+    let missingGameRowCount: Int
     let inventoryDigest: String
 }
 
@@ -12,6 +13,7 @@ struct V4UpdateWatchVerificationReport: Equatable {
     let verifiedRows: Int
     let unverifiedRows: Int
     let quarantinedRowCount: Int
+    let missingGameRowCount: Int
     let diagnostics: [String]
     var isVerified: Bool { unverifiedRows == 0 && diagnostics.isEmpty }
 }
@@ -79,7 +81,8 @@ enum V4UpdateWatchConverter {
 
         return V4UpdateWatchMigrationReport(
             rowCount: sorted.count,
-            quarantinedRowCount: sorted.filter { !games.contains($0.gameID) }.count,
+            quarantinedRowCount: sorted.count,
+            missingGameRowCount: sorted.filter { !games.contains($0.gameID) }.count,
             inventoryDigest: digest
         )
     }
@@ -127,6 +130,7 @@ enum V4UpdateWatchVerifier {
         guard !source.hasChanges, !destination.hasChanges else {
             return V4UpdateWatchVerificationReport(
                 verifiedRows: 0, unverifiedRows: 1, quarantinedRowCount: 0,
+                missingGameRowCount: 0,
                 diagnostics: ["migration.updateWatches.pendingContextChanges"]
             )
         }
@@ -138,7 +142,7 @@ enum V4UpdateWatchVerifier {
         let rhs = Dictionary(grouping: destinationRows.map(Value.init), by: \.originalGameID)
         var verified = 0
         var unverified = 0
-        var quarantined = 0
+        var missingGameCount = 0
         var diagnostics = Set<String>()
 
         for key in Set(lhs.keys).union(rhs.keys) {
@@ -149,7 +153,7 @@ enum V4UpdateWatchVerifier {
                destinationValues[0].originalGameID == key,
                destinationRows.first(where: { $0.originalGameID == key })?.id == DBLegacyUpdateWatch.stableID(gameID: key) {
                 verified += 1
-                if destinationValues[0].integrityIssue == "missing-game" { quarantined += 1 }
+                if destinationValues[0].integrityIssue == "missing-game" { missingGameCount += 1 }
             } else {
                 unverified += sourceValues.count + destinationValues.count
                 diagnostics.insert("migration.updateWatches.rowMismatch")
@@ -158,7 +162,9 @@ enum V4UpdateWatchVerifier {
 
         return V4UpdateWatchVerificationReport(
             verifiedRows: verified, unverifiedRows: unverified,
-            quarantinedRowCount: quarantined, diagnostics: diagnostics.sorted()
+            quarantinedRowCount: destinationRows.count,
+            missingGameRowCount: missingGameCount,
+            diagnostics: diagnostics.sorted()
         )
     }
 }
