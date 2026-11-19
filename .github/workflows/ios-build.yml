@@ -40,8 +40,6 @@ on:
       - feat/v4-scoped-appstate-repository
       - feat/v4-account-scoped-calendar
       - test/v4-scoped-appstate-typed-values
-      - test/v4-scoped-appstate-typed-values
-      - feat/v4-account-scoped-calendar
       - fix/v4-session-stale-side-effect-guards
       - feat/v4-account-calendar-notification-projection
       - feat/v4-unassigned-library-migration-converter
@@ -64,11 +62,11 @@ on:
       - feat/v4-game-update-migration
       - feat/v4-spark-device-metadata-migration
       - feat/v4-cache-migration-policy
+      - audit/v4-update-watch-ownership-v2
       - feat/v4-manifest-verifier-integration
-      - feat/v4-migration-coordinator
-      - feat/v4-migration-journal-state-machine
-      - feat/v4-migration-coordinator
       - feat/v4-legacy-appstate-scope-conversion
+
+      - feat/v4-account-scoped-update-watch
   pull_request:
     branches:
       - design/v4-migration-journal-recovery
@@ -141,6 +139,9 @@ on:
       - feat/v4-field-by-field-payload-verifier
       - feat/v4-legacy-appstate-scope-conversion
       - feat/v4-scoped-appstate-repository
+
+      - audit/v4-update-watch-ownership-v2
+      - feat/v4-account-scoped-update-watch
   workflow_dispatch:
 
 # Prevent parallel builds from racing while replacing the same nightly Release assets.
