@@ -70,9 +70,9 @@ final class V4MigrationManifestBuilderTests: XCTestCase {
         let preflight = try makePreflight(
             rowCounts: [
                 "libraryEntries": 2, "collections": 0, "collectionItems": 0,
-                "libraryStatusEvents": 0, "appStates": 1
+                "libraryStatusEvents": 0, "appStates": 1, "calendarEvents": 1
             ],
-            ownershipReviewCounts: ["updateWatches": 2],
+            ownershipReviewCounts: ["updateWatches": 2, "calendarEvents": 1],
             integrityIssues: ["libraryEntry.missingGame:private-game-id"]
         )
         let library = V4LegacyLibraryMigrationReport(
