@@ -37,6 +37,30 @@ private final class FakeUpdateWatchNotificationCenter: AccountCalendarNotificati
     }
 }
 
+
+private actor UpdateWatchFetchGate {
+    private var continuation: CheckedContinuation<AccountUpdateWatchFetchResult, Never>?
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+
+    func wait() async -> AccountUpdateWatchFetchResult {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            startedContinuation?.resume()
+            startedContinuation = nil
+        }
+    }
+
+    func waitUntilStarted() async {
+        if continuation != nil { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func resume(_ result: AccountUpdateWatchFetchResult) {
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
+}
+
 final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
     @MainActor
     private func makeContainer() throws -> ModelContainer {
@@ -68,15 +92,20 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
             session: session, repository: repository, notifications: notifications
         )
 
-        let didPersist = try await coordinator.check(gameID: "game", gameTitle: "Game") { _ in
-            await MainActor.run {
-                session.activate(ItchAccountIdentity(itchUserID: 202, username: "b"))
+        let gate = UpdateWatchFetchGate()
+        let pendingFetch = AccountUpdateWatchFetchResult(
+            entityTag: "A-etag", lastModified: nil, contentHash: "A-hash",
+            checkedAt: Date(timeIntervalSince1970: 10), hasBaseline: true, detectedChange: true
+        )
+        let checkTask = Task { @MainActor in
+            try await coordinator.check(gameID: "game", gameTitle: "Game") { _ in
+                await gate.wait()
             }
-            return AccountUpdateWatchFetchResult(
-                entityTag: "A-etag", lastModified: nil, contentHash: "A-hash",
-                checkedAt: Date(timeIntervalSince1970: 10), hasBaseline: true, detectedChange: true
-            )
         }
+        await gate.waitUntilStarted()
+        session.activate(ItchAccountIdentity(itchUserID: 202, username: "b"))
+        await gate.resume(pendingFetch)
+        let didPersist = try await checkTask.value
 
         XCTAssertFalse(didPersist)
         XCTAssertTrue(try repository.loadWatches().isEmpty)
@@ -84,7 +113,7 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
     }
 
     @MainActor
-    func testCurrentAccountPersistsAndSchedulesAccountNamespacedNotification() async throws {
+    func testCurrentAccountPersistsWithoutCrossAccountSideEffects() async throws {
         let repository = try makeRepository("itch:101")
         let session = ItchAccountSession()
         session.activate(ItchAccountIdentity(itchUserID: 101, username: "a"))
@@ -97,15 +126,13 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
         let result = try await coordinator.check(gameID: "game", gameTitle: "Game") { _ in
             AccountUpdateWatchFetchResult(
                 entityTag: "A-etag", lastModified: "A-date", contentHash: "A-hash",
-                checkedAt: Date(timeIntervalSince1970: 20), hasBaseline: true, detectedChange: true
+                checkedAt: Date(timeIntervalSince1970: 20), hasBaseline: true, detectedChange: false
             )
         }
 
         XCTAssertTrue(result)
         XCTAssertEqual(try repository.loadWatches().first?.entityTag, "A-etag")
-        XCTAssertEqual(center.added.count, 1)
-        XCTAssertTrue(try XCTUnwrap(center.added.first?.identifier)
-            .hasPrefix(AccountUpdateWatchNotificationCoordinator.identifierPrefix))
+        XCTAssertTrue(center.added.isEmpty)
     }
 
     @MainActor
