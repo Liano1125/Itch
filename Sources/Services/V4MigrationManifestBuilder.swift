@@ -85,7 +85,8 @@ enum V4MigrationManifestBuilder {
                 || updateWatchVerification.unverifiedRows != 0
                 || !updateWatchVerification.isVerified
                 || updateWatchVerification.verifiedRows < updateWatches.rowCount
-                || updateWatchVerification.quarantinedRowCount != updateWatches.quarantinedRowCount {
+                || updateWatchVerification.quarantinedRowCount != updateWatches.quarantinedRowCount
+                || updateWatchVerification.missingGameRowCount != updateWatches.missingGameRowCount {
                 diagnostics.append("migration.updateWatches.verificationFailed")
             }
         } else if updateWatchSourceRows > 0 {
