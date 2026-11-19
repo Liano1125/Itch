@@ -384,4 +384,89 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         }
     }
 
+
+    @MainActor
+    func testUpdateWatchesMigrateLosslesslyIntoUnassignedQuarantineIncludingOrphans() throws {
+        let source = try AppDatabase(inMemory: true)
+        let checkedAt = Date(timeIntervalSince1970: 1234)
+        source.context.insert(DBGame(id: "watch-game", title: "Watched game"))
+        source.context.insert(DBUpdateWatch(
+            gameID: "watch-game", entityTag: "\"etag-value\"",
+            lastModified: "Wed, 01 Jan 2025 00:00:00 GMT",
+            contentHash: "content-hash", lastCheckedAt: checkedAt,
+            hasBaseline: true, isEnabled: false
+        ))
+        source.context.insert(DBUpdateWatch(
+            gameID: "orphan-watch-game", entityTag: "orphan-etag",
+            lastModified: nil, contentHash: "orphan-hash",
+            lastCheckedAt: nil, hasBaseline: false, isEnabled: true
+        ))
+        try source.save()
+
+        let destination = try makeV4Container()
+        let attempt = try withOwnerLock { lockURL, lease in
+            try V4MigrationCoordinator.run(
+                source: source.context, destination: destination.mainContext,
+                runID: "update-watch-quarantine-test",
+                ownerLockURL: lockURL, ownerLease: lease
+            )
+        }
+
+        let migrated = try destination.mainContext.fetch(FetchDescriptor<DBLegacyUpdateWatch>())
+        XCTAssertEqual(migrated.count, 2)
+        let valid = try XCTUnwrap(migrated.first { $0.originalGameID == "watch-game" })
+        XCTAssertEqual(valid.entityTag, "\"etag-value\"")
+        XCTAssertEqual(valid.lastModified, "Wed, 01 Jan 2025 00:00:00 GMT")
+        XCTAssertEqual(valid.contentHash, "content-hash")
+        XCTAssertEqual(valid.lastCheckedAt, checkedAt)
+        XCTAssertTrue(valid.hasBaseline)
+        XCTAssertFalse(valid.isEnabled)
+        XCTAssertNil(valid.integrityIssue)
+
+        let orphan = try XCTUnwrap(migrated.first { $0.originalGameID == "orphan-watch-game" })
+        XCTAssertEqual(orphan.integrityIssue, "missing-game")
+        XCTAssertEqual(orphan.id, DBLegacyUpdateWatch.stableID(gameID: "orphan-watch-game"))
+        XCTAssertEqual(try source.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 2)
+
+        XCTAssertTrue(attempt.updateWatchVerification.isVerified)
+        XCTAssertEqual(attempt.updateWatchVerification.verifiedRows, 2)
+        XCTAssertEqual(attempt.updateWatches.quarantinedRowCount, 2)
+        XCTAssertEqual(attempt.updateWatches.missingGameRowCount, 1)
+        XCTAssertEqual(attempt.updateWatchVerification.quarantinedRowCount, 2)
+        XCTAssertEqual(attempt.updateWatchVerification.missingGameRowCount, 1)
+        let domain = try XCTUnwrap(attempt.manifest.domains["updateWatches"])
+        XCTAssertEqual(domain.sourceRowCount, 2)
+        XCTAssertEqual(domain.destinationRowCount, 2)
+        XCTAssertEqual(domain.quarantinedRowCount, 2)
+        XCTAssertEqual(domain.payloadVerification.status, .verified)
+        XCTAssertTrue(attempt.referenceVerification.isValid)
+        XCTAssertTrue(attempt.manifest.isPromotionEligible)
+    }
+
+    @MainActor
+    func testUpdateWatchVerifierRejectsMutatedQuarantinePayload() throws {
+        let source = try AppDatabase(inMemory: true)
+        source.context.insert(DBGame(id: "watch-game", title: "Watched game"))
+        source.context.insert(DBUpdateWatch(
+            gameID: "watch-game", entityTag: "original", isEnabled: true
+        ))
+        try source.save()
+        let destination = try makeV4Container()
+        _ = try V4UpdateWatchConverter.convert(
+            source: source.context, destination: destination.mainContext
+        )
+        let copied = try XCTUnwrap(
+            destination.mainContext.fetch(FetchDescriptor<DBLegacyUpdateWatch>()).first
+        )
+        copied.entityTag = "mutated"
+        try destination.mainContext.save()
+
+        let report = try V4UpdateWatchVerifier.verify(
+            source: source.context, destination: destination.mainContext
+        )
+        XCTAssertFalse(report.isVerified)
+        XCTAssertEqual(report.unverifiedRows, 2)
+        XCTAssertTrue(report.diagnostics.contains("migration.updateWatches.rowMismatch"))
+    }
+
 }

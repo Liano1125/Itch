@@ -272,7 +272,7 @@ enum ItchPocketSchemaV4: VersionedSchema {
             DBLibraryEntry.self, DBLibraryCollection.self,
             DBLibraryCollectionItem.self, DBLibraryStatusEvent.self, DBScopedAppState.self,
             DBCalendarSourceEvent.self, DBAccountCalendarEvent.self, DBAccountCalendarOverlay.self,
-            DBLegacyCalendarEvent.self
+            DBLegacyCalendarEvent.self, DBAccountUpdateWatch.self, DBLegacyUpdateWatch.self
         ]
     }
 

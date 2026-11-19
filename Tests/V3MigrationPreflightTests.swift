@@ -140,4 +140,22 @@ final class V3MigrationPreflightTests: XCTestCase {
         XCTAssertTrue(report.integrityIssues.contains("collectionItem.nonCanonicalID:noncanonical-membership"))
         XCTAssertFalse(context.hasChanges)
     }
+
+    @MainActor
+    func testOrphanedUpdateWatchIsStructurallyMigratableOnlyThroughExplicitQuarantine() throws {
+        let database = try AppDatabase(inMemory: true)
+        database.context.insert(DBUpdateWatch(
+            gameID: "missing-watch-game", entityTag: "etag", isEnabled: true
+        ))
+        try database.save()
+
+        let report = try V3MigrationPreflight.inspect(context: database.context)
+
+        XCTAssertTrue(report.isStructurallyValid)
+        XCTAssertTrue(report.integrityIssues.contains("updateWatch.missingGame:missing-watch-game"))
+        XCTAssertEqual(report.rowCounts["updateWatches"], 1)
+        XCTAssertEqual(report.ownershipReviewCounts["updateWatches"], 1)
+        XCTAssertFalse(database.context.hasChanges)
+    }
+
 }

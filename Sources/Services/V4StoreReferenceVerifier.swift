@@ -32,6 +32,8 @@ enum V4StoreReferenceVerifier {
         let accountEvents = try context.fetch(FetchDescriptor<DBAccountCalendarEvent>())
         let overlays = try context.fetch(FetchDescriptor<DBAccountCalendarOverlay>())
         let legacyCalendarEvents = try context.fetch(FetchDescriptor<DBLegacyCalendarEvent>())
+        let accountWatches = try context.fetch(FetchDescriptor<DBAccountUpdateWatch>())
+        let legacyWatches = try context.fetch(FetchDescriptor<DBLegacyUpdateWatch>())
 
         var diagnostics = Set<String>()
         let accountIDs = Set(accounts.map(\.id))
@@ -135,6 +137,27 @@ enum V4StoreReferenceVerifier {
             check(event.id == DBLegacyCalendarEvent.stableID(
                 originalEventID: event.originalEventID
             ), "v4.legacyCalendar.stableIdentityMismatch")
+        }
+
+        for watch in accountWatches {
+            check(watch.id == DBAccountUpdateWatch.stableID(
+                accountID: watch.accountID, gameID: watch.gameID
+            ), "v4.accountUpdateWatch.stableIdentityMismatch")
+            check(accountIDs.contains(watch.accountID), "v4.accountUpdateWatch.unknownAccount")
+            check(gameIDs.contains(watch.gameID), "v4.accountUpdateWatch.missingGame")
+        }
+
+        for watch in legacyWatches {
+            check(watch.id == DBLegacyUpdateWatch.stableID(gameID: watch.originalGameID),
+                  "v4.legacyUpdateWatch.stableIdentityMismatch")
+            if watch.integrityIssue == nil {
+                check(gameIDs.contains(watch.originalGameID), "v4.legacyUpdateWatch.missingGame")
+            } else if watch.integrityIssue == "missing-game" {
+                check(!gameIDs.contains(watch.originalGameID),
+                      "v4.legacyUpdateWatch.quarantineMismatch")
+            } else {
+                check(false, "v4.legacyUpdateWatch.unknownIntegrityIssue")
+            }
         }
 
         return V4StoreReferenceVerificationReport(
