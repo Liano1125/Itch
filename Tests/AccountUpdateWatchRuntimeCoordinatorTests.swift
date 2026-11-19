@@ -74,16 +74,17 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
     }
 
     @MainActor
-    private func makeRepository(_ accountID: String) throws -> AccountScopedUpdateWatchRepository {
+    private func makeRepository(_ accountID: String) throws -> (ModelContainer, AccountScopedUpdateWatchRepository) {
         let container = try makeContainer()
         container.mainContext.insert(DBGame(id: "game", title: "Game"))
         try container.mainContext.save()
-        return try AccountScopedUpdateWatchRepository(context: container.mainContext, accountID: accountID)
+        let repository = try AccountScopedUpdateWatchRepository(context: container.mainContext, accountID: accountID)
+        return (container, repository)
     }
 
     @MainActor
     func testLateFetchAfterAccountSwitchDoesNotPersistOrNotify() async throws {
-        let repository = try makeRepository("itch:101")
+        let (_, repository) = try makeRepository("itch:101")
         let session = ItchAccountSession()
         session.activate(ItchAccountIdentity(itchUserID: 101, username: "a"))
         let center = FakeUpdateWatchNotificationCenter()
