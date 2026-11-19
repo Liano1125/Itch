@@ -92,25 +92,6 @@ enum V4MigrationManifestBuilder {
             diagnostics.append("migration.updateWatches.notRun")
         }
         let sparkSourceRows = preflight.rowCounts["sparkMetadata"] ?? 0
-        if let updateWatches, let updateWatchVerification {
-            domains["updateWatches"] = V4MigrationDomainManifest(
-                sourceRowCount: updateWatchSourceRows,
-                destinationRowCount: updateWatches.rowCount,
-                scopeCounts: ["legacy-unassigned": updateWatches.rowCount],
-                quarantinedRowCount: updateWatches.quarantinedRowCount,
-                inventoryDigest: updateWatches.inventoryDigest,
-                digestKind: .stableIdentitySHA256,
-                payloadVerification: V4MigrationPayloadVerificationSummary(
-                    status: updateWatchVerification.isVerified
-                        && updateWatchVerification.verifiedRows >= updateWatches.rowCount ? .verified : .failed,
-                    method: .fieldByFieldCanonicalValues,
-                    verifiedRows: updateWatchVerification.verifiedRows,
-                    unverifiedRows: updateWatchVerification.unverifiedRows
-                ),
-                integrityDiagnostics: updateWatchVerification.diagnostics
-            )
-        }
-
         if let sparkMetadata, let sparkMetadataVerification {
             reportedSourceTables.insert("sparkMetadata")
             if sparkMetadata.rowCount != sparkSourceRows
@@ -216,6 +197,25 @@ enum V4MigrationManifestBuilder {
                     unverifiedRows: sharedCatalogVerification.unverifiedRows
                 ),
                 integrityDiagnostics: sharedCatalogVerification.diagnostics
+            )
+        }
+
+        if let updateWatches, let updateWatchVerification {
+            domains["updateWatches"] = V4MigrationDomainManifest(
+                sourceRowCount: updateWatchSourceRows,
+                destinationRowCount: updateWatches.rowCount,
+                scopeCounts: ["legacy-unassigned": updateWatches.rowCount],
+                quarantinedRowCount: updateWatches.quarantinedRowCount,
+                inventoryDigest: updateWatches.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: updateWatchVerification.isVerified
+                        && updateWatchVerification.verifiedRows >= updateWatches.rowCount ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: updateWatchVerification.verifiedRows,
+                    unverifiedRows: updateWatchVerification.unverifiedRows
+                ),
+                integrityDiagnostics: updateWatchVerification.diagnostics
             )
         }
 
