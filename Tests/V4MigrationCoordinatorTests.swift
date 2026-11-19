@@ -425,7 +425,7 @@ final class V4MigrationCoordinatorTests: XCTestCase {
 
         let orphan = try XCTUnwrap(migrated.first { $0.originalGameID == "orphan-watch-game" })
         XCTAssertEqual(orphan.integrityIssue, "missing-game")
-        XCTAssertNil(orphan.entityTag == nil ? nil : nil as String?) // no account identity is stored
+        XCTAssertEqual(orphan.id, DBLegacyUpdateWatch.stableID(gameID: "orphan-watch-game"))
         XCTAssertEqual(try source.context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 2)
 
         XCTAssertTrue(attempt.updateWatchVerification.isVerified)
