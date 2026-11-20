@@ -311,4 +311,43 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
         XCTAssertTrue(center.pending.contains(managed))
         XCTAssertTrue(center.delivered.contains(managed))
     }
+
+    @MainActor
+    func testExplicitAccountRemovalClearsOnlyThatAccountsPendingAndDeliveredNotifications() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "event-a"
+        )
+        let accountB = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:202", eventID: "event-b"
+        )
+        center.pending = [accountA, accountB, "unrelated.pending"]
+        center.delivered = [accountA, accountB, "unrelated.delivered"]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        await coordinator.cancelManagedNotifications(accountID: "itch:101")
+
+        XCTAssertFalse(center.pending.contains(accountA))
+        XCTAssertFalse(center.delivered.contains(accountA))
+        XCTAssertTrue(center.pending.contains(accountB))
+        XCTAssertTrue(center.delivered.contains(accountB))
+        XCTAssertTrue(center.pending.contains("unrelated.pending"))
+        XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
+    @MainActor
+    func testExplicitAccountRemovalRejectsNonCanonicalAccountID() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let managed = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "event-a"
+        )
+        center.pending = [managed]
+        center.delivered = [managed]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        await coordinator.cancelManagedNotifications(accountID: "itch:01")
+
+        XCTAssertTrue(center.pending.contains(managed))
+        XCTAssertTrue(center.delivered.contains(managed))
+    }
 }
