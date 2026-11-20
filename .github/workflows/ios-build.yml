@@ -67,6 +67,7 @@ on:
       - feat/v4-legacy-appstate-scope-conversion
 
       - feat/v4-account-scoped-update-watch
+      - feat/v4-account-registry-repository
   pull_request:
     branches:
       - design/v4-migration-journal-recovery
