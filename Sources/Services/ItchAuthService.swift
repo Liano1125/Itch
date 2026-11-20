@@ -12,6 +12,26 @@ final class ItchAuthService: NSObject, ObservableObject,
     @Published var errorMessage: String?
 
     private let api = ItchAPI()
+    private let readAccessToken: () -> String?
+    private let deleteAccessToken: () -> Void
+    private let revokeAccessToken: (String) async throws -> Void
+
+    init(
+        readAccessToken: @escaping () -> String? = {
+            KeychainStore.read("access_token")
+        },
+        deleteAccessToken: @escaping () -> Void = {
+            KeychainStore.delete("access_token")
+        },
+        revokeAccessToken: @escaping (String) async throws -> Void = {
+            try await Self.revokeAccessTokenOnServer($0)
+        }
+    ) {
+        self.readAccessToken = readAccessToken
+        self.deleteAccessToken = deleteAccessToken
+        self.revokeAccessToken = revokeAccessToken
+        super.init()
+    }
 
     /// Account identity and generation shared with account-scoped request owners.
     let accountSession = ItchAccountSession()
@@ -256,12 +276,24 @@ final class ItchAuthService: NSObject, ObservableObject,
     }
 
     func signOut() async {
-        guard let token = KeychainStore.read("access_token") else {
-            user = nil
-            accountSession.activate(nil)
-            return
-        }
+        // Invalidate local authority before any network suspension. Every
+        // account-owned request captured under the old generation is now stale.
+        let token = readAccessToken()
+        user = nil
+        accountSession.activate(nil)
+        deleteAccessToken()
 
+        guard let token else { return }
+
+        do {
+            try await revokeAccessToken(token)
+        } catch {
+            // Remote revocation is best-effort; local sign-out must remain effective.
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private static func revokeAccessTokenOnServer(_ token: String) async throws {
         var request = URLRequest(
             url: URL(string: "https://api.itch.io/oauth/revoke")!
         )
@@ -281,30 +313,13 @@ final class ItchAuthService: NSObject, ObservableObject,
             )
         ]
 
-        request.httpBody = body.percentEncodedQuery?.data(
-            using: .utf8
-        )
+        request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
 
-        do {
-            let (_, response) = try await URLSession.shared.data(
-                for: request
-            )
-
-            if let http = response as? HTTPURLResponse,
-               !(200..<300).contains(http.statusCode) {
-                throw ItchAPIError.httpError(
-                    http.statusCode,
-                    "撤销授权失败"
-                )
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            return
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           !(200..<300).contains(http.statusCode) {
+            throw ItchAPIError.httpError(http.statusCode, "撤销授权失败")
         }
-
-        KeychainStore.delete("access_token")
-        user = nil
-        accountSession.activate(nil)
     }
 
     func presentationAnchor(
