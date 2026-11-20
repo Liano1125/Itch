@@ -134,9 +134,30 @@ enum V4StoreReferenceVerifier {
         }
 
         for event in legacyCalendarEvents {
-            check(event.id == DBLegacyCalendarEvent.stableID(
-                originalEventID: event.originalEventID
-            ), "v4.legacyCalendar.stableIdentityMismatch")
+            check(event.id == DBLegacyCalendarEvent.stableID(originalEventID: event.originalEventID),
+                  "v4.legacyCalendar.stableIdentityMismatch")
+            switch event.integrityIssue {
+            case nil:
+                check(gameIDs.contains(event.gameID), "v4.legacyCalendar.missingGame")
+                if let updateID = event.sourceUpdateID {
+                    check(updateIDs.contains(updateID), "v4.legacyCalendar.missingSourceUpdate")
+                    check(updates.first(where: { $0.id == updateID })?.gameID == event.gameID,
+                          "v4.legacyCalendar.crossGameSourceUpdate")
+                }
+            case "missing-game":
+                check(!gameIDs.contains(event.gameID), "v4.legacyCalendar.quarantineMismatch")
+            case "missing-update":
+                check(gameIDs.contains(event.gameID), "v4.legacyCalendar.quarantineMismatch")
+                check(event.sourceUpdateID.map { !updateIDs.contains($0) } == true,
+                      "v4.legacyCalendar.quarantineMismatch")
+            case "cross-game-update":
+                check(gameIDs.contains(event.gameID), "v4.legacyCalendar.quarantineMismatch")
+                check(event.sourceUpdateID.flatMap { id in updates.first(where: { $0.id == id })?.gameID } != nil
+                      && event.sourceUpdateID.flatMap { id in updates.first(where: { $0.id == id })?.gameID } != event.gameID,
+                      "v4.legacyCalendar.quarantineMismatch")
+            default:
+                check(false, "v4.legacyCalendar.unknownIntegrityIssue")
+            }
         }
 
         for watch in accountWatches {
