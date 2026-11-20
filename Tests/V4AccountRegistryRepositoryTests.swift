@@ -85,7 +85,8 @@ final class V4AccountRegistryRepositoryTests: XCTestCase {
 
     @MainActor
     func testUnknownAccountLookupReturnsNil() throws {
-        let repository = V4AccountRegistryRepository(context: try makeContainer().mainContext)
+        let container = try makeContainer()
+        let repository = V4AccountRegistryRepository(context: container.mainContext)
         XCTAssertNil(try repository.loadAccount(itchUserID: 999))
         XCTAssertThrowsError(try repository.loadAccount(itchUserID: 0))
     }
