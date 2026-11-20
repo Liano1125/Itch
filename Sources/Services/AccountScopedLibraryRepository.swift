@@ -42,7 +42,11 @@ final class AccountScopedLibraryRepository {
 
     init(context: ModelContext, accountID: String) throws {
         let normalized = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalized.hasPrefix("itch:"), normalized.count > 5 else {
+        guard normalized == accountID,
+              normalized.hasPrefix("itch:"),
+              let userID = Int(normalized.dropFirst(5)),
+              userID > 0,
+              normalized == "itch:\\(userID)" else {
             throw RepositoryError.invalidAccountID
         }
         self.context = context
