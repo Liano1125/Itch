@@ -109,4 +109,61 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         XCTAssertNil(storedToken)
     }
 
+
+    @MainActor
+    func testNewerRestoreWinsWhenTwoRestoreRequestsOverlap() async throws {
+        var storedToken: String? = "token-a"
+        var startedTokens: Set<String> = []
+        var continuations: [String: CheckedContinuation<ItchUser, Error>] = [:]
+
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { token in
+                try await withCheckedThrowingContinuation { continuation in
+                    startedTokens.insert(token)
+                    continuations[token] = continuation
+                }
+            }
+        )
+
+        let firstRestore = Task { await service.restoreSession() }
+        while !startedTokens.contains("token-a") {
+            await Task.yield()
+        }
+
+        storedToken = "token-b"
+        let secondRestore = Task { await service.restoreSession() }
+        while !startedTokens.contains("token-b") {
+            await Task.yield()
+        }
+
+        continuations["token-a"]?.resume(returning: ItchUser(
+            id: 904,
+            username: "older-restore",
+            displayName: nil,
+            coverUrl: nil,
+            url: nil
+        ))
+        continuations["token-a"] = nil
+        await firstRestore.value
+
+        XCTAssertNil(service.user, "The superseded restore must not activate its account.")
+
+        continuations["token-b"]?.resume(returning: ItchUser(
+            id: 905,
+            username: "newer-restore",
+            displayName: nil,
+            coverUrl: nil,
+            url: nil
+        ))
+        continuations["token-b"] = nil
+        await secondRestore.value
+
+        XCTAssertEqual(service.user?.id, 905)
+        XCTAssertEqual(service.accountSession.identity?.id, "itch:905")
+        XCTAssertEqual(storedToken, "token-b")
+    }
+
 }
