@@ -15,7 +15,7 @@ struct V3MigrationPreflightReport: Codable, Equatable {
     let integrityIssues: [String]
     let inventoryDigest: String
 
-    var isStructurallyValid: Bool { integrityIssues.allSatisfy { $0.hasPrefix("updateWatch.missingGame:") || $0.hasPrefix("calendarEvent.") } }
+    var isStructurallyValid: Bool { integrityIssues.allSatisfy { $0.hasPrefix("updateWatch.missingGame:") || $0.hasPrefix("calendarEvent.missingGame:") || $0.hasPrefix("calendarEvent.missingUpdate:") || $0.hasPrefix("calendarEvent.updateGameMismatch:") } }
 
     var hasUnresolvedOwnership: Bool {
         ownershipReviewCounts.values.contains { $0 > 0 }
