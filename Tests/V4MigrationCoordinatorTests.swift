@@ -440,7 +440,8 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(domain.quarantinedRowCount, 2)
         XCTAssertEqual(domain.payloadVerification.status, .verified)
         XCTAssertTrue(attempt.referenceVerification.isValid)
-        XCTAssertTrue(attempt.manifest.isPromotionEligible)
+        XCTAssertFalse(attempt.manifest.isPromotionEligible)
+        XCTAssertTrue(attempt.manifest.integrityDiagnostics.contains("ownership.unhandledDomainsRequireReview"))
     }
 
     @MainActor
