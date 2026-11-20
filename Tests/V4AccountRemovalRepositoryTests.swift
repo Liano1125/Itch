@@ -85,7 +85,7 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         let context = container.mainContext
         context.insert(DBAccount(itchUserID: 813, username: "keep"))
         try context.save()
-        let repository = V4AccountRemovalRepository(context: context)
+        let repository = V4AccountRemovalRepository(context: context, session: ItchAccountSession())
 
         XCTAssertThrowsError(try repository.removeAccountAndPersonalData(itchUserID: 0))
         XCTAssertThrowsError(try repository.removeAccountAndPersonalData(itchUserID: 999))
