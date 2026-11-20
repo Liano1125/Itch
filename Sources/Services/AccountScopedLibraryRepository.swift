@@ -46,7 +46,7 @@ final class AccountScopedLibraryRepository {
               normalized.hasPrefix("itch:"),
               let userID = Int(normalized.dropFirst(5)),
               userID > 0,
-              normalized == "itch:\\(userID)" else {
+              normalized == "itch:\(userID)" else {
             throw RepositoryError.invalidAccountID
         }
         self.context = context
