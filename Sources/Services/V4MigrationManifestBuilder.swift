@@ -37,6 +37,9 @@ enum V4MigrationManifestBuilder {
         var diagnostics = preflight.integrityIssues
             .filter { !$0.hasPrefix("updateWatch.missingGame:") && !$0.hasPrefix("calendarEvent.") }
             .map(Self.stableDiagnosticCode)
+        if preflight.hasUnresolvedOwnership {
+            diagnostics.append("ownership.unhandledDomainsRequireReview")
+        }
         diagnostics.append(contentsOf: verification?.integrityDiagnostics ?? [])
         diagnostics.append(contentsOf: sharedCatalogVerification?.diagnostics ?? [])
         diagnostics.append(contentsOf: gameUpdateVerification?.diagnostics ?? [])
