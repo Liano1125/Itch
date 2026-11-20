@@ -77,7 +77,7 @@ final class V4MigrationCoordinatorTests: XCTestCase {
     }
 
     @MainActor
-    func testUnimplementedSourceDomainsRemainManifestBlocked() throws {
+    func testCalendarEventsAreCoveredByVerifiedLegacyQuarantine() throws {
         let source = try AppDatabase(inMemory: true)
         source.context.insert(DBDeveloper(
             id: "dev-a", name: "Developer A", profileURL: "https://example.com/dev",
@@ -94,8 +94,7 @@ final class V4MigrationCoordinatorTests: XCTestCase {
             discoveryTagsData: Data([1, 2, 3]),
             fetchedAt: Date(timeIntervalSince1970: 300), isComplete: true
         ))
-        // Keep one non-empty, not-yet-migrated domain in the fixture. Empty
-        // uncovered tables do not block migration; populated ones must.
+        // Calendar rows are migrated losslessly into the unassigned legacy quarantine.
         source.context.insert(DBCalendarEvent(
             id: "calendar-a", gameID: "game-a", title: "Legacy event",
             date: Date(timeIntervalSince1970: 500), kind: "release"
@@ -123,11 +122,12 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(copiedDetail.discoveryTagsData, Data([1, 2, 3]))
         XCTAssertTrue(attempt.sharedCatalogVerification.isVerified)
         XCTAssertEqual(attempt.manifest.domains["sharedCatalog"]?.payloadVerification.status, .verified)
-        XCTAssertFalse(attempt.manifest.isPromotionEligible)
-        XCTAssertEqual(attempt.outcome, .blockedByManifest)
-        XCTAssertTrue(attempt.manifest.integrityDiagnostics.contains(
-            "migration.domainCoverage.incomplete"
-        ))
+        XCTAssertTrue(attempt.calendarEventVerification.isVerified)
+        XCTAssertEqual(attempt.calendarEvents.rowCount, 1)
+        XCTAssertEqual(attempt.calendarEvents.quarantinedRowCount, 1)
+        XCTAssertEqual(attempt.manifest.domains["calendarEvents"]?.scopeCounts["legacy-unassigned"], 1)
+        XCTAssertEqual(attempt.manifest.domains["calendarEvents"]?.payloadVerification.status, .verified)
+        XCTAssertFalse(attempt.manifest.integrityDiagnostics.contains("migration.domainCoverage.incomplete"))
     }
 
     
@@ -440,7 +440,8 @@ final class V4MigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(domain.quarantinedRowCount, 2)
         XCTAssertEqual(domain.payloadVerification.status, .verified)
         XCTAssertTrue(attempt.referenceVerification.isValid)
-        XCTAssertTrue(attempt.manifest.isPromotionEligible)
+        XCTAssertFalse(attempt.manifest.isPromotionEligible)
+        XCTAssertTrue(attempt.manifest.integrityDiagnostics.contains("ownership.unhandledDomainsRequireReview"))
     }
 
     @MainActor
