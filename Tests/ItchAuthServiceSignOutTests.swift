@@ -218,4 +218,72 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         XCTAssertEqual(storedToken, "new-token")
     }
 
+    @MainActor
+    func testSignOutCancelsPendingOAuthResultBeforeTokenExchange() async throws {
+        var storedToken: String?
+        var didStartAuthorization = false
+        var authorizationContinuation: CheckedContinuation<URL, Error>?
+        var didExchangeCode = false
+        var didFetchProfile = false
+
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { _ in
+                didFetchProfile = true
+                return ItchUser(
+                    id: 907,
+                    username: "must-not-activate",
+                    displayName: nil,
+                    coverUrl: nil,
+                    url: nil
+                )
+            },
+            authorizeURL: { authorizationURL in
+                let state = URLComponents(
+                    url: authorizationURL,
+                    resolvingAgainstBaseURL: false
+                )?.queryItems?.first(where: { $0.name == "state" })?.value
+                var callback = URLComponents()
+                callback.scheme = ItchOAuthConfig.callbackScheme
+                callback.host = "oauth"
+                callback.queryItems = [
+                    URLQueryItem(name: "state", value: state),
+                    URLQueryItem(name: "code", value: "authorization-code")
+                ]
+                let callbackURL = try XCTUnwrap(callback.url)
+                return try await withCheckedThrowingContinuation { continuation in
+                    didStartAuthorization = true
+                    authorizationContinuation = continuation
+                }
+            },
+            exchangeAuthorizationCode: { _, _ in
+                didExchangeCode = true
+                return "must-not-be-saved"
+            }
+        )
+
+        let signInTask = Task { await service.signIn() }
+        while !didStartAuthorization {
+            await Task.yield()
+        }
+
+        await service.signOut()
+        XCTAssertFalse(service.isLoading)
+
+        authorizationContinuation?.resume(returning: try XCTUnwrap(
+            URL(string: "\\(ItchOAuthConfig.callbackScheme)://oauth?state=stale&code=stale")
+        ))
+        authorizationContinuation = nil
+        await signInTask.value
+
+        XCTAssertFalse(didExchangeCode, "A stale OAuth callback must not exchange its authorization code.")
+        XCTAssertFalse(didFetchProfile, "A stale OAuth callback must not fetch or activate an account.")
+        XCTAssertNil(storedToken)
+        XCTAssertNil(service.user)
+        XCTAssertNil(service.accountSession.identity)
+        XCTAssertFalse(service.isLoading)
+    }
+
 }
