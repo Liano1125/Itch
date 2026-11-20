@@ -23,7 +23,8 @@ final class V4AuthenticatedAccountRegistryBridgeTests: XCTestCase {
         )
         session.activate(identity)
         let request = try XCTUnwrap(session.captureRequestContext())
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let bridge = V4AuthenticatedAccountRegistryBridge(
             session: session,
             context: context
@@ -45,7 +46,8 @@ final class V4AuthenticatedAccountRegistryBridgeTests: XCTestCase {
         let request = try XCTUnwrap(session.captureRequestContext())
         session.activate(nil)
 
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let bridge = V4AuthenticatedAccountRegistryBridge(session: session, context: context)
 
         XCTAssertThrowsError(try bridge.recordAuthenticatedSession(request))
@@ -59,7 +61,8 @@ final class V4AuthenticatedAccountRegistryBridgeTests: XCTestCase {
         let requestA = try XCTUnwrap(session.captureRequestContext())
         session.activate(ItchAccountIdentity(itchUserID: 804, username: "user-b"))
 
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let bridge = V4AuthenticatedAccountRegistryBridge(session: session, context: context)
 
         XCTAssertThrowsError(try bridge.recordAuthenticatedSession(requestA))
@@ -69,7 +72,8 @@ final class V4AuthenticatedAccountRegistryBridgeTests: XCTestCase {
     @MainActor
     func testRejectsUnauthenticatedSession() throws {
         let session = ItchAccountSession()
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let bridge = V4AuthenticatedAccountRegistryBridge(session: session, context: context)
 
         XCTAssertThrowsError(try bridge.recordAuthenticatedSession(
