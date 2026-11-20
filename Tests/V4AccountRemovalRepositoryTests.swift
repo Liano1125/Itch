@@ -133,4 +133,33 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         }
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccount>()), 1)
     }
+
+    @MainActor
+    func testRemovedAccountCanReauthenticateAsFreshAccountWithoutRestoringDeletedPersonalRows() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let account = DBAccount(itchUserID: 815, username: "before-removal")
+        context.insert(account)
+        context.insert(DBGame(id: "shared-after-removal", title: "Shared catalog row"))
+        context.insert(ItchPocketSchemaV4.DBLibraryEntry(
+            accountID: account.id, gameID: "shared-after-removal", status: "playing"
+        ))
+        try context.save()
+
+        _ = try V4AccountRemovalRepository(context: context, session: ItchAccountSession())
+            .removeAccountAndPersonalData(itchUserID: 815)
+
+        let reauthenticated = try V4AccountRegistryRepository(context: context)
+            .recordAuthenticatedIdentity(
+                ItchAccountIdentity(itchUserID: 815, username: "after-removal"),
+                at: Date(timeIntervalSince1970: 1_800_000_000)
+            )
+
+        XCTAssertEqual(reauthenticated.id, "itch:815")
+        XCTAssertEqual(reauthenticated.username, "after-removal")
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccount>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>()), 0)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1,
+                       "Shared catalog data must survive account removal and re-login.")
+    }
 }
