@@ -249,4 +249,27 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(invalidCount, 0)
         XCTAssertTrue(center.added.isEmpty)
     }
+    @MainActor
+    func testExplicitAccountRemovalClearsOnlyThatAccountsCalendarNotifications() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "event-a"
+        )
+        let accountB = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:202", eventID: "event-b"
+        )
+        center.pending = [accountA, accountB, "unrelated.pending"]
+        center.delivered = [accountA, accountB, "unrelated.delivered"]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        await coordinator.clear(accountID: "itch:101")
+
+        XCTAssertTrue(center.removedPending.contains(accountA))
+        XCTAssertTrue(center.removedDelivered.contains(accountA))
+        XCTAssertTrue(center.pending.contains(accountB))
+        XCTAssertTrue(center.delivered.contains(accountB))
+        XCTAssertTrue(center.pending.contains("unrelated.pending"))
+        XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
 }
