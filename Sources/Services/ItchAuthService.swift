@@ -15,6 +15,8 @@ final class ItchAuthService: NSObject, ObservableObject,
     private let readAccessToken: @MainActor () -> String?
     private let deleteAccessToken: @MainActor () -> Void
     private let revokeAccessToken: @MainActor (String) async throws -> Void
+    private let fetchProfile: @MainActor (String) async throws -> ItchUser
+    private var authOperationGeneration: UInt64 = 0
 
     init(
         readAccessToken: @escaping @MainActor () -> String? = {
@@ -25,11 +27,15 @@ final class ItchAuthService: NSObject, ObservableObject,
         },
         revokeAccessToken: @escaping @MainActor (String) async throws -> Void = {
             try await ItchAuthService.revokeAccessTokenOnServer($0)
+        },
+        fetchProfile: @escaping @MainActor (String) async throws -> ItchUser = {
+            try await ItchAPI().fetchProfile(token: $0)
         }
     ) {
         self.readAccessToken = readAccessToken
         self.deleteAccessToken = deleteAccessToken
         self.revokeAccessToken = revokeAccessToken
+        self.fetchProfile = fetchProfile
         super.init()
     }
 
@@ -43,18 +49,29 @@ final class ItchAuthService: NSObject, ObservableObject,
     }
 
     func restoreSession() async {
-        guard let token = KeychainStore.read("access_token") else {
+        authOperationGeneration &+= 1
+        let operation = authOperationGeneration
+
+        guard let token = readAccessToken() else {
+            guard operation == authOperationGeneration else { return }
             user = nil
             accountSession.activate(nil)
             return
         }
 
         do {
-            let restoredUser = try await api.fetchProfile(token: token)
+            let restoredUser = try await fetchProfile(token)
+            // A sign-out, newer restore, or sign-in may have superseded this
+            // request while the profile lookup was suspended.
+            guard operation == authOperationGeneration,
+                  readAccessToken() == token else { return }
             user = restoredUser
             accountSession.activate(ItchAccountIdentity(user: restoredUser))
         } catch {
-            KeychainStore.delete("access_token")
+            // Never let a stale restore delete a newer login's credential.
+            guard operation == authOperationGeneration,
+                  readAccessToken() == token else { return }
+            deleteAccessToken()
             user = nil
             accountSession.activate(nil)
             errorMessage = error.localizedDescription
@@ -64,6 +81,8 @@ final class ItchAuthService: NSObject, ObservableObject,
     func signIn() async {
         guard !isLoading else { return }
 
+        authOperationGeneration &+= 1
+        let operation = authOperationGeneration
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -157,8 +176,9 @@ final class ItchAuthService: NSObject, ObservableObject,
             )
 
             // Validate the new credential before replacing the persisted session.
-            let authenticatedUser = try await api.fetchProfile(token: token)
+            let authenticatedUser = try await fetchProfile(token)
 
+            guard operation == authOperationGeneration else { return }
             try KeychainStore.save(
                 token,
                 for: "access_token"
@@ -168,6 +188,7 @@ final class ItchAuthService: NSObject, ObservableObject,
             accountSession.activate(ItchAccountIdentity(user: authenticatedUser))
 
         } catch {
+            guard operation == authOperationGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -278,6 +299,7 @@ final class ItchAuthService: NSObject, ObservableObject,
     func signOut() async {
         // Invalidate local authority before any network suspension. Every
         // account-owned request captured under the old generation is now stale.
+        authOperationGeneration &+= 1
         let token = readAccessToken()
         user = nil
         accountSession.activate(nil)
