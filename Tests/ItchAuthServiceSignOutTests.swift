@@ -166,4 +166,56 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         XCTAssertEqual(storedToken, "token-b")
     }
 
+
+    @MainActor
+    func testStaleSignOutRevocationFailureDoesNotOverwriteRestoredSession() async throws {
+        var storedToken: String? = "old-token"
+        var didStartRevocation = false
+        var revocationContinuation: CheckedContinuation<Void, Error>?
+
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in
+                try await withCheckedThrowingContinuation { continuation in
+                    didStartRevocation = true
+                    revocationContinuation = continuation
+                }
+            },
+            fetchProfile: { _ in
+                ItchUser(
+                    id: 906,
+                    username: "new-session",
+                    displayName: nil,
+                    coverUrl: nil,
+                    url: nil
+                )
+            }
+        )
+
+        let signOutTask = Task { await service.signOut() }
+        while !didStartRevocation {
+            await Task.yield()
+        }
+
+        // Simulate a newer authenticated session becoming authoritative while
+        // the old token's remote revocation is still suspended.
+        storedToken = "new-token"
+        await service.restoreSession()
+        XCTAssertEqual(service.accountSession.identity?.id, "itch:906")
+
+        revocationContinuation?.resume(throwing: NSError(
+            domain: "ItchAuthServiceSignOutTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "Old token revoke failed"]
+        ))
+        revocationContinuation = nil
+        await signOutTask.value
+
+        XCTAssertEqual(service.user?.id, 906)
+        XCTAssertEqual(service.accountSession.identity?.id, "itch:906")
+        XCTAssertNil(service.errorMessage)
+        XCTAssertEqual(storedToken, "new-token")
+    }
+
 }
