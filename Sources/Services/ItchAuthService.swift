@@ -300,6 +300,7 @@ final class ItchAuthService: NSObject, ObservableObject,
         // Invalidate local authority before any network suspension. Every
         // account-owned request captured under the old generation is now stale.
         authOperationGeneration &+= 1
+        let operation = authOperationGeneration
         let token = readAccessToken()
         user = nil
         accountSession.activate(nil)
@@ -310,7 +311,9 @@ final class ItchAuthService: NSObject, ObservableObject,
         do {
             try await revokeAccessToken(token)
         } catch {
-            // Remote revocation is best-effort; local sign-out must remain effective.
+            // A later sign-in/restore owns the UI now; don't surface an old
+            // sign-out failure over the newer authenticated session.
+            guard operation == authOperationGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }
