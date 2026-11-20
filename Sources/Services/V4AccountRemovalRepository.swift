@@ -22,6 +22,7 @@ final class V4AccountRemovalRepository {
         case invalidItchUserID
         case accountNotFound(String)
         case duplicateAccount(String)
+        case accountIsActive(String)
 
         var errorDescription: String? {
             switch self {
@@ -36,9 +37,11 @@ final class V4AccountRemovalRepository {
     }
 
     private let context: ModelContext
+    private let session: ItchAccountSession
 
-    init(context: ModelContext) {
+    init(context: ModelContext, session: ItchAccountSession) {
         self.context = context
+        self.session = session
     }
 
     /// Deletes one account registry row and every V4 row owned by that account.
@@ -48,6 +51,9 @@ final class V4AccountRemovalRepository {
     func removeAccountAndPersonalData(itchUserID: Int) throws -> RemovalReport {
         guard itchUserID > 0 else { throw RepositoryError.invalidItchUserID }
         let accountID = DBAccount.stableID(itchUserID: itchUserID)
+        guard session.identity?.id != accountID else {
+            throw RepositoryError.accountIsActive(accountID)
+        }
         let accountDescriptor = FetchDescriptor<DBAccount>(
             predicate: #Predicate { $0.id == accountID }
         )
