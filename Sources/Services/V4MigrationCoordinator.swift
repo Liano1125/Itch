@@ -17,6 +17,8 @@ struct V4MigrationAttempt: Equatable {
     let gameUpdateVerification: V4GameUpdateVerificationReport
     let updateWatches: V4UpdateWatchMigrationReport
     let updateWatchVerification: V4UpdateWatchVerificationReport
+    let calendarEvents: V4CalendarEventMigrationReport
+    let calendarEventVerification: V4CalendarEventVerificationReport
     let sparkMetadata: V4SparkMetadataMigrationReport
     let sparkMetadataVerification: V4SparkMetadataVerificationReport
     let translations: V4TranslationCacheMigrationReport
@@ -95,6 +97,7 @@ enum V4MigrationCoordinator {
         )
         let gameUpdates = try V4GameUpdateConverter.convert(source: source, destination: destination)
         let updateWatches = try V4UpdateWatchConverter.convert(source: source, destination: destination)
+        let calendarEvents = try V4CalendarEventConverter.convert(source: source, destination: destination)
         let sparkMetadata = try V4SparkMetadataConverter.convert(source: source, destination: destination)
         let translations = try V4TranslationCacheConverter.convert(source: source, destination: destination)
         let discoveryCacheDisposition = try V4DiscoveryCacheDisposition.discard(source: source, destination: destination)
@@ -110,6 +113,7 @@ enum V4MigrationCoordinator {
         )
         let gameUpdateVerification = try V4GameUpdateVerifier.verify(source: source, destination: destination)
         let updateWatchVerification = try V4UpdateWatchVerifier.verify(source: source, destination: destination)
+        let calendarEventVerification = try V4CalendarEventVerifier.verify(source: source, destination: destination)
         let sparkMetadataVerification = try V4SparkMetadataVerifier.verify(source: source, destination: destination)
         let translationVerification = try V4TranslationCacheVerifier.verify(source: source, destination: destination)
         let discoveryCacheVerified = try V4DiscoveryCacheDisposition.verify(
@@ -137,6 +141,8 @@ enum V4MigrationCoordinator {
             gameUpdateVerification: gameUpdateVerification,
             updateWatches: updateWatches,
             updateWatchVerification: updateWatchVerification,
+            calendarEvents: calendarEvents,
+            calendarEventVerification: calendarEventVerification,
             sparkMetadata: sparkMetadata,
             sparkMetadataVerification: sparkMetadataVerification,
             translations: translations,
