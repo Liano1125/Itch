@@ -108,8 +108,15 @@ final class V4AccountRemovalRepository {
         context.delete(accounts[0])
 
         // A single save boundary prevents a successfully removed account row
-        // from being committed while its personal rows remain behind.
-        try context.save()
+        // from being committed while its personal rows remain behind. If the
+        // store rejects the transaction, roll the context back so these pending
+        // deletions cannot leak into a later, unrelated save.
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
 
         return RemovalReport(
             accountID: accountID,
