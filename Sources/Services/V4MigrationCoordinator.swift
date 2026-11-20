@@ -167,6 +167,8 @@ enum V4MigrationCoordinator {
             gameUpdateVerification: gameUpdateVerification,
             updateWatches: updateWatches,
             updateWatchVerification: updateWatchVerification,
+            calendarEvents: calendarEvents,
+            calendarEventVerification: calendarEventVerification,
             sparkMetadata: sparkMetadata,
             sparkMetadataVerification: sparkMetadataVerification,
             translations: translations,
