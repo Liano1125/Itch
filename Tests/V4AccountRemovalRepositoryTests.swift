@@ -1,6 +1,31 @@
 import XCTest
 import SwiftData
+import UserNotifications
 @testable import itchPocket
+
+@MainActor
+private final class FakeV4RemovalNotificationCenter: AccountCalendarNotificationCenterClient {
+    var pending = Set<String>()
+    var delivered = Set<String>()
+    var removedPending = Set<String>()
+    var removedDelivered = Set<String>()
+
+    func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
+    func requestAuthorization() async -> Bool { true }
+    func pendingIdentifiers() async -> Set<String> { pending }
+    func deliveredIdentifiers() async -> Set<String> { delivered }
+    func removePending(identifiers: [String]) async {
+        removedPending.formUnion(identifiers)
+        pending.subtract(identifiers)
+    }
+    func removeDelivered(identifiers: [String]) async {
+        removedDelivered.formUnion(identifiers)
+        delivered.subtract(identifiers)
+    }
+    func add(_ request: UNNotificationRequest) async throws {
+        pending.insert(request.identifier)
+    }
+}
 
 final class V4AccountRemovalRepositoryTests: XCTestCase {
     @MainActor
@@ -162,4 +187,59 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1,
                        "Shared catalog data must survive account removal and re-login.")
     }
+    @MainActor
+    func testRemovalCoordinatorCommitsAccountDeletionThenClearsOnlyItsNotificationNamespaces() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let accountA = DBAccount(itchUserID: 816, username: "remove-me")
+        let accountB = DBAccount(itchUserID: 817, username: "keep-me")
+        context.insert(accountA)
+        context.insert(accountB)
+        context.insert(DBAccountCalendarEvent(
+            accountID: accountA.id, eventKey: "removed-calendar", gameID: "shared", kind: "personal"
+        ))
+        context.insert(DBAccountUpdateWatch(accountID: accountA.id, gameID: "shared"))
+        try context.save()
+
+        let calendarA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: accountA.id, eventID: "calendar-event"
+        ) + ".generation.1"
+        let calendarB = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: accountB.id, eventID: "calendar-event"
+        ) + ".generation.1"
+        let updateA = AccountUpdateWatchNotificationCoordinator.notificationIdentifier(
+            accountID: accountA.id, gameID: "shared"
+        ) + ".generation.1"
+        let updateB = AccountUpdateWatchNotificationCoordinator.notificationIdentifier(
+            accountID: accountB.id, gameID: "shared"
+        ) + ".generation.1"
+        let center = FakeV4RemovalNotificationCenter()
+        center.pending = [calendarA, calendarB, updateA, updateB, "unrelated.pending"]
+        center.delivered = [calendarA, calendarB, updateA, updateB, "unrelated.delivered"]
+
+        let repository = V4AccountRemovalRepository(context: context, session: ItchAccountSession())
+        let coordinator = V4AccountRemovalCoordinator(
+            repository: repository,
+            calendarNotifications: AccountCalendarNotificationCoordinator(center: center),
+            updateWatchNotifications: AccountUpdateWatchNotificationCoordinator(center: center)
+        )
+
+        let report = try await coordinator.removeAccountAndPersonalData(itchUserID: 816)
+
+        XCTAssertEqual(report.accountID, "itch:816")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DBAccount>()).map(\.id), ["itch:817"])
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountCalendarEvent>()), 0)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountUpdateWatch>()), 0)
+        XCTAssertTrue(center.removedPending.contains(calendarA))
+        XCTAssertTrue(center.removedPending.contains(updateA))
+        XCTAssertTrue(center.removedDelivered.contains(calendarA))
+        XCTAssertTrue(center.removedDelivered.contains(updateA))
+        XCTAssertTrue(center.pending.contains(calendarB))
+        XCTAssertTrue(center.pending.contains(updateB))
+        XCTAssertTrue(center.delivered.contains(calendarB))
+        XCTAssertTrue(center.delivered.contains(updateB))
+        XCTAssertTrue(center.pending.contains("unrelated.pending"))
+        XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
 }
