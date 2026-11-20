@@ -313,7 +313,7 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
     }
 
     @MainActor
-    func testExplicitAccountRemovalRejectsNonCanonicalAccountID() async {
+    func testCancelManagedNotificationsRejectsNonCanonicalAccountID() async {
         let center = FakeAccountCalendarNotificationCenter()
         let managed = AccountCalendarNotificationCoordinator.notificationIdentifier(
             accountID: "itch:101", eventID: "event-a"
