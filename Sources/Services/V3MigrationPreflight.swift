@@ -15,7 +15,7 @@ struct V3MigrationPreflightReport: Codable, Equatable {
     let integrityIssues: [String]
     let inventoryDigest: String
 
-    var isStructurallyValid: Bool { integrityIssues.allSatisfy { $0.hasPrefix("updateWatch.missingGame:") } }
+    var isStructurallyValid: Bool { integrityIssues.allSatisfy { $0.hasPrefix("updateWatch.missingGame:") || $0.hasPrefix("calendarEvent.") } }
 
     var hasUnresolvedOwnership: Bool {
         ownershipReviewCounts.values.contains { $0 > 0 }
@@ -136,10 +136,10 @@ enum V3MigrationPreflight {
             if !gameIDs.contains(event.gameID) {
                 issues.append("calendarEvent.missingGame:\(event.id)")
             }
-            if let updateID = event.sourceUpdateID,
-               let update = updateByID[updateID],
-               update.gameID != event.gameID {
-                issues.append("calendarEvent.updateGameMismatch:\(event.id)")
+            if let updateID = event.sourceUpdateID {
+                if let update = updateByID[updateID] {
+                    if update.gameID != event.gameID { issues.append("calendarEvent.updateGameMismatch:\(event.id)") }
+                } else { issues.append("calendarEvent.missingUpdate:\(event.id)") }
             }
         }
 
