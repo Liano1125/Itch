@@ -16,7 +16,8 @@ final class V4AccountRegistryRepositoryTests: XCTestCase {
 
     @MainActor
     func testAuthenticatedIdentityCreatesOneStableAccountRecord() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let repository = V4AccountRegistryRepository(context: context)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let identity = ItchAccountIdentity(
@@ -40,7 +41,8 @@ final class V4AccountRegistryRepositoryTests: XCTestCase {
 
     @MainActor
     func testReauthenticationRefreshesProfileWithoutChangingIdentityOrFirstSeen() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let repository = V4AccountRegistryRepository(context: context)
         let firstSeen = Date(timeIntervalSince1970: 1_700_000_000)
         let refreshedAt = firstSeen.addingTimeInterval(500)
@@ -68,7 +70,8 @@ final class V4AccountRegistryRepositoryTests: XCTestCase {
 
     @MainActor
     func testRepositoryRejectsInvalidIdentityWithoutWriting() throws {
-        let context = try makeContainer().mainContext
+        let container = try makeContainer()
+        let context = container.mainContext
         let repository = V4AccountRegistryRepository(context: context)
 
         XCTAssertThrowsError(try repository.recordAuthenticatedIdentity(
