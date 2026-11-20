@@ -190,30 +190,6 @@ final class AccountCalendarNotificationCoordinator {
         await removeManagedNotifications(accountID: nil, generation: operationGeneration, isCurrent: { true })
     }
 
-    /// Removes only the pending and delivered calendar notifications owned by
-    /// one inactive account. Used after that account's V4 data is removed.
-    func cancelManagedNotifications(accountID: String) async {
-        guard Self.isCanonicalItchAccountID(accountID) else { return }
-        operationGeneration &+= 1
-        await removeManagedNotifications(
-            accountID: accountID,
-            generation: operationGeneration,
-            isCurrent: { true }
-        )
-    }
-
-    /// Removes only the pending and delivered calendar notifications owned by
-    /// one inactive account. Used after that account's V4 data is removed.
-    func cancelManagedNotifications(accountID: String) async {
-        guard Self.isCanonicalItchAccountID(accountID) else { return }
-        operationGeneration &+= 1
-        await removeManagedNotifications(
-            accountID: accountID,
-            generation: operationGeneration,
-            isCurrent: { true }
-        )
-    }
-
     static func notificationIdentifier(accountID: String, eventID: String) -> String {
         "\(identifierPrefix)\(encoded(accountID)).event.\(encoded(eventID))"
     }
