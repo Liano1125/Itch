@@ -223,6 +223,7 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         var storedToken: String?
         var didStartAuthorization = false
         var authorizationContinuation: CheckedContinuation<URL, Error>?
+        var generatedCallbackURL: URL?
         var didExchangeCode = false
         var didFetchProfile = false
 
@@ -252,7 +253,7 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
                     URLQueryItem(name: "state", value: state),
                     URLQueryItem(name: "code", value: "authorization-code")
                 ]
-                let callbackURL = try XCTUnwrap(callback.url)
+                generatedCallbackURL = try XCTUnwrap(callback.url)
                 return try await withCheckedThrowingContinuation { continuation in
                     didStartAuthorization = true
                     authorizationContinuation = continuation
@@ -272,9 +273,7 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         await service.signOut()
         XCTAssertFalse(service.isLoading)
 
-        authorizationContinuation?.resume(returning: try XCTUnwrap(
-            URL(string: "\\(ItchOAuthConfig.callbackScheme)://oauth?state=stale&code=stale")
-        ))
+        authorizationContinuation?.resume(returning: try XCTUnwrap(generatedCallbackURL))
         authorizationContinuation = nil
         await signInTask.value
 
