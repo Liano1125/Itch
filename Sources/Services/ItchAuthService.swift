@@ -11,7 +11,6 @@ final class ItchAuthService: NSObject, ObservableObject,
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
-    private let api = ItchAPI()
     private let readAccessToken: @MainActor () -> String?
     private let deleteAccessToken: @MainActor () -> Void
     private let revokeAccessToken: @MainActor (String) async throws -> Void
@@ -85,7 +84,12 @@ final class ItchAuthService: NSObject, ObservableObject,
         let operation = authOperationGeneration
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            // An older sign-in must not clear the loading state of a newer one.
+            if operation == authOperationGeneration {
+                isLoading = false
+            }
+        }
 
         do {
             let verifier = PKCE.makeVerifier()
@@ -134,6 +138,7 @@ final class ItchAuthService: NSObject, ObservableObject,
             let callbackURL = try await authorize(
                 url: authorizationURL
             )
+            guard operation == authOperationGeneration else { return }
 
             guard let callback = URLComponents(
                 url: callbackURL,
@@ -174,6 +179,7 @@ final class ItchAuthService: NSObject, ObservableObject,
                 code,
                 verifier: verifier
             )
+            guard operation == authOperationGeneration else { return }
 
             // Validate the new credential before replacing the persisted session.
             let authenticatedUser = try await fetchProfile(token)
@@ -301,6 +307,11 @@ final class ItchAuthService: NSObject, ObservableObject,
         // account-owned request captured under the old generation is now stale.
         authOperationGeneration &+= 1
         let operation = authOperationGeneration
+        isLoading = false
+        // Close any pending browser authorization immediately. Its callback
+        // will be treated as stale by the generation checks in signIn().
+        webSession?.cancel()
+        webSession = nil
         let token = readAccessToken()
         user = nil
         accountSession.activate(nil)
