@@ -12,18 +12,18 @@ final class ItchAuthService: NSObject, ObservableObject,
     @Published var errorMessage: String?
 
     private let api = ItchAPI()
-    private let readAccessToken: () -> String?
-    private let deleteAccessToken: () -> Void
-    private let revokeAccessToken: (String) async throws -> Void
+    private let readAccessToken: @MainActor () -> String?
+    private let deleteAccessToken: @MainActor () -> Void
+    private let revokeAccessToken: @MainActor (String) async throws -> Void
 
     init(
-        readAccessToken: @escaping () -> String? = {
+        readAccessToken: @escaping @MainActor () -> String? = {
             KeychainStore.read("access_token")
         },
-        deleteAccessToken: @escaping () -> Void = {
+        deleteAccessToken: @escaping @MainActor () -> Void = {
             KeychainStore.delete("access_token")
         },
-        revokeAccessToken: @escaping (String) async throws -> Void = {
+        revokeAccessToken: @escaping @MainActor (String) async throws -> Void = {
             try await Self.revokeAccessTokenOnServer($0)
         }
     ) {
