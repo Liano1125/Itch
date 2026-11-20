@@ -32,6 +32,8 @@ final class V4AccountRemovalRepository {
                 return "The V4 account does not exist: \(id)."
             case .duplicateAccount(let id):
                 return "Multiple V4 account records match: \(id)."
+            case .accountIsActive(let id):
+                return "Sign out or switch accounts before removing \(id) from this device."
             }
         }
     }
