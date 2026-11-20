@@ -195,7 +195,7 @@ final class DatabaseV4AccountModelTests: XCTestCase {
         for invalidAccountID in ["", " itch:101", "itch:0", "itch:01", "itch:-1", "itch:not-a-number", "patreon:101"] {
             XCTAssertThrowsError(try AccountScopedLibraryRepository(
                 context: container.mainContext, accountID: invalidAccountID
-            ), "Expected invalid account scope to be rejected: \\(invalidAccountID)")
+            ), "Expected invalid account scope to be rejected: \(invalidAccountID)")
         }
 
         let repository = try AccountScopedLibraryRepository(
