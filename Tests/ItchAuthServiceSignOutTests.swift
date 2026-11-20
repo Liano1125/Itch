@@ -68,4 +68,45 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         XCTAssertNil(service.accountSession.identity)
         XCTAssertFalse(service.isSignedIn)
     }
+
+    @MainActor
+    func testRestoreSessionCannotReactivateAccountAfterSignOut() async throws {
+        var storedToken: String? = "restore-token"
+        var didStartProfileRequest = false
+        var profileContinuation: CheckedContinuation<ItchUser, Error>?
+
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { _ in
+                try await withCheckedThrowingContinuation { continuation in
+                    didStartProfileRequest = true
+                    profileContinuation = continuation
+                }
+            }
+        )
+
+        let restoreTask = Task { await service.restoreSession() }
+        while !didStartProfileRequest {
+            await Task.yield()
+        }
+
+        await service.signOut()
+        profileContinuation?.resume(returning: ItchUser(
+            id: 903,
+            username: "stale-restore",
+            displayName: nil,
+            coverUrl: nil,
+            url: nil
+        ))
+        profileContinuation = nil
+        await restoreTask.value
+
+        XCTAssertNil(service.user)
+        XCTAssertNil(service.accountSession.identity)
+        XCTAssertFalse(service.isSignedIn)
+        XCTAssertNil(storedToken)
+    }
+
 }
