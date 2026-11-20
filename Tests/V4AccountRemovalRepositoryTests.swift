@@ -51,7 +51,7 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         try appState.setString("device-pref", for: "appearance", in: .device, save: false)
         try context.save()
 
-        let report = try V4AccountRemovalRepository(context: context)
+        let report = try V4AccountRemovalRepository(context: context, session: ItchAccountSession())
             .removeAccountAndPersonalData(itchUserID: 811)
 
         XCTAssertEqual(report, .init(
@@ -90,5 +90,21 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         XCTAssertThrowsError(try repository.removeAccountAndPersonalData(itchUserID: 0))
         XCTAssertThrowsError(try repository.removeAccountAndPersonalData(itchUserID: 999))
         XCTAssertEqual(try context.fetch(FetchDescriptor<DBAccount>()).map(\.id), ["itch:813"])
+    }
+
+    @MainActor
+    func testRemovalRefusesTheCurrentlyAuthenticatedAccount() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBAccount(itchUserID: 814, username: "active"))
+        try context.save()
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 814, username: "active"))
+        let repository = V4AccountRemovalRepository(context: context, session: session)
+
+        XCTAssertThrowsError(try repository.removeAccountAndPersonalData(itchUserID: 814)) { error in
+            XCTAssertEqual(error as? V4AccountRemovalRepository.RepositoryError, .accountIsActive("itch:814"))
+        }
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccount>()), 1)
     }
 }
