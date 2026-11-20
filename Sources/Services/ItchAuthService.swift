@@ -24,7 +24,7 @@ final class ItchAuthService: NSObject, ObservableObject,
             KeychainStore.delete("access_token")
         },
         revokeAccessToken: @escaping @MainActor (String) async throws -> Void = {
-            try await Self.revokeAccessTokenOnServer($0)
+            try await ItchAuthService.revokeAccessTokenOnServer($0)
         }
     ) {
         self.readAccessToken = readAccessToken
@@ -293,7 +293,7 @@ final class ItchAuthService: NSObject, ObservableObject,
         }
     }
 
-    private static func revokeAccessTokenOnServer(_ token: String) async throws {
+    static func revokeAccessTokenOnServer(_ token: String) async throws {
         var request = URLRequest(
             url: URL(string: "https://api.itch.io/oauth/revoke")!
         )
