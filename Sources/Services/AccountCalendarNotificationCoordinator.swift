@@ -172,6 +172,19 @@ final class AccountCalendarNotificationCoordinator {
         return scheduled
     }
 
+    /// Removes only notifications owned by one account. Used when that account is
+    /// explicitly removed from this device; ordinary sign-out has separate semantics.
+    func clear(accountID: String) async {
+        operationGeneration &+= 1
+        let generation = operationGeneration
+        guard Self.isCanonicalItchAccountID(accountID) else { return }
+        await removeManagedNotifications(
+            accountID: accountID,
+            generation: generation,
+            isCurrent: { true }
+        )
+    }
+
     func cancelAllManagedNotifications() async {
         operationGeneration &+= 1
         await removeManagedNotifications(accountID: nil, generation: operationGeneration, isCurrent: { true })
