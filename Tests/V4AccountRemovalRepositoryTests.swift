@@ -77,6 +77,32 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBCalendarSourceEvent>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLegacyCalendarEvent>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBLegacyUpdateWatch>()), 1)
+
+        // Re-authentication recreates only the account registry entry. Explicitly
+        // removed personal rows must not silently reappear on the next login.
+        let registry = V4AccountRegistryRepository(context: context)
+        let reauthenticated = try registry.recordAuthenticatedIdentity(
+            ItchAccountIdentity(itchUserID: 811, username: "account-a-returned")
+        )
+        XCTAssertEqual(reauthenticated.id, "itch:811")
+        XCTAssertEqual(reauthenticated.username, "account-a-returned")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DBAccount>()).count, 2)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>())
+                .filter { $0.accountID == "itch:811" }.count,
+            0
+        )
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<DBAccountCalendarEvent>())
+                .filter { $0.accountID == "itch:811" }.count,
+            0
+        )
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<DBAccountUpdateWatch>())
+                .filter { $0.accountID == "itch:811" }.count,
+            0
+        )
+        XCTAssertNil(try appState.state(for: "private-key", in: stateA))
     }
 
     @MainActor
