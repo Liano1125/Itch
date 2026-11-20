@@ -82,22 +82,18 @@ enum V4MigrationManifestBuilder {
             diagnostics.append("migration.gameUpdates.notRun")
         }
         let updateWatchSourceRows = preflight.rowCounts["updateWatches"] ?? 0
+        // Calendar rows are covered only when the complete legacy payload was quarantined and verified.
+        let calendarSourceRows = preflight.rowCounts["calendarEvents"] ?? 0
         if let calendarEvents, let calendarEventVerification {
-            domains["calendarEvents"] = V4MigrationDomainManifest(
-                sourceRowCount: calendarSourceRows,
-                destinationRowCount: calendarEvents.rowCount,
-                scopeCounts: ["legacy-unassigned": calendarEvents.rowCount],
-                quarantinedRowCount: calendarEvents.quarantinedRowCount,
-                inventoryDigest: calendarEvents.inventoryDigest,
-                digestKind: .stableIdentitySHA256,
-                payloadVerification: V4MigrationPayloadVerificationSummary(
-                    status: calendarEventVerification.isVerified && calendarEventVerification.verifiedRows >= calendarEvents.rowCount ? .verified : .failed,
-                    method: .fieldByFieldCanonicalValues,
-                    verifiedRows: calendarEventVerification.verifiedRows,
-                    unverifiedRows: calendarEventVerification.unverifiedRows
-                ),
-                integrityDiagnostics: calendarEventVerification.diagnostics
-            )
+            reportedSourceTables.insert("calendarEvents")
+            if calendarEvents.rowCount != calendarSourceRows || !calendarEventVerification.isVerified
+                || calendarEventVerification.verifiedRows < calendarEvents.rowCount
+                || calendarEventVerification.quarantinedRowCount != calendarEvents.quarantinedRowCount
+                || calendarEventVerification.integrityIssueCount != calendarEvents.integrityIssueCount {
+                diagnostics.append("migration.calendarEvents.verificationFailed")
+            }
+        } else if calendarSourceRows > 0 {
+            diagnostics.append("migration.calendarEvents.notRun")
         }
 
         if let updateWatches, let updateWatchVerification {
@@ -160,20 +156,6 @@ enum V4MigrationManifestBuilder {
             diagnostics.append("migration.appState.sourceCountMismatch")
         }
 
-        // Calendar rows are covered only when the complete legacy payload was quarantined and verified.
-        let calendarSourceRows = preflight.rowCounts["calendarEvents"] ?? 0
-        if let calendarEvents, let calendarEventVerification {
-            reportedSourceTables.insert("calendarEvents")
-            if calendarEvents.rowCount != calendarSourceRows || !calendarEventVerification.isVerified
-                || calendarEventVerification.verifiedRows < calendarEvents.rowCount
-                || calendarEventVerification.quarantinedRowCount != calendarEvents.quarantinedRowCount
-                || calendarEventVerification.integrityIssueCount != calendarEvents.integrityIssueCount {
-                diagnostics.append("migration.calendarEvents.verificationFailed")
-            }
-        } else if calendarSourceRows > 0 {
-            diagnostics.append("migration.calendarEvents.notRun")
-        }
-
         let libraryDomain = V4MigrationDomainManifest(
             sourceRowCount: librarySourceRows,
             destinationRowCount: library.totalRows,
@@ -210,6 +192,24 @@ enum V4MigrationManifestBuilder {
             "library": libraryDomain,
             "appState": appStateDomain
         ]
+        if let calendarEvents, let calendarEventVerification {
+            domains["calendarEvents"] = V4MigrationDomainManifest(
+                sourceRowCount: calendarSourceRows,
+                destinationRowCount: calendarEvents.rowCount,
+                scopeCounts: ["legacy-unassigned": calendarEvents.rowCount],
+                quarantinedRowCount: calendarEvents.quarantinedRowCount,
+                inventoryDigest: calendarEvents.inventoryDigest,
+                digestKind: .stableIdentitySHA256,
+                payloadVerification: V4MigrationPayloadVerificationSummary(
+                    status: calendarEventVerification.isVerified && calendarEventVerification.verifiedRows >= calendarEvents.rowCount ? .verified : .failed,
+                    method: .fieldByFieldCanonicalValues,
+                    verifiedRows: calendarEventVerification.verifiedRows,
+                    unverifiedRows: calendarEventVerification.unverifiedRows
+                ),
+                integrityDiagnostics: calendarEventVerification.diagnostics
+            )
+        }
+
         if let sharedCatalog, let sharedCatalogVerification {
             domains["sharedCatalog"] = V4MigrationDomainManifest(
                 sourceRowCount: catalogSourceRows,
