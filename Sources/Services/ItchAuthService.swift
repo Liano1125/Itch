@@ -15,6 +15,8 @@ final class ItchAuthService: NSObject, ObservableObject,
     private let deleteAccessToken: @MainActor () -> Void
     private let revokeAccessToken: @MainActor (String) async throws -> Void
     private let fetchProfile: @MainActor (String) async throws -> ItchUser
+    private let authorizeURL: (@MainActor (URL) async throws -> URL)?
+    private let exchangeAuthorizationCode: (@MainActor (String, String) async throws -> String)?
     private var authOperationGeneration: UInt64 = 0
 
     init(
@@ -29,12 +31,16 @@ final class ItchAuthService: NSObject, ObservableObject,
         },
         fetchProfile: @escaping @MainActor (String) async throws -> ItchUser = {
             try await ItchAPI().fetchProfile(token: $0)
-        }
+        },
+        authorizeURL: (@MainActor (URL) async throws -> URL)? = nil,
+        exchangeAuthorizationCode: (@MainActor (String, String) async throws -> String)? = nil
     ) {
         self.readAccessToken = readAccessToken
         self.deleteAccessToken = deleteAccessToken
         self.revokeAccessToken = revokeAccessToken
         self.fetchProfile = fetchProfile
+        self.authorizeURL = authorizeURL
+        self.exchangeAuthorizationCode = exchangeAuthorizationCode
         super.init()
     }
 
@@ -135,9 +141,12 @@ final class ItchAuthService: NSObject, ObservableObject,
                 throw ItchAPIError.invalidResponse
             }
 
-            let callbackURL = try await authorize(
-                url: authorizationURL
-            )
+            let callbackURL: URL
+            if let authorizeURL {
+                callbackURL = try await authorizeURL(authorizationURL)
+            } else {
+                callbackURL = try await authorize(url: authorizationURL)
+            }
             guard operation == authOperationGeneration else { return }
 
             guard let callback = URLComponents(
@@ -175,10 +184,12 @@ final class ItchAuthService: NSObject, ObservableObject,
                 throw ItchAPIError.invalidResponse
             }
 
-            let token = try await exchangeCode(
-                code,
-                verifier: verifier
-            )
+            let token: String
+            if let exchangeAuthorizationCode {
+                token = try await exchangeAuthorizationCode(code, verifier)
+            } else {
+                token = try await exchangeCode(code, verifier: verifier)
+            }
             guard operation == authOperationGeneration else { return }
 
             // Validate the new credential before replacing the persisted session.
