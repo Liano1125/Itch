@@ -5,7 +5,7 @@ import SwiftData
 final class V4AuthenticatedAccountRegistryBridgeTests: XCTestCase {
     @MainActor
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: ItchPocketSchemaV4.self)
+        let schema = Schema([DBAccount.self])
         let configuration = ModelConfiguration(
             "itchPocket-v4-auth-bridge-\(UUID().uuidString)",
             schema: schema,
