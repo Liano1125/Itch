@@ -139,12 +139,12 @@ final class AccountUpdateWatchNotificationCoordinator {
     }
 
     func clear(accountID: String?, isCurrent: @escaping @MainActor () -> Bool = { true }) async {
-        operationGeneration &+= 1
-        let generation = operationGeneration
+        // Do not let scheduling for another account invalidate this
+        // account-specific cleanup while notification-center reads are suspended.
         if let accountID, !Self.isCanonicalItchAccountID(accountID) { return }
         let prefix = accountID.map(Self.accountPrefix) ?? Self.identifierPrefix
         let pending = await center.pendingIdentifiers()
-        guard isCurrent(), isCurrentOperation(generation) else { return }
+        guard isCurrent() else { return }
         let pendingToRemove = pending.filter { $0.hasPrefix(prefix) }
         let delivered = await center.deliveredIdentifiers()
         guard isCurrent(), isCurrentOperation(generation) else { return }
