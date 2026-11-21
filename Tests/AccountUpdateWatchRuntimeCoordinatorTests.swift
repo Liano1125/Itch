@@ -76,8 +76,10 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
     @MainActor
     private func makeRepository(_ accountID: String) throws -> (ModelContainer, AccountScopedUpdateWatchRepository) {
         let container = try makeContainer()
-        container.mainContext.insert(DBGame(id: "game", title: "Game"))
-        try container.mainContext.save()
+        let context = container.mainContext
+        context.insert(DBAccount(itchUserID: 101, username: "account-a"))
+        context.insert(DBGame(id: "game", title: "Game"))
+        try context.save()
         let repository = try AccountScopedUpdateWatchRepository(context: container.mainContext, accountID: accountID)
         return (container, repository)
     }
