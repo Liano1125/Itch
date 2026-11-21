@@ -46,6 +46,7 @@ struct ItchAccountIdentity: Codable, Hashable, Identifiable {
 struct ItchAccountRequestContext: Equatable {
     let accountID: String
     let generation: UInt64
+    let accountRemovalGeneration: UInt64
 }
 
 /// Snapshot used by legacy V3 library operations, including signed-out local-library mode.
@@ -64,16 +65,16 @@ final class ItchAccountSession {
     private(set) var identity: ItchAccountIdentity?
     private(set) var generation: UInt64 = 0
     private var accountsBeingRemoved = Set<String>()
+    private var accountRemovalGenerations: [String: UInt64] = [:]
 
     /// Reserves an account identity while its persistent data and notification
     /// projections are being removed. Authentication must not reactivate it
     /// until the complete removal operation has finished.
     func beginAccountRemoval(_ accountID: String) -> Bool {
         guard accountsBeingRemoved.insert(accountID).inserted else { return false }
-        // Invalidate every request already in flight before persistent rows are
-        // deleted. The increment is permanent, so a request that resumes only
-        // after the removal lease ends cannot become current again.
-        generation &+= 1
+        // Invalidate only this account's in-flight work. An unrelated active
+        // account must not have its requests cancelled by this removal.
+        accountRemovalGenerations[accountID, default: 0] += 1
         return true
     }
 
@@ -100,7 +101,11 @@ final class ItchAccountSession {
     /// Returns nil while signed out so account-owned work cannot start unscoped.
     func captureRequestContext() -> ItchAccountRequestContext? {
         guard let identity, !accountsBeingRemoved.contains(identity.id) else { return nil }
-        return ItchAccountRequestContext(accountID: identity.id, generation: generation)
+        return ItchAccountRequestContext(
+            accountID: identity.id,
+            generation: generation,
+            accountRemovalGeneration: accountRemovalGenerations[identity.id, default: 0]
+        )
     }
 
     /// Validates both account identity and generation before publishing or saving
@@ -108,6 +113,7 @@ final class ItchAccountSession {
     func isCurrent(_ context: ItchAccountRequestContext) -> Bool {
         identity?.id == context.accountID
             && generation == context.generation
+            && accountRemovalGenerations[context.accountID, default: 0] == context.accountRemovalGeneration
             && !accountsBeingRemoved.contains(context.accountID)
     }
 
