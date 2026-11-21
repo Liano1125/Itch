@@ -64,6 +64,7 @@ final class ItchAuthService: NSObject, ObservableObject,
     func restoreSession() async {
         authOperationGeneration &+= 1
         let operation = authOperationGeneration
+        let removalSnapshot = accountSession.captureRemovalStateSnapshot()
 
         guard let token = readAccessToken() else {
             guard operation == authOperationGeneration else { return }
@@ -78,7 +79,9 @@ final class ItchAuthService: NSObject, ObservableObject,
             // request while the profile lookup was suspended.
             guard operation == authOperationGeneration,
                   readAccessToken() == token else { return }
-            guard !accountSession.isRemovalInProgress(for: "itch:\(restoredUser.id)") else {
+            let restoredAccountID = "itch:\(restoredUser.id)"
+            guard !accountSession.removalWasStarted(for: restoredAccountID, after: removalSnapshot),
+                  !accountSession.isRemovalInProgress(for: restoredAccountID) else {
                 throw AuthenticationError.accountRemovalInProgress
             }
             user = restoredUser
@@ -99,6 +102,7 @@ final class ItchAuthService: NSObject, ObservableObject,
 
         authOperationGeneration &+= 1
         let operation = authOperationGeneration
+        let removalSnapshot = accountSession.captureRemovalStateSnapshot()
         isLoading = true
         errorMessage = nil
         defer {
@@ -207,7 +211,9 @@ final class ItchAuthService: NSObject, ObservableObject,
             let authenticatedUser = try await fetchProfile(token)
 
             guard operation == authOperationGeneration else { return }
-            guard !accountSession.isRemovalInProgress(for: "itch:\(authenticatedUser.id)") else {
+            let authenticatedAccountID = "itch:\(authenticatedUser.id)"
+            guard !accountSession.removalWasStarted(for: authenticatedAccountID, after: removalSnapshot),
+                  !accountSession.isRemovalInProgress(for: authenticatedAccountID) else {
                 throw AuthenticationError.accountRemovalInProgress
             }
             try KeychainStore.save(
