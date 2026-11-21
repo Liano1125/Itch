@@ -38,6 +38,12 @@ enum V4MigrationAttemptRunner {
         ownerLockURL: URL
     ) async throws -> Result {
         try await lifecycle.withExclusiveMigrationOwnership { ownerLease in
+            // Reconcile only journaled interrupted attempts while holding the
+            // same lease that will protect this new snapshot and conversion.
+            _ = try await lifecycle.recoverInterruptedSnapshotAttempts(
+                at: date, ownerLease: ownerLease
+            )
+
             let snapshot = try await lifecycle.createStagingSnapshot(
                 from: sourceV3StoreURL,
                 runID: runID,
