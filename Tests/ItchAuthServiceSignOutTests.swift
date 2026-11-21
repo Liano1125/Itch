@@ -357,4 +357,90 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         service.accountSession.endAccountRemoval("itch:911")
     }
 
+    @MainActor
+    func testRestoreStartedBeforeRemovalCannotReactivateAfterRemovalFinishes() async {
+        var storedToken: String? = "restore-token"
+        var didStartProfileFetch = false
+        var profileContinuation: CheckedContinuation<ItchUser, Error>?
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { _ in
+                try await withCheckedThrowingContinuation { continuation in
+                    didStartProfileFetch = true
+                    profileContinuation = continuation
+                }
+            }
+        )
+
+        let restoreTask = Task { await service.restoreSession() }
+        while !didStartProfileFetch { await Task.yield() }
+
+        XCTAssertTrue(service.accountSession.beginAccountRemoval("itch:920"))
+        service.accountSession.endAccountRemoval("itch:920")
+        profileContinuation?.resume(returning: ItchUser(
+            id: 920, username: "removed-during-restore", displayName: nil,
+            coverUrl: nil, url: nil
+        ))
+        profileContinuation = nil
+        await restoreTask.value
+
+        XCTAssertNil(service.user)
+        XCTAssertNil(service.accountSession.identity)
+        XCTAssertNil(storedToken)
+        XCTAssertNotNil(service.errorMessage)
+    }
+
+    @MainActor
+    func testSignInStartedBeforeRemovalCannotActivateAfterRemovalFinishes() async throws {
+        var storedToken: String?
+        var didStartProfileFetch = false
+        var profileContinuation: CheckedContinuation<ItchUser, Error>?
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { _ in
+                try await withCheckedThrowingContinuation { continuation in
+                    didStartProfileFetch = true
+                    profileContinuation = continuation
+                }
+            },
+            authorizeURL: { authorizationURL in
+                let state = URLComponents(
+                    url: authorizationURL,
+                    resolvingAgainstBaseURL: false
+                )?.queryItems?.first(where: { $0.name == "state" })?.value
+                var callback = URLComponents()
+                callback.scheme = ItchOAuthConfig.callbackScheme
+                callback.host = "oauth"
+                callback.queryItems = [
+                    URLQueryItem(name: "state", value: state),
+                    URLQueryItem(name: "code", value: "authorization-code")
+                ]
+                return try XCTUnwrap(callback.url)
+            },
+            exchangeAuthorizationCode: { _, _ in "new-account-token" }
+        )
+
+        let signInTask = Task { await service.signIn() }
+        while !didStartProfileFetch { await Task.yield() }
+
+        XCTAssertTrue(service.accountSession.beginAccountRemoval("itch:921"))
+        service.accountSession.endAccountRemoval("itch:921")
+        profileContinuation?.resume(returning: ItchUser(
+            id: 921, username: "removed-during-sign-in", displayName: nil,
+            coverUrl: nil, url: nil
+        ))
+        profileContinuation = nil
+        await signInTask.value
+
+        XCTAssertNil(service.user)
+        XCTAssertNil(service.accountSession.identity)
+        XCTAssertNil(storedToken)
+        XCTAssertNotNil(service.errorMessage)
+        XCTAssertFalse(service.isLoading)
+    }
+
 }
