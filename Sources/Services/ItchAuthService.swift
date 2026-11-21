@@ -19,6 +19,14 @@ final class ItchAuthService: NSObject, ObservableObject,
     private let exchangeAuthorizationCode: (@MainActor (String, String) async throws -> String)?
     private var authOperationGeneration: UInt64 = 0
 
+    private enum AuthenticationError: LocalizedError {
+        case accountRemovalInProgress
+
+        var errorDescription: String? {
+            "This itch account is being removed from this device. Please try again after removal finishes."
+        }
+    }
+
     init(
         readAccessToken: @escaping @MainActor () -> String? = {
             KeychainStore.read("access_token")
@@ -70,6 +78,9 @@ final class ItchAuthService: NSObject, ObservableObject,
             // request while the profile lookup was suspended.
             guard operation == authOperationGeneration,
                   readAccessToken() == token else { return }
+            guard !accountSession.isRemovalInProgress(for: "itch:\(restoredUser.id)") else {
+                throw AuthenticationError.accountRemovalInProgress
+            }
             user = restoredUser
             accountSession.activate(ItchAccountIdentity(user: restoredUser))
         } catch {
@@ -196,6 +207,9 @@ final class ItchAuthService: NSObject, ObservableObject,
             let authenticatedUser = try await fetchProfile(token)
 
             guard operation == authOperationGeneration else { return }
+            guard !accountSession.isRemovalInProgress(for: "itch:\(authenticatedUser.id)") else {
+                throw AuthenticationError.accountRemovalInProgress
+            }
             try KeychainStore.save(
                 token,
                 for: "access_token"
