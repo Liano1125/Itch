@@ -13,7 +13,7 @@ final class ScopedAppStateRepositoryTests: XCTestCase {
         )
         let container = try ModelContainer(for: schema, configurations: [configuration])
         for userID in [1, 2, 7, 11, 22, 101, 202, 303, 404, 505, 606, 707] {
-            container.mainContext.insert(DBAccount(itchUserID: userID, username: "test-\\(userID)"))
+            container.mainContext.insert(DBAccount(itchUserID: userID, username: "test-\(userID)"))
         }
         try container.mainContext.save()
         return container
