@@ -217,8 +217,10 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
         center.pending = [calendarA, calendarB, updateA, updateB, "unrelated.pending"]
         center.delivered = [calendarA, calendarB, updateA, updateB, "unrelated.delivered"]
 
-        let repository = V4AccountRemovalRepository(context: context, session: ItchAccountSession())
+        let session = ItchAccountSession()
+        let repository = V4AccountRemovalRepository(context: context, session: session)
         let coordinator = V4AccountRemovalCoordinator(
+            session: session,
             repository: repository,
             calendarNotifications: AccountCalendarNotificationCoordinator(center: center),
             updateWatchNotifications: AccountUpdateWatchNotificationCoordinator(center: center)
