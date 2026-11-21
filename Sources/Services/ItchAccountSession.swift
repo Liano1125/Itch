@@ -99,7 +99,7 @@ final class ItchAccountSession {
     /// Captures the currently authenticated account for an async operation.
     /// Returns nil while signed out so account-owned work cannot start unscoped.
     func captureRequestContext() -> ItchAccountRequestContext? {
-        guard let identity else { return nil }
+        guard let identity, !accountsBeingRemoved.contains(identity.id) else { return nil }
         return ItchAccountRequestContext(accountID: identity.id, generation: generation)
     }
 
