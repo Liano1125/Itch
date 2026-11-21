@@ -205,6 +205,9 @@ final class ScopedAppStateRepository {
     }
 
     private func existingOrInsert(key: String, in scope: AppStateScope) throws -> DBScopedAppState {
+        if scope.kind == .itchAccount {
+            try V4AccountRegistryGuard.requireRegisteredAccount(scope.identifier, in: context)
+        }
         let rows = try existingRows(for: key, in: scope)
         guard rows.count <= 1 else { throw RepositoryError.duplicateState(key) }
         if let existing = rows.first { return existing }
