@@ -8,6 +8,7 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
     var authorizationResult = true
     var onRequestAuthorization: (() -> Void)?
     var onAdd: (() -> Void)?
+    var onPendingIdentifiers: (() async -> Void)?
     var pending = Set<String>()
     var delivered = Set<String>()
     var added: [UNNotificationRequest] = []
@@ -19,7 +20,10 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
         onRequestAuthorization?()
         return authorizationResult
     }
-    func pendingIdentifiers() async -> Set<String> { pending }
+    func pendingIdentifiers() async -> Set<String> {
+        await onPendingIdentifiers?()
+        return pending
+    }
     func deliveredIdentifiers() async -> Set<String> { delivered }
     func removePending(identifiers: [String]) async {
         removedPending.append(contentsOf: identifiers)
@@ -310,6 +314,37 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
         XCTAssertTrue(center.delivered.contains(accountB))
         XCTAssertTrue(center.pending.contains("unrelated.pending"))
         XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
+    @MainActor
+    func testRemovingOneAccountIsNotAbortedByAnotherAccountsRebuild() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "old-event"
+        )
+        center.pending = [accountA]
+        center.delivered = [accountA]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+        center.onPendingIdentifiers = {
+            center.onPendingIdentifiers = nil
+            _ = await coordinator.rebuild(
+                previousAccountID: "itch:202", accountID: "itch:202",
+                events: [self.event(id: "account-b-event")],
+                now: Date(timeIntervalSince1970: 1_900_000_000),
+                isCurrent: { true }
+            )
+        }
+
+        await coordinator.clear(accountID: "itch:101")
+
+        XCTAssertFalse(center.pending.contains(accountA))
+        XCTAssertFalse(center.delivered.contains(accountA))
+        XCTAssertTrue(center.pending.contains {
+            $0.contains(AccountCalendarNotificationCoordinator.identifierPrefix)
+                && !$0.contains(AccountCalendarNotificationCoordinator.notificationIdentifier(
+                    accountID: "itch:101", eventID: "old-event"
+                ))
+        })
     }
 
 }
