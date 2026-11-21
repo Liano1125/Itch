@@ -198,6 +198,7 @@ final class AccountScopedCalendarRepository {
     }
 
     func upsertOverlay(_ overlay: StoredAccountCalendarOverlay, save: Bool = true) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let sourceID = overlay.sourceEventID
         guard !sourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RepositoryError.emptyKey
