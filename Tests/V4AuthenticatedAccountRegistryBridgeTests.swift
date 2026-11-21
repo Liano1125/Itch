@@ -77,7 +77,7 @@ final class V4AuthenticatedAccountRegistryBridgeTests: XCTestCase {
         let bridge = V4AuthenticatedAccountRegistryBridge(session: session, context: context)
 
         XCTAssertThrowsError(try bridge.recordAuthenticatedSession(
-            ItchAccountRequestContext(accountID: "itch:805", generation: 0)
+            ItchAccountRequestContext(accountID: "itch:805", generation: 0, accountRemovalGeneration: 0)
         ))
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccount>()), 0)
     }
