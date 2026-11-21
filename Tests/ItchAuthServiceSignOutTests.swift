@@ -285,4 +285,76 @@ final class ItchAuthServiceSignOutTests: XCTestCase {
         XCTAssertFalse(service.isLoading)
     }
 
+    @MainActor
+    func testRestoreSessionCannotReactivateAccountWhileRemovalReservationIsHeld() async {
+        var storedToken: String? = "account-being-removed-token"
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { _ in
+                ItchUser(
+                    id: 910,
+                    username: "removing-account",
+                    displayName: nil,
+                    coverUrl: nil,
+                    url: nil
+                )
+            }
+        )
+        XCTAssertTrue(service.accountSession.beginAccountRemoval("itch:910"))
+
+        await service.restoreSession()
+
+        XCTAssertNil(service.user)
+        XCTAssertNil(service.accountSession.identity)
+        XCTAssertNil(storedToken, "A credential for an account being removed must not restore it after the removal lease ends.")
+        XCTAssertNotNil(service.errorMessage)
+        service.accountSession.endAccountRemoval("itch:910")
+    }
+
+    @MainActor
+    func testSignInCannotActivateAccountWhileRemovalReservationIsHeld() async throws {
+        var storedToken: String?
+        let service = ItchAuthService(
+            readAccessToken: { storedToken },
+            deleteAccessToken: { storedToken = nil },
+            revokeAccessToken: { _ in },
+            fetchProfile: { _ in
+                ItchUser(
+                    id: 911,
+                    username: "removing-account",
+                    displayName: nil,
+                    coverUrl: nil,
+                    url: nil
+                )
+            },
+            authorizeURL: { authorizationURL in
+                let state = URLComponents(
+                    url: authorizationURL,
+                    resolvingAgainstBaseURL: false
+                )?.queryItems?.first(where: { $0.name == "state" })?.value
+                var callback = URLComponents()
+                callback.scheme = ItchOAuthConfig.callbackScheme
+                callback.host = "oauth"
+                callback.queryItems = [
+                    URLQueryItem(name: "state", value: state),
+                    URLQueryItem(name: "code", value: "authorization-code")
+                ]
+                return try XCTUnwrap(callback.url)
+            },
+            exchangeAuthorizationCode: { _, _ in "new-account-token" }
+        )
+        XCTAssertTrue(service.accountSession.beginAccountRemoval("itch:911"))
+
+        await service.signIn()
+
+        XCTAssertNil(service.user)
+        XCTAssertNil(service.accountSession.identity)
+        XCTAssertNil(storedToken)
+        XCTAssertNotNil(service.errorMessage)
+        XCTAssertFalse(service.isLoading)
+        service.accountSession.endAccountRemoval("itch:911")
+    }
+
 }
