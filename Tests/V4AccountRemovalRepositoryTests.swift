@@ -9,10 +9,14 @@ private final class FakeV4RemovalNotificationCenter: AccountCalendarNotification
     var delivered = Set<String>()
     var removedPending = Set<String>()
     var removedDelivered = Set<String>()
+    var onPendingIdentifiers: (() async -> Void)?
 
     func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
     func requestAuthorization() async -> Bool { true }
-    func pendingIdentifiers() async -> Set<String> { pending }
+    func pendingIdentifiers() async -> Set<String> {
+        await onPendingIdentifiers?()
+        return pending
+    }
     func deliveredIdentifiers() async -> Set<String> { delivered }
     func removePending(identifiers: [String]) async {
         removedPending.formUnion(identifiers)
@@ -225,10 +229,16 @@ final class V4AccountRemovalRepositoryTests: XCTestCase {
             calendarNotifications: AccountCalendarNotificationCoordinator(center: center),
             updateWatchNotifications: AccountUpdateWatchNotificationCoordinator(center: center)
         )
+        var observedRemovalReservationDuringNotificationCleanup = false
+        center.onPendingIdentifiers = {
+            observedRemovalReservationDuringNotificationCleanup = session.isRemovalInProgress(for: "itch:816")
+        }
 
         let report = try await coordinator.removeAccountAndPersonalData(itchUserID: 816)
 
         XCTAssertEqual(report.accountID, "itch:816")
+        XCTAssertTrue(observedRemovalReservationDuringNotificationCleanup)
+        XCTAssertFalse(session.isRemovalInProgress(for: "itch:816"), "The reservation must be released after cleanup completes.")
         XCTAssertEqual(try context.fetch(FetchDescriptor<DBAccount>()).map(\.id), ["itch:817"])
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountCalendarEvent>()), 0)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountUpdateWatch>()), 0)
