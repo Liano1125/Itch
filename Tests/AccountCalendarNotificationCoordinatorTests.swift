@@ -8,6 +8,7 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
     var authorizationResult = true
     var onRequestAuthorization: (() -> Void)?
     var onAdd: (() -> Void)?
+    var onPendingIdentifiers: (() async -> Void)?
     var pending = Set<String>()
     var delivered = Set<String>()
     var added: [UNNotificationRequest] = []
@@ -19,7 +20,10 @@ private final class FakeAccountCalendarNotificationCenter: AccountCalendarNotifi
         onRequestAuthorization?()
         return authorizationResult
     }
-    func pendingIdentifiers() async -> Set<String> { pending }
+    func pendingIdentifiers() async -> Set<String> {
+        await onPendingIdentifiers?()
+        return pending
+    }
     func deliveredIdentifiers() async -> Set<String> { delivered }
     func removePending(identifiers: [String]) async {
         removedPending.append(contentsOf: identifiers)
@@ -249,4 +253,98 @@ final class AccountCalendarNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(invalidCount, 0)
         XCTAssertTrue(center.added.isEmpty)
     }
+    @MainActor
+    func testExplicitAccountRemovalClearsOnlyThatAccountsCalendarNotifications() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "event-a"
+        )
+        let accountB = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:202", eventID: "event-b"
+        )
+        center.pending = [accountA, accountB, "unrelated.pending"]
+        center.delivered = [accountA, accountB, "unrelated.delivered"]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        await coordinator.clear(accountID: "itch:101")
+
+        XCTAssertTrue(center.removedPending.contains(accountA))
+        XCTAssertTrue(center.removedDelivered.contains(accountA))
+        XCTAssertTrue(center.pending.contains(accountB))
+        XCTAssertTrue(center.delivered.contains(accountB))
+        XCTAssertTrue(center.pending.contains("unrelated.pending"))
+        XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
+
+    @MainActor
+    func testExplicitAccountRemovalRejectsNonCanonicalAccountID() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let managed = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "event-a"
+        )
+        center.pending = [managed]
+        center.delivered = [managed]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        await coordinator.clear(accountID: "itch:01")
+
+        XCTAssertTrue(center.pending.contains(managed))
+        XCTAssertTrue(center.delivered.contains(managed))
+    }
+
+    @MainActor
+    func testExplicitAccountRemovalClearsOnlyThatAccountsPendingAndDeliveredNotifications() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "event-a"
+        )
+        let accountB = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:202", eventID: "event-b"
+        )
+        center.pending = [accountA, accountB, "unrelated.pending"]
+        center.delivered = [accountA, accountB, "unrelated.delivered"]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+
+        await coordinator.clear(accountID: "itch:101")
+
+        XCTAssertFalse(center.pending.contains(accountA))
+        XCTAssertFalse(center.delivered.contains(accountA))
+        XCTAssertTrue(center.pending.contains(accountB))
+        XCTAssertTrue(center.delivered.contains(accountB))
+        XCTAssertTrue(center.pending.contains("unrelated.pending"))
+        XCTAssertTrue(center.delivered.contains("unrelated.delivered"))
+    }
+
+    @MainActor
+    func testRemovingOneAccountIsNotAbortedByAnotherAccountsRebuild() async {
+        let center = FakeAccountCalendarNotificationCenter()
+        let accountA = AccountCalendarNotificationCoordinator.notificationIdentifier(
+            accountID: "itch:101", eventID: "old-event"
+        )
+        center.pending = [accountA]
+        center.delivered = [accountA]
+        let coordinator = AccountCalendarNotificationCoordinator(center: center)
+        center.onPendingIdentifiers = {
+            center.onPendingIdentifiers = nil
+            _ = await coordinator.rebuild(
+                previousAccountID: "itch:202", accountID: "itch:202",
+                events: [self.event(id: "account-b-event")],
+                now: Date(timeIntervalSince1970: 1_900_000_000),
+                isCurrent: { true }
+            )
+        }
+
+        await coordinator.clear(accountID: "itch:101")
+
+        XCTAssertFalse(center.pending.contains(accountA))
+        XCTAssertFalse(center.delivered.contains(accountA))
+        XCTAssertTrue(center.pending.contains {
+            $0.contains(AccountCalendarNotificationCoordinator.identifierPrefix)
+                && !$0.contains(AccountCalendarNotificationCoordinator.notificationIdentifier(
+                    accountID: "itch:101", eventID: "old-event"
+                ))
+        })
+    }
+
 }

@@ -11,7 +11,12 @@ final class AccountScopedCalendarRepositoryTests: XCTestCase {
             schema: schema,
             isStoredInMemoryOnly: true
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        for userID in [1, 9, 11, 22, 101, 202] {
+            container.mainContext.insert(DBAccount(itchUserID: userID, username: "test-\(userID)"))
+        }
+        try container.mainContext.save()
+        return container
     }
 
     @MainActor
@@ -177,6 +182,26 @@ final class AccountScopedCalendarRepositoryTests: XCTestCase {
         XCTAssertEqual(row.integrityIssue, "missing-source-update")
         XCTAssertEqual(row.sourceFingerprint, "devlog:missing")
         XCTAssertEqual(row.sourceUpdateID, "deleted-update")
+    }
+
+
+    @MainActor
+    func testRetainedRepositoryCannotRecreatePersonalRowsAfterAccountRemoval() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBGame(id: "game", title: "Game"))
+        try context.save()
+        let repository = try AccountScopedCalendarRepository(context: context, accountID: "itch:101")
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<DBAccount>()).first { $0.id == "itch:101" })
+        context.delete(account)
+        try context.save()
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertThrowsError(try repository.upsertPersonalEvent(StoredAccountCalendarEvent(
+            eventKey: "late", gameID: "game", title: "Late write", date: now, kind: "custom",
+            reminderEnabled: false, reminderMinutes: 60, notes: nil, createdAt: now, updatedAt: now
+        )))
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountCalendarEvent>()), 0)
     }
 
 }

@@ -151,6 +151,10 @@ final class DatabaseV4AccountModelTests: XCTestCase {
         context.insert(DBGame(id: "shared-game", title: "Shared"))
         try context.save()
 
+        context.insert(DBAccount(itchUserID: 101, username: "account-a"))
+        context.insert(DBAccount(itchUserID: 202, username: "account-b"))
+        try context.save()
+
         let accountA = try AccountScopedLibraryRepository(context: context, accountID: "itch:101")
         let accountB = try AccountScopedLibraryRepository(context: context, accountID: "itch:202")
         let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -192,9 +196,11 @@ final class DatabaseV4AccountModelTests: XCTestCase {
     @MainActor
     func testAccountScopedLibraryRepositoryRejectsMissingIdentityAndMissingSharedGame() throws {
         let container = try makeContainer()
-        XCTAssertThrowsError(try AccountScopedLibraryRepository(
-            context: container.mainContext, accountID: ""
-        ))
+        for invalidAccountID in ["", " itch:101", "itch:0", "itch:01", "itch:-1", "itch:not-a-number", "patreon:101"] {
+            XCTAssertThrowsError(try AccountScopedLibraryRepository(
+                context: container.mainContext, accountID: invalidAccountID
+            ), "Expected invalid account scope to be rejected: \(invalidAccountID)")
+        }
 
         let repository = try AccountScopedLibraryRepository(
             context: container.mainContext, accountID: "itch:101"
