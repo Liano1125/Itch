@@ -166,13 +166,13 @@ final class ItchAccountIdentityTests: XCTestCase {
 
         XCTAssertTrue(session.beginAccountRemoval("itch:42"))
         XCTAssertFalse(session.isCurrent(request))
+        XCTAssertNil(session.captureRequestContext(), "New work must not start while this account is being removed.")
         session.endAccountRemoval("itch:42")
 
         XCTAssertFalse(
             session.isCurrent(request),
             "A request that outlives the removal window must not become current again."
         )
-        XCTAssertNil(session.captureRequestContext())
     }
 
     @MainActor
