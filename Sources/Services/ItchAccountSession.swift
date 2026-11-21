@@ -57,6 +57,13 @@ struct ItchSessionOperationContext: Equatable {
     let generation: UInt64
 }
 
+/// Snapshot used by authentication flows to detect a removal that starts and
+/// finishes while profile lookup is suspended.
+struct ItchAccountRemovalStateSnapshot: Equatable {
+    let generations: [String: UInt64]
+    let accountsBeingRemoved: Set<String>
+}
+
 /// In-memory account generation used to reject late async results after an
 /// account switch. This is deliberately independent of SwiftData so the
 /// migration can be introduced before repositories become account-scoped.
@@ -84,6 +91,18 @@ final class ItchAccountSession {
 
     func isRemovalInProgress(for accountID: String) -> Bool {
         accountsBeingRemoved.contains(accountID)
+    }
+
+    func captureRemovalStateSnapshot() -> ItchAccountRemovalStateSnapshot {
+        ItchAccountRemovalStateSnapshot(
+            generations: accountRemovalGenerations,
+            accountsBeingRemoved: accountsBeingRemoved
+        )
+    }
+
+    func removalWasStarted(for accountID: String, after snapshot: ItchAccountRemovalStateSnapshot) -> Bool {
+        snapshot.accountsBeingRemoved.contains(accountID)
+            || snapshot.generations[accountID, default: 0] != accountRemovalGenerations[accountID, default: 0]
     }
 
     func activate(_ identity: ItchAccountIdentity?) {
