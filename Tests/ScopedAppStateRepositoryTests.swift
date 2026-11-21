@@ -198,4 +198,19 @@ final class ScopedAppStateRepositoryTests: XCTestCase {
         XCTAssertEqual(try repository.state(for: "remove-me", in: accountB)?.stringValue, "keep")
     }
 
+
+    @MainActor
+    func testRetainedRepositoryCannotRecreateItchStateAfterAccountRemoval() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let repository = ScopedAppStateRepository(context: context)
+        let scope = try AppStateScope.itchAccount(userID: 101)
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<DBAccount>()).first { $0.id == "itch:101" })
+        context.delete(account)
+        try context.save()
+
+        XCTAssertThrowsError(try repository.setString("late", for: "private.key", in: scope))
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBScopedAppState>()), 0)
+    }
+
 }
