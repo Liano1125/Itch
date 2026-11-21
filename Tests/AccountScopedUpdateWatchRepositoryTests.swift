@@ -118,4 +118,23 @@ final class AccountScopedUpdateWatchRepositoryTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBUpdateWatch>()), 2)
         XCTAssertTrue(try repository.loadWatches().isEmpty)
     }
+
+    @MainActor
+    func testRetainedRepositoryCannotRecreateWatchAfterAccountRemoval() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBGame(id: "game", title: "Game"))
+        try context.save()
+        let repository = try AccountScopedUpdateWatchRepository(context: context, accountID: "itch:101")
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<DBAccount>()).first { $0.id == "itch:101" })
+        context.delete(account)
+        try context.save()
+
+        XCTAssertThrowsError(try repository.upsert(StoredAccountUpdateWatch(
+            gameID: "game", entityTag: "late", lastModified: nil, contentHash: nil,
+            lastCheckedAt: .now, hasBaseline: true, isEnabled: true
+        )))
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountUpdateWatch>()), 0)
+    }
+
 }
