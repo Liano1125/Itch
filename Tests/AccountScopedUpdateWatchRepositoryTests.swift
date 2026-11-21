@@ -13,7 +13,7 @@ final class AccountScopedUpdateWatchRepositoryTests: XCTestCase {
         )
         let container = try ModelContainer(for: schema, configurations: [configuration])
         for userID in [5, 101, 202, 999] {
-            container.mainContext.insert(DBAccount(itchUserID: userID, username: "test-\\(userID)"))
+            container.mainContext.insert(DBAccount(itchUserID: userID, username: "test-\(userID)"))
         }
         try container.mainContext.save()
         return container
