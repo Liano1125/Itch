@@ -147,11 +147,11 @@ final class AccountUpdateWatchNotificationCoordinator {
         guard isCurrent() else { return }
         let pendingToRemove = pending.filter { $0.hasPrefix(prefix) }
         let delivered = await center.deliveredIdentifiers()
-        guard isCurrent(), isCurrentOperation(generation) else { return }
+        guard isCurrent() else { return }
         let deliveredToRemove = delivered.filter { $0.hasPrefix(prefix) }
         if !pendingToRemove.isEmpty {
             await center.removePending(identifiers: Array(pendingToRemove))
-            guard isCurrent(), isCurrentOperation(generation) else { return }
+            guard isCurrent() else { return }
         }
         if !deliveredToRemove.isEmpty {
             await center.removeDelivered(identifiers: Array(deliveredToRemove))
