@@ -195,4 +195,39 @@ final class AccountUpdateWatchRuntimeCoordinatorTests: XCTestCase {
         XCTAssertTrue(center.pending.contains(b))
         XCTAssertTrue(center.pending.contains("other"))
     }
+    @MainActor
+    func testLateFetchAfterAccountRemovalDoesNotPersistOrNotifyEvenAfterRemovalFinishes() async throws {
+        let (container, repository) = try makeRepository("itch:101")
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 101, username: "a"))
+        let center = FakeUpdateWatchNotificationCenter()
+        let coordinator = AccountUpdateWatchRuntimeCoordinator(
+            session: session,
+            repository: repository,
+            notifications: AccountUpdateWatchNotificationCoordinator(center: center)
+        )
+        _ = container
+
+        let gate = UpdateWatchFetchGate()
+        let pendingFetch = AccountUpdateWatchFetchResult(
+            entityTag: "late-etag", lastModified: nil, contentHash: "late-hash",
+            checkedAt: Date(timeIntervalSince1970: 30), hasBaseline: true, detectedChange: true
+        )
+        let checkTask = Task { @MainActor in
+            try await coordinator.check(gameID: "game", gameTitle: "Game") { _ in
+                await gate.wait()
+            }
+        }
+        await gate.waitUntilStarted()
+
+        XCTAssertTrue(session.beginAccountRemoval("itch:101"))
+        session.endAccountRemoval("itch:101")
+        await gate.resume(pendingFetch)
+
+        let didPersist = try await checkTask.value
+        XCTAssertFalse(didPersist)
+        XCTAssertTrue(try repository.loadWatches().isEmpty)
+        XCTAssertTrue(center.added.isEmpty)
+    }
+
 }
