@@ -63,6 +63,22 @@ struct ItchSessionOperationContext: Equatable {
 final class ItchAccountSession {
     private(set) var identity: ItchAccountIdentity?
     private(set) var generation: UInt64 = 0
+    private var accountsBeingRemoved = Set<String>()
+
+    /// Reserves an account identity while its persistent data and notification
+    /// projections are being removed. Authentication must not reactivate it
+    /// until the complete removal operation has finished.
+    func beginAccountRemoval(_ accountID: String) -> Bool {
+        accountsBeingRemoved.insert(accountID).inserted
+    }
+
+    func endAccountRemoval(_ accountID: String) {
+        accountsBeingRemoved.remove(accountID)
+    }
+
+    func isRemovalInProgress(for accountID: String) -> Bool {
+        accountsBeingRemoved.contains(accountID)
+    }
 
     func activate(_ identity: ItchAccountIdentity?) {
         guard self.identity?.id != identity?.id else {
