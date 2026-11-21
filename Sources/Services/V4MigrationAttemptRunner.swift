@@ -1,0 +1,158 @@
+import Foundation
+import SwiftData
+
+/// Executes one complete, disposable V3 snapshot → V4 staging attempt.
+///
+/// The caller must close every live V3 SwiftData container/context before
+/// invoking this runner. The runner opens only the immutable snapshot URL and
+/// never resolves or changes the production V4 store location.
+@MainActor
+enum V4MigrationAttemptRunner {
+    struct Result {
+        let snapshot: V4MigrationStagingStore
+        let destinationStoreURL: URL
+        let attempt: V4MigrationAttempt
+        let manifestURL: URL
+    }
+
+    enum RunnerError: Error, Equatable {
+        case destinationStoreMissing
+    }
+
+    /// Runs snapshot creation, conversion, validation, and journal transitions
+    /// under the exact same cross-process owner lease.
+    ///
+    /// A successful result is only a disposable staging candidate. It is not
+    /// a production promotion or startup-switch authorization.
+    static func run(
+        sourceV3StoreURL: URL,
+        runID: String,
+        idempotencyKey: String,
+        stagingStoreID: String,
+        sourceSchemaVersion: String = "3",
+        destinationSchemaVersion: String = "4.0.0",
+        at date: Date = .now,
+        lifecycle: V4MigrationSnapshotLifecycleCoordinator,
+        stagingManager: V4MigrationStagingStoreManager,
+        journal: V4MigrationJournalRepository,
+        ownerLockURL: URL
+    ) async throws -> Result {
+        try await lifecycle.withExclusiveMigrationOwnership { ownerLease in
+            let snapshot = try await lifecycle.createStagingSnapshot(
+                from: sourceV3StoreURL,
+                runID: runID,
+                idempotencyKey: idempotencyKey,
+                sourceSchemaVersion: sourceSchemaVersion,
+                destinationSchemaVersion: destinationSchemaVersion,
+                stagingStoreID: stagingStoreID,
+                at: date,
+                ownerLease: ownerLease
+            )
+
+            let destinationURL = snapshot.directoryURL
+                .appendingPathComponent("v4-destination.sqlite", isDirectory: false)
+            let manifestURL = snapshot.directoryURL
+                .appendingPathComponent("migration-manifest.json", isDirectory: false)
+
+            do {
+                _ = try await journal.transition(
+                    runID: runID, from: .stagingCreated, to: .converting,
+                    at: date, code: "conversion.started", ownerLease: ownerLease
+                )
+
+                // This helper returns only value reports. Its two ModelContainers
+                // leave scope before the final SQLite integrity/read-only checks.
+                let attempt = try convert(
+                    snapshotURL: snapshot.storeURL,
+                    destinationURL: destinationURL,
+                    runID: runID,
+                    ownerLockURL: ownerLockURL,
+                    ownerLease: ownerLease,
+                    generatedAt: date,
+                    destinationSchemaVersion: destinationSchemaVersion
+                )
+
+                _ = try await journal.transition(
+                    runID: runID, from: .converting, to: .verifying,
+                    at: date, code: "conversion.completed", ownerLease: ownerLease
+                )
+
+                try attempt.manifest.encodedJSON().write(to: manifestURL, options: [.atomic])
+
+                _ = try await journal.transition(
+                    runID: runID, from: .verifying, to: .manifestWritten,
+                    at: date, code: "manifest.written", ownerLease: ownerLease
+                )
+
+                guard FileManager.default.fileExists(atPath: destinationURL.path) else {
+                    throw RunnerError.destinationStoreMissing
+                }
+                try SQLiteStoreIntegrityChecker.fullCheck(at: destinationURL)
+
+                _ = try await journal.transition(
+                    runID: runID, from: .manifestWritten, to: .stagingValidated,
+                    at: date, code: "staging.validated", ownerLease: ownerLease
+                )
+
+                if attempt.manifest.isPromotionEligible {
+                    _ = try await journal.transition(
+                        runID: runID, from: .stagingValidated,
+                        to: .eligibleForIndependentSafetyGates,
+                        at: date, code: "staging.eligible_for_independent_gates",
+                        ownerLease: ownerLease
+                    )
+                }
+
+                try ownerLease.validateOwnership(at: ownerLockURL)
+                return Result(
+                    snapshot: snapshot,
+                    destinationStoreURL: destinationURL,
+                    attempt: attempt,
+                    manifestURL: manifestURL
+                )
+            } catch {
+                // Never retry conversion against a partially saved destination.
+                // Close handles first (the conversion helper has returned or
+                // thrown), then remove only this attempt's isolated directory.
+                try? stagingManager.discard(
+                    runID: runID, stagingStoreID: stagingStoreID
+                )
+                if let current = try? await journal.record(runID: runID),
+                   let current, !current.state.isTerminal {
+                    try? await journal.transition(
+                        runID: runID, from: current.state, to: .failed,
+                        at: date, code: "migration.attempt_failed",
+                        ownerLease: ownerLease
+                    )
+                }
+                throw error
+            }
+        }
+    }
+
+    private static func convert(
+        snapshotURL: URL,
+        destinationURL: URL,
+        runID: String,
+        ownerLockURL: URL,
+        ownerLease: V4MigrationOwnerLock.Lease,
+        generatedAt: Date,
+        destinationSchemaVersion: String
+    ) throws -> V4MigrationAttempt {
+        try ownerLease.validateOwnership(at: ownerLockURL)
+        let sourceContainer = try V4MigrationModelContainerFactory
+            .openReadOnlyV3Snapshot(at: snapshotURL)
+        let destinationContainer = try V4MigrationModelContainerFactory
+            .createEmptyV4StagingStore(at: destinationURL)
+
+        return try V4MigrationCoordinator.run(
+            source: sourceContainer.mainContext,
+            destination: destinationContainer.mainContext,
+            runID: runID,
+            ownerLockURL: ownerLockURL,
+            ownerLease: ownerLease,
+            generatedAt: generatedAt,
+            destinationSchemaVersion: destinationSchemaVersion
+        )
+    }
+}
