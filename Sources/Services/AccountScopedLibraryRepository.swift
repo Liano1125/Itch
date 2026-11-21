@@ -71,6 +71,7 @@ final class AccountScopedLibraryRepository {
     }
 
     func upsertEntry(_ entry: StoredAccountLibraryEntry, save: Bool = true) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let gameID = entry.gameID
         let gameDescriptor = FetchDescriptor<DBGame>(
             predicate: #Predicate { $0.id == gameID }
