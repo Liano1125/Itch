@@ -69,7 +69,12 @@ final class ItchAccountSession {
     /// projections are being removed. Authentication must not reactivate it
     /// until the complete removal operation has finished.
     func beginAccountRemoval(_ accountID: String) -> Bool {
-        accountsBeingRemoved.insert(accountID).inserted
+        guard accountsBeingRemoved.insert(accountID).inserted else { return false }
+        // Invalidate every request already in flight before persistent rows are
+        // deleted. The increment is permanent, so a request that resumes only
+        // after the removal lease ends cannot become current again.
+        generation &+= 1
+        return true
     }
 
     func endAccountRemoval(_ accountID: String) {
@@ -101,7 +106,9 @@ final class ItchAccountSession {
     /// Validates both account identity and generation before publishing or saving
     /// an async result. Call this immediately before every account-owned side effect.
     func isCurrent(_ context: ItchAccountRequestContext) -> Bool {
-        identity?.id == context.accountID && generation == context.generation
+        identity?.id == context.accountID
+            && generation == context.generation
+            && !accountsBeingRemoved.contains(context.accountID)
     }
 
     /// Captures the current session state for operations that also run while signed out.
