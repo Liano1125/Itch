@@ -184,4 +184,24 @@ final class AccountScopedCalendarRepositoryTests: XCTestCase {
         XCTAssertEqual(row.sourceUpdateID, "deleted-update")
     }
 
+
+    @MainActor
+    func testRetainedRepositoryCannotRecreatePersonalRowsAfterAccountRemoval() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBGame(id: "game", title: "Game"))
+        try context.save()
+        let repository = try AccountScopedCalendarRepository(context: context, accountID: "itch:101")
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<DBAccount>()).first { $0.id == "itch:101" })
+        context.delete(account)
+        try context.save()
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertThrowsError(try repository.upsertPersonalEvent(StoredAccountCalendarEvent(
+            eventKey: "late", gameID: "game", title: "Late write", date: now, kind: "custom",
+            reminderEnabled: false, reminderMinutes: 60, notes: nil, createdAt: now, updatedAt: now
+        )))
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBAccountCalendarEvent>()), 0)
+    }
+
 }
