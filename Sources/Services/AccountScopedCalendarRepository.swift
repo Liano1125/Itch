@@ -150,6 +150,7 @@ final class AccountScopedCalendarRepository {
     }
 
     func upsertPersonalEvent(_ event: StoredAccountCalendarEvent, save: Bool = true) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         guard !event.eventKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RepositoryError.emptyKey
         }
