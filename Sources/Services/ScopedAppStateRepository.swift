@@ -164,6 +164,10 @@ final class ScopedAppStateRepository {
             throw RepositoryError.snapshotScopeMismatch
         }
 
+        if snapshot != nil, scope.kind == .itchAccount {
+            try V4AccountRegistryGuard.requireRegisteredAccount(scope.identifier, in: context)
+        }
+
         let existing = try existingRows(for: key, in: scope).first
         guard let snapshot else {
             if let existing { context.delete(existing) }
