@@ -158,4 +158,36 @@ final class ItchAccountIdentityTests: XCTestCase {
         XCTAssertNil(session.identity)
         XCTAssertFalse(session.isCurrent(request))
     }
+    @MainActor
+    func testAccountRemovalPermanentlyInvalidatesPreviouslyCapturedRequestContext() throws {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 42, username: "account-a"))
+        let request = try XCTUnwrap(session.captureRequestContext())
+
+        XCTAssertTrue(session.beginAccountRemoval("itch:42"))
+        XCTAssertFalse(session.isCurrent(request))
+        session.endAccountRemoval("itch:42")
+
+        XCTAssertFalse(
+            session.isCurrent(request),
+            "A request that outlives the removal window must not become current again."
+        )
+        XCTAssertNil(session.captureRequestContext())
+    }
+
+    @MainActor
+    func testRemovingInactiveAccountInvalidatesOldWorkButAllowsFreshActiveAccountWork() throws {
+        let session = ItchAccountSession()
+        session.activate(ItchAccountIdentity(itchUserID: 202, username: "account-b"))
+        let oldRequest = try XCTUnwrap(session.captureRequestContext())
+
+        XCTAssertTrue(session.beginAccountRemoval("itch:101"))
+        XCTAssertFalse(session.isCurrent(oldRequest))
+
+        let freshRequest = try XCTUnwrap(session.captureRequestContext())
+        XCTAssertTrue(session.isCurrent(freshRequest))
+        session.endAccountRemoval("itch:101")
+        XCTAssertTrue(session.isCurrent(freshRequest))
+    }
+
 }
