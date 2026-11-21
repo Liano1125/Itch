@@ -136,16 +136,16 @@ enum V4FreshStoreBootstrap {
             FetchDescriptor<ItchPocketSchemaV4.DBLibraryStatusEvent>()
         )
         let appStateCount = try context.fetchCount(
-            FetchDescriptor<ItchPocketSchemaV4.DBScopedAppState>()
+            FetchDescriptor<DBScopedAppState>()
         )
         let calendarCount = try context.fetchCount(
-            FetchDescriptor<ItchPocketSchemaV4.DBAccountCalendarEvent>()
+            FetchDescriptor<DBAccountCalendarEvent>()
         )
         let calendarOverlayCount = try context.fetchCount(
-            FetchDescriptor<ItchPocketSchemaV4.DBAccountCalendarOverlay>()
+            FetchDescriptor<DBAccountCalendarOverlay>()
         )
         let updateWatchCount = try context.fetchCount(
-            FetchDescriptor<ItchPocketSchemaV4.DBAccountUpdateWatch>()
+            FetchDescriptor<DBAccountUpdateWatch>()
         )
 
         guard accountCount == 0,
