@@ -66,6 +66,7 @@ final class AccountScopedUpdateWatchRepository {
     }
 
     func upsert(_ watch: StoredAccountUpdateWatch, save: Bool = true) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let gameID = watch.gameID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !gameID.isEmpty, gameID == watch.gameID else { throw RepositoryError.emptyGameID }
         let gameDescriptor = FetchDescriptor<DBGame>(predicate: #Predicate { $0.id == gameID })
