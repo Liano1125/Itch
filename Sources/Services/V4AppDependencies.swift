@@ -63,13 +63,14 @@ final class V4AppDependencies {
             configurations: [configuration]
         )
 
-        // The first V4 runtime open deliberately discards the pre-V4 Patreon
-        // Keychain session. A Keychain marker makes this a one-time operation,
-        // so credentials created by the user's fresh Patreon login survive
-        // later launches. The existing V3 startup path never calls this.
-        try V4PatreonReauthenticationGate.resetLegacySessionIfNeeded()
-
         return V4AppDependencies(container: container, session: session ?? ItchAccountSession())
+    }
+
+    /// Run only at the actual V4 production cutover, never while constructing
+    /// a store for tests or previews. This forces a fresh Patreon login without
+    /// coupling ordinary database initialization to Keychain availability.
+    func prepareForProductionActivation() throws {
+        try V4PatreonReauthenticationGate.resetLegacySessionIfNeeded()
     }
 
     /// Persist a verified login only when its captured session context is still
