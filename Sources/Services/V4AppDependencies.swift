@@ -62,6 +62,13 @@ final class V4AppDependencies {
             for: schema,
             configurations: [configuration]
         )
+
+        // The first V4 runtime open deliberately discards the pre-V4 Patreon
+        // Keychain session. A Keychain marker makes this a one-time operation,
+        // so credentials created by the user's fresh Patreon login survive
+        // later launches. The existing V3 startup path never calls this.
+        try V4PatreonReauthenticationGate.resetLegacySessionIfNeeded()
+
         return V4AppDependencies(container: container, session: session ?? ItchAccountSession())
     }
 
