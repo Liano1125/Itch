@@ -41,7 +41,7 @@ final class V4AppDependencies {
     /// modifies the existing V3 production database.
     static func open(
         in applicationSupportDirectory: URL? = nil,
-        session: ItchAccountSession = ItchAccountSession()
+        session: ItchAccountSession? = nil
     ) throws -> V4AppDependencies {
         let supportDirectory = try applicationSupportDirectory ?? FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -62,7 +62,7 @@ final class V4AppDependencies {
             for: schema,
             configurations: [configuration]
         )
-        return V4AppDependencies(container: container, session: session)
+        return V4AppDependencies(container: container, session: session ?? ItchAccountSession())
     }
 
     /// Persist a verified login only when its captured session context is still
