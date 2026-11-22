@@ -1,4 +1,3 @@
-
 import Foundation
 import Security
 
@@ -54,12 +53,24 @@ enum KeychainStore {
     }
 
     static func delete(_ key: String) {
+        try? deleteChecked(key)
+    }
+
+    /// Deletes a credential and reports Keychain failures to security-sensitive
+    /// callers. A missing item is already in the desired state.
+    static func deleteChecked(_ key: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key
         ]
 
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw NSError(
+                domain: NSOSStatusErrorDomain,
+                code: Int(status)
+            )
+        }
     }
 }
