@@ -10,7 +10,7 @@ enum V4PatreonReauthenticationGate {
     static func resetLegacySessionIfNeeded() throws {
         try resetIfNeeded(
             readMarker: { KeychainStore.read(completionKey) },
-            deleteLegacyToken: { KeychainStore.delete("patreon_session_token") },
+            deleteLegacyToken: { try KeychainStore.deleteChecked("patreon_session_token") },
             saveMarker: { value, key in
                 try KeychainStore.save(value, for: key)
             }
@@ -19,11 +19,14 @@ enum V4PatreonReauthenticationGate {
 
     static func resetIfNeeded(
         readMarker: () -> String?,
-        deleteLegacyToken: () -> Void,
+        deleteLegacyToken: () throws -> Void,
         saveMarker: (String, String) throws -> Void
     ) throws {
         guard readMarker() != completedValue else { return }
-        deleteLegacyToken()
+        // Never persist the completion marker unless the old credential is
+        // confirmed absent; otherwise a failed delete could preserve a session
+        // that the user explicitly chose not to migrate.
+        try deleteLegacyToken()
         try saveMarker(completedValue, completionKey)
     }
 }
