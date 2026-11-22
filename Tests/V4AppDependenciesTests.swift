@@ -99,4 +99,34 @@ final class V4AppDependenciesTests: XCTestCase {
         XCTAssertNoThrow(try dependencies.calendarRepository())
         XCTAssertNoThrow(try dependencies.updateWatchRepository())
     }
+
+    @MainActor
+    func testDependencyGraphCreatesAllV4StoresAgainstTheSameSession() throws {
+        let supportDirectory = try makeSupportDirectory()
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let session = ItchAccountSession()
+        let dependencies = try V4AppDependencies.open(
+            in: supportDirectory,
+            session: session
+        )
+
+        let library = dependencies.makePersonalLibraryStore()
+        let calendar = dependencies.makeCalendarStore()
+        let updateWatch = dependencies.makeUpdateWatchStore()
+
+        XCTAssertThrowsError(try library.reload())
+        XCTAssertThrowsError(try calendar.reload())
+        XCTAssertThrowsError(try updateWatch.reload())
+
+        session.activate(ItchAccountIdentity(itchUserID: 8105, username: "store-graph"))
+        let requestContext = try XCTUnwrap(session.captureRequestContext())
+        _ = try dependencies.recordAuthenticatedSession(requestContext)
+
+        XCTAssertNoThrow(try library.reload())
+        XCTAssertNoThrow(try calendar.reload())
+        XCTAssertNoThrow(try updateWatch.reload())
+        XCTAssertTrue(library.entries.isEmpty)
+        XCTAssertTrue(calendar.events.isEmpty)
+        XCTAssertTrue(updateWatch.watches.isEmpty)
+    }
 }
