@@ -103,6 +103,21 @@ final class V4AppDependencies {
         )
     }
 
+    /// Creates the V4 observable stores from this single dependency graph.
+    /// Each store resolves the active account at operation time, so creating
+    /// the graph while signed out does not capture a stale account identity.
+    func makePersonalLibraryStore() -> V4PersonalLibraryStore {
+        V4PersonalLibraryStore(dependencies: self)
+    }
+
+    func makeCalendarStore() -> V4CalendarStore {
+        V4CalendarStore(dependencies: self)
+    }
+
+    func makeUpdateWatchStore() -> V4UpdateWatchStore {
+        V4UpdateWatchStore(dependencies: self)
+    }
+
     private func resolvedAccountID(_ requestedAccountID: String?) throws -> String {
         if let requestedAccountID { return requestedAccountID }
         guard let activeID = session.identity?.id else {
