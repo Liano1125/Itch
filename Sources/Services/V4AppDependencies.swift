@@ -33,7 +33,7 @@ final class V4AppDependencies {
         self.registry = V4AccountRegistryRepository(context: container.mainContext)
         self.authenticatedRegistryBridge = V4AuthenticatedAccountRegistryBridge(
             session: session,
-            registry: V4AccountRegistryRepository(context: container.mainContext)
+            context: container.mainContext
         )
     }
 
