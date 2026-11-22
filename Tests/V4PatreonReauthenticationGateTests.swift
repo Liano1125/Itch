@@ -26,6 +26,25 @@ final class V4PatreonReauthenticationGateTests: XCTestCase {
         XCTAssertEqual(savedMarker?.1, V4PatreonReauthenticationGate.completionKey)
     }
 
+    func testFailedTokenDeletionDoesNotWriteCompletionMarker() {
+        var marker: String?
+        var saveCount = 0
+
+        XCTAssertThrowsError(
+            try V4PatreonReauthenticationGate.resetIfNeeded(
+                readMarker: { marker },
+                deleteLegacyToken: { throw TestError.tokenDeletionFailed },
+                saveMarker: { value, _ in
+                    saveCount += 1
+                    marker = value
+                }
+            )
+        )
+
+        XCTAssertNil(marker)
+        XCTAssertEqual(saveCount, 0)
+    }
+
     func testFailedMarkerWriteDoesNotPretendResetWasRecorded() {
         var marker: String?
         var deleteCount = 0
@@ -43,6 +62,7 @@ final class V4PatreonReauthenticationGateTests: XCTestCase {
     }
 
     private enum TestError: Error {
+        case tokenDeletionFailed
         case markerWriteFailed
     }
 }
