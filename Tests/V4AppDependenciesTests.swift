@@ -20,8 +20,9 @@ final class V4AppDependenciesTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: supportDirectory) }
 
         let dependencies = try V4AppDependencies.open(in: supportDirectory)
+        let accounts = try dependencies.registeredAccounts()
 
-        XCTAssertTrue(dependencies.registeredAccounts().isEmpty)
+        XCTAssertTrue(accounts.isEmpty)
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: supportDirectory
