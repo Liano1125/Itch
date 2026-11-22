@@ -71,7 +71,12 @@ final class V4AccountRegistryRepository {
 
     func loadAccounts() throws -> [DBAccount] {
         try context.fetch(FetchDescriptor<DBAccount>())
-            .sorted { $0.lastUsedAt > $1.lastUsedAt }
+            .sorted {
+                let lhsDate = $0.lastUsedAt ?? $0.firstSeenAt
+                let rhsDate = $1.lastUsedAt ?? $1.firstSeenAt
+                if lhsDate != rhsDate { return lhsDate > rhsDate }
+                return $0.id < $1.id
+            }
     }
 
     func loadAccount(itchUserID: Int) throws -> DBAccount? {
