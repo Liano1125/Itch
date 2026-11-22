@@ -1,0 +1,127 @@
+import XCTest
+import SwiftData
+@testable import itchPocket
+
+final class V4AccountScopedStoresTests: XCTestCase {
+    @MainActor
+    private func makeDependencies() throws -> (URL, V4AppDependencies, ItchAccountSession) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itchPocket-v4-account-stores-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let session = ItchAccountSession()
+        let dependencies = try V4AppDependencies.open(in: directory, session: session)
+        dependencies.modelContext.insert(DBGame(id: "shared-game", title: "Shared Game"))
+        try dependencies.modelContext.save()
+        return (directory, dependencies, session)
+    }
+
+    @MainActor
+    private func activate(_ userID: Int, session: ItchAccountSession, dependencies: V4AppDependencies) throws {
+        session.activate(ItchAccountIdentity(itchUserID: userID, username: "user-\(userID)"))
+        let request = try XCTUnwrap(session.captureRequestContext())
+        _ = try dependencies.recordAuthenticatedSession(request)
+    }
+
+    @MainActor
+    func testCalendarStoreKeepsPersonalEventsAndOverlaysIsolatedAcrossAccounts() throws {
+        let (directory, dependencies, session) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = V4CalendarStore(dependencies: dependencies)
+        try activate(7101, session: session, dependencies: dependencies)
+
+        let now = Date(timeIntervalSince1970: 1_800_000_100)
+        let source = StoredCalendarSourceEvent(
+            sourceFingerprint: "devlog:shared", gameID: "shared-game",
+            title: "Shared update", date: now, kind: "update"
+        )
+        try store.upsertSourceEvent(source)
+        try store.upsertOverlay(StoredAccountCalendarOverlay(
+            sourceEventID: source.id, reminderEnabled: true, reminderMinutes: 20,
+            notes: "A overlay", updatedAt: now
+        ))
+        try store.upsertPersonalEvent(StoredAccountCalendarEvent(
+            eventKey: "private-plan", gameID: "shared-game", title: "A private plan",
+            date: now, kind: "planned", reminderEnabled: true, reminderMinutes: 30,
+            notes: "A private note", createdAt: now, updatedAt: now
+        ))
+        XCTAssertEqual(store.events.count, 2)
+        XCTAssertEqual(store.events.first(where: { $0.origin == .sharedSource })?.notes, "A overlay")
+
+        try activate(7102, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertEqual(store.events.count, 1)
+        XCTAssertNil(store.events.first?.notes)
+        XCTAssertFalse(try XCTUnwrap(store.events.first).reminderEnabled)
+
+        try store.upsertOverlay(StoredAccountCalendarOverlay(
+            sourceEventID: source.id, reminderEnabled: false, reminderMinutes: 90,
+            notes: "B overlay", updatedAt: now.addingTimeInterval(1)
+        ))
+        try store.upsertPersonalEvent(StoredAccountCalendarEvent(
+            eventKey: "private-plan", gameID: "shared-game", title: "B private plan",
+            date: now, kind: "planned", reminderEnabled: false, reminderMinutes: 60,
+            notes: "B private note", createdAt: now, updatedAt: now
+        ))
+        XCTAssertEqual(store.events.count, 2)
+        XCTAssertEqual(store.events.first(where: { $0.origin == .sharedSource })?.notes, "B overlay")
+
+        try activate(7101, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertEqual(store.events.count, 2)
+        XCTAssertEqual(store.events.first(where: { $0.origin == .sharedSource })?.notes, "A overlay")
+        XCTAssertEqual(store.events.first(where: { $0.origin == .accountPersonal })?.notes, "A private note")
+
+        try activate(7102, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertEqual(store.events.first(where: { $0.origin == .sharedSource })?.notes, "B overlay")
+        XCTAssertEqual(store.events.first(where: { $0.origin == .accountPersonal })?.notes, "B private note")
+    }
+
+    @MainActor
+    func testUpdateWatchStoreKeepsPreferencesAndValidatorsIsolatedAcrossAccounts() throws {
+        let (directory, dependencies, session) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = V4UpdateWatchStore(dependencies: dependencies)
+
+        try activate(7201, session: session, dependencies: dependencies)
+        try store.upsert(StoredAccountUpdateWatch(
+            gameID: "shared-game", entityTag: "A-etag", lastModified: "A-date",
+            contentHash: "A-hash", lastCheckedAt: Date(timeIntervalSince1970: 100),
+            hasBaseline: true, isEnabled: true
+        ))
+        XCTAssertEqual(try XCTUnwrap(store.watches.first).entityTag, "A-etag")
+
+        try activate(7202, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertTrue(store.watches.isEmpty)
+        try store.upsert(StoredAccountUpdateWatch(
+            gameID: "shared-game", entityTag: "B-etag", lastModified: "B-date",
+            contentHash: "B-hash", lastCheckedAt: Date(timeIntervalSince1970: 200),
+            hasBaseline: false, isEnabled: false
+        ))
+        XCTAssertEqual(try XCTUnwrap(store.watches.first).entityTag, "B-etag")
+
+        try activate(7201, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertEqual(try XCTUnwrap(store.watches.first).entityTag, "A-etag")
+        XCTAssertTrue(try XCTUnwrap(store.watches.first).isEnabled)
+
+        try activate(7202, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertEqual(try XCTUnwrap(store.watches.first).entityTag, "B-etag")
+        XCTAssertFalse(try XCTUnwrap(store.watches.first).isEnabled)
+    }
+
+    @MainActor
+    func testCalendarAndUpdateWatchStoresRejectSignedOutAccess() throws {
+        let (directory, dependencies, _) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let calendar = V4CalendarStore(dependencies: dependencies)
+        let watches = V4UpdateWatchStore(dependencies: dependencies)
+
+        XCTAssertThrowsError(try calendar.reload())
+        XCTAssertThrowsError(try watches.reload())
+        XCTAssertTrue(calendar.events.isEmpty)
+        XCTAssertTrue(watches.watches.isEmpty)
+    }
+}
