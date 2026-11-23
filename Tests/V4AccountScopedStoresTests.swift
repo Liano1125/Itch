@@ -236,4 +236,40 @@ final class V4AccountScopedStoresTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).eventKey, "b-status-1")
     }
 
+
+    @MainActor
+    func testStatusChangeAndHistoryCommitAtomicallyAndRollbackTogether() throws {
+        let (directory, dependencies, session) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = V4PersonalLibraryStore(dependencies: dependencies)
+        let now = Date(timeIntervalSince1970: 1_800_000_500)
+
+        try activate(7501, session: session, dependencies: dependencies)
+        try store.upsert(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "playing", isFavorite: true,
+            notes: "keep me", addedAt: now, updatedAt: now
+        ))
+
+        try store.changeStatus(
+            gameID: "shared-game", toStatus: "completed",
+            eventKey: "status-transition-1", at: now.addingTimeInterval(10)
+        )
+        XCTAssertEqual(try XCTUnwrap(store.entries.first).status, "completed")
+        XCTAssertEqual(store.statusEvents.count, 1)
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).fromStatus, "playing")
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).toStatus, "completed")
+
+        XCTAssertThrowsError(try store.changeStatus(
+            gameID: "shared-game", toStatus: "paused",
+            eventKey: "status-transition-1", at: now.addingTimeInterval(20)
+        ))
+
+        try store.reload()
+        try store.reloadStatusEvents()
+        XCTAssertEqual(try XCTUnwrap(store.entries.first).status, "completed")
+        XCTAssertEqual(store.statusEvents.count, 1)
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).toStatus, "completed")
+        XCTAssertEqual(try XCTUnwrap(store.entries.first).notes, "keep me")
+    }
+
 }
