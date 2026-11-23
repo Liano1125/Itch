@@ -6,7 +6,7 @@ final class V4AppDependenciesTests: XCTestCase {
     @MainActor
     private func makeSupportDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v4-dependencies-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v4-dependencies-\\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true
@@ -29,6 +29,39 @@ final class V4AppDependenciesTests: XCTestCase {
                     .appendingPathComponent(V4FreshStoreBootstrap.directoryName, isDirectory: true)
                     .appendingPathComponent(V4FreshStoreBootstrap.storeFileName)
                     .path
+            )
+        )
+    }
+
+    @MainActor
+    func testProductionActivationPreparesPatreonBeforeReturningDependencies() throws {
+        let supportDirectory = try makeSupportDirectory()
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        var preparationCount = 0
+
+        let dependencies = try V4AppDependencies.openForProductionActivation(
+            in: supportDirectory,
+            prepareForActivation: { openedDependencies in
+                preparationCount += 1
+                XCTAssertTrue(try openedDependencies.registeredAccounts().isEmpty)
+            }
+        )
+
+        XCTAssertEqual(preparationCount, 1)
+        XCTAssertTrue(try dependencies.registeredAccounts().isEmpty)
+    }
+
+    @MainActor
+    func testProductionActivationFailsClosedWhenPatreonPreparationFails() throws {
+        let supportDirectory = try makeSupportDirectory()
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+
+        XCTAssertThrowsError(
+            try V4AppDependencies.openForProductionActivation(
+                in: supportDirectory,
+                prepareForActivation: { _ in
+                    throw TestActivationError.patreonResetFailed
+                }
             )
         )
     }
@@ -69,12 +102,12 @@ final class V4AppDependenciesTests: XCTestCase {
         )
 
         XCTAssertEqual(account.id, identity.id)
-        XCTAssertEqual(try dependencies.registeredAccounts().map(\.id), [identity.id])
+        XCTAssertEqual(try dependencies.registeredAccounts().map(\\.id), [identity.id])
 
         let staleContext = try XCTUnwrap(session.captureRequestContext())
         session.activate(ItchAccountIdentity(itchUserID: 8103, username: "different-account"))
         XCTAssertThrowsError(try dependencies.recordAuthenticatedSession(staleContext))
-        XCTAssertEqual(try dependencies.registeredAccounts().map(\.id), [identity.id])
+        XCTAssertEqual(try dependencies.registeredAccounts().map(\\.id), [identity.id])
     }
 
     @MainActor
@@ -128,5 +161,9 @@ final class V4AppDependenciesTests: XCTestCase {
         XCTAssertTrue(library.entries.isEmpty)
         XCTAssertTrue(calendar.events.isEmpty)
         XCTAssertTrue(updateWatch.watches.isEmpty)
+    }
+
+    private enum TestActivationError: Error {
+        case patreonResetFailed
     }
 }
