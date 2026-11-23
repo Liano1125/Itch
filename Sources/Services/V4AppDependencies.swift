@@ -74,15 +74,17 @@ final class V4AppDependencies {
     static func openForProductionActivation(
         in applicationSupportDirectory: URL? = nil,
         session: ItchAccountSession? = nil,
-        prepareForActivation: (V4AppDependencies) throws -> Void = {
-            try $0.prepareForProductionActivation()
-        }
+        prepareForActivation: ((V4AppDependencies) throws -> Void)? = nil
     ) throws -> V4AppDependencies {
         let dependencies = try open(
             in: applicationSupportDirectory,
             session: session
         )
-        try prepareForActivation(dependencies)
+        if let prepareForActivation {
+            try prepareForActivation(dependencies)
+        } else {
+            try dependencies.prepareForProductionActivation()
+        }
         return dependencies
     }
 
