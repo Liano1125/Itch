@@ -9,47 +9,6 @@ struct StoredAccountLibraryEntry: Equatable {
     let notes: String
     let addedAt: Date
     let updatedAt: Date
-    /// Updates the current library status and appends its history event in
-    /// one SwiftData save boundary. Any failure rolls back both mutations.
-    func changeStatus(
-        gameID: String,
-        toStatus: String,
-        eventKey: String,
-        at date: Date = .now
-    ) throws {
-        let scope = accountID
-        let currentRows = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
-            predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
-        ))
-        guard currentRows.count == 1, let current = currentRows.first else {
-            if currentRows.isEmpty { throw RepositoryError.missingGame(gameID) }
-            throw RepositoryError.duplicateEntry(gameID)
-        }
-        let previousStatus = current.status
-        guard previousStatus != toStatus else { return }
-
-        do {
-            try upsertEntry(StoredAccountLibraryEntry(
-                gameID: gameID,
-                status: toStatus,
-                isFavorite: current.isFavorite,
-                notes: current.notes,
-                addedAt: current.addedAt,
-                updatedAt: date
-            ), save: false)
-            try recordStatusEvent(
-                eventKey: eventKey,
-                gameID: gameID,
-                fromStatus: previousStatus,
-                toStatus: toStatus,
-                save: false
-            )
-            try context.save()
-        } catch {
-            context.rollback()
-            throw error
-        }
-    }
 
 }
 
@@ -116,6 +75,49 @@ final class AccountScopedLibraryRepository {
         self.context = context
         self.accountID = normalized
     }
+
+    /// Updates the current library status and appends its history event in
+    /// one SwiftData save boundary. Any failure rolls back both mutations.
+    func changeStatus(
+        gameID: String,
+        toStatus: String,
+        eventKey: String,
+        at date: Date = .now
+    ) throws {
+        let scope = accountID
+        let currentRows = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
+            predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
+        ))
+        guard currentRows.count == 1, let current = currentRows.first else {
+            if currentRows.isEmpty { throw RepositoryError.missingGame(gameID) }
+            throw RepositoryError.duplicateEntry(gameID)
+        }
+        let previousStatus = current.status
+        guard previousStatus != toStatus else { return }
+
+        do {
+            try upsertEntry(StoredAccountLibraryEntry(
+                gameID: gameID,
+                status: toStatus,
+                isFavorite: current.isFavorite,
+                notes: current.notes,
+                addedAt: current.addedAt,
+                updatedAt: date
+            ), save: false)
+            try recordStatusEvent(
+                eventKey: eventKey,
+                gameID: gameID,
+                fromStatus: previousStatus,
+                toStatus: toStatus,
+                save: false
+            )
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
 
     func loadEntries() throws -> [StoredAccountLibraryEntry] {
         let scope = accountID
