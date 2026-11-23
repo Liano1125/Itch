@@ -163,4 +163,4 @@ final class V4AccountScopedStoresTests: XCTestCase {
         XCTAssertFalse(secondAccountEntry.isFavorite)
         XCTAssertEqual(secondAccountEntry.notes, "B private note")
     }
-}\n
+}
