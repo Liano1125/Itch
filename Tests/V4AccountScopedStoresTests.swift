@@ -184,4 +184,56 @@ final class V4AccountScopedStoresTests: XCTestCase {
         )))
         XCTAssertTrue(store.entries.isEmpty)
     }
+    @MainActor
+    func testPersonalLibraryStoreKeepsCollectionsAndStatusHistoryIsolatedAcrossAccounts() throws {
+        let (directory, dependencies, session) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = V4PersonalLibraryStore(dependencies: dependencies)
+
+        try activate(7401, session: session, dependencies: dependencies)
+        try store.upsertCollection(collectionKey: "favorites", title: "A Favorites")
+        try store.addGameToCollection(collectionKey: "favorites", gameID: "shared-game", sortOrder: 3)
+        try store.recordStatusEvent(
+            eventKey: "a-status-1", gameID: "shared-game",
+            fromStatus: nil, toStatus: "playing"
+        )
+        XCTAssertEqual(try XCTUnwrap(store.collections.first).title, "A Favorites")
+        XCTAssertEqual(try XCTUnwrap(store.collectionItems.first).sortOrder, 3)
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).toStatus, "playing")
+
+        try activate(7402, session: session, dependencies: dependencies)
+        try store.reloadCollections()
+        try store.reloadCollectionItems(collectionKey: "favorites")
+        try store.reloadStatusEvents()
+        XCTAssertTrue(store.collections.isEmpty)
+        XCTAssertTrue(store.collectionItems.isEmpty)
+        XCTAssertTrue(store.statusEvents.isEmpty)
+
+        try store.upsertCollection(collectionKey: "favorites", title: "B Favorites")
+        try store.addGameToCollection(collectionKey: "favorites", gameID: "shared-game", sortOrder: 8)
+        try store.recordStatusEvent(
+            eventKey: "b-status-1", gameID: "shared-game",
+            fromStatus: nil, toStatus: "completed"
+        )
+        XCTAssertEqual(try XCTUnwrap(store.collections.first).title, "B Favorites")
+        XCTAssertEqual(try XCTUnwrap(store.collectionItems.first).sortOrder, 8)
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).toStatus, "completed")
+
+        try activate(7401, session: session, dependencies: dependencies)
+        try store.reloadCollections()
+        try store.reloadCollectionItems(collectionKey: "favorites")
+        try store.reloadStatusEvents()
+        XCTAssertEqual(try XCTUnwrap(store.collections.first).title, "A Favorites")
+        XCTAssertEqual(try XCTUnwrap(store.collectionItems.first).sortOrder, 3)
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).eventKey, "a-status-1")
+
+        try activate(7402, session: session, dependencies: dependencies)
+        try store.reloadCollections()
+        try store.reloadCollectionItems(collectionKey: "favorites")
+        try store.reloadStatusEvents()
+        XCTAssertEqual(try XCTUnwrap(store.collections.first).title, "B Favorites")
+        XCTAssertEqual(try XCTUnwrap(store.collectionItems.first).sortOrder, 8)
+        XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).eventKey, "b-status-1")
+    }
+
 }
