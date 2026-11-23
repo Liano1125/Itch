@@ -70,10 +70,10 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
         XCTAssertEqual(try accountB.loadCollections(), [
             StoredAccountLibraryCollection(collectionKey: "favorites", title: "B Favorites")
         ])
-        XCTAssertEqual(try accountA.loadCollectionItems(collectionKey: "favorites").map(\\.sortOrder), [1])
-        XCTAssertEqual(try accountB.loadCollectionItems(collectionKey: "favorites").map(\\.sortOrder), [9])
-        XCTAssertEqual(try accountA.loadStatusEvents().map(\\.toStatus), ["playing"])
-        XCTAssertEqual(try accountB.loadStatusEvents().map(\\.toStatus), ["completed"])
+        XCTAssertEqual(try accountA.loadCollectionItems(collectionKey: "favorites").map(\.sortOrder), [1])
+        XCTAssertEqual(try accountB.loadCollectionItems(collectionKey: "favorites").map(\.sortOrder), [9])
+        XCTAssertEqual(try accountA.loadStatusEvents().map(\.toStatus), ["playing"])
+        XCTAssertEqual(try accountB.loadStatusEvents().map(\.toStatus), ["completed"])
 
         try accountA.removeCollection(collectionKey: "favorites")
         XCTAssertTrue(try accountA.loadCollections().isEmpty)
