@@ -14,7 +14,7 @@ final class V4AppDependencies {
             case .noAuthenticatedAccount:
                 return "An authenticated itch account is required for personal data."
             case .accountNotRegistered(let accountID):
-                return "The itch account is not registered in the V4 database: \\(accountID)."
+                return "The itch account is not registered in the V4 database: \(accountID)."
             }
         }
     }
