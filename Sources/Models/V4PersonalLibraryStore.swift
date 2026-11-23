@@ -3,10 +3,8 @@ import Foundation
 
 /// First V4-only observable library store.
 ///
-/// This is intentionally a narrow persistence adapter: it owns account-scoped
-/// personal library rows only. Shared game metadata remains in the V4 catalog
-/// and is not copied into this store. The legacy PersonalLibraryStore remains
-/// untouched until the complete V4 dependency graph is ready for app startup.
+/// Personal fields, collections, and status history are scoped to the live
+/// itch account. Shared game metadata remains in the V4 catalog.
 @MainActor
 final class V4PersonalLibraryStore: ObservableObject {
     enum StoreError: LocalizedError {
@@ -24,6 +22,9 @@ final class V4PersonalLibraryStore: ObservableObject {
     }
 
     @Published private(set) var entries: [StoredAccountLibraryEntry] = []
+    @Published private(set) var collections: [StoredAccountLibraryCollection] = []
+    @Published private(set) var collectionItems: [StoredAccountLibraryCollectionItem] = []
+    @Published private(set) var statusEvents: [StoredAccountLibraryStatusEvent] = []
 
     private let dependencies: V4AppDependencies
 
@@ -32,50 +33,118 @@ final class V4PersonalLibraryStore: ObservableObject {
     }
 
     /// Reloads only the currently authenticated account's personal entries.
-    /// The captured generation is checked again before publishing the result.
     func reload() throws {
-        guard let requestContext = dependencies.session.captureRequestContext() else {
-            entries = []
-            throw StoreError.noCurrentAccount
-        }
-
-        let repository = try dependencies.libraryRepository(for: requestContext.accountID)
-        let loadedEntries = try repository.loadEntries()
-        guard dependencies.session.isCurrent(requestContext) else {
-            throw StoreError.staleSession
-        }
-        entries = loadedEntries
+        let (request, repository) = try currentRepository()
+        let loaded = try repository.loadEntries()
+        try validateCurrent(request)
+        entries = loaded
     }
 
-    /// Saves a single account-owned row. The repository additionally enforces
-    /// that the account still exists in the V4 registry.
     func upsert(_ entry: StoredAccountLibraryEntry) throws {
-        guard let requestContext = dependencies.session.captureRequestContext() else {
-            throw StoreError.noCurrentAccount
-        }
-        let repository = try dependencies.libraryRepository(for: requestContext.accountID)
-        guard dependencies.session.isCurrent(requestContext) else {
-            throw StoreError.staleSession
-        }
+        let (request, repository) = try currentRepository()
         try repository.upsertEntry(entry)
-        guard dependencies.session.isCurrent(requestContext) else {
-            throw StoreError.staleSession
-        }
+        try validateCurrent(request)
         try reload()
     }
 
     func remove(gameID: String) throws {
-        guard let requestContext = dependencies.session.captureRequestContext() else {
+        let (request, repository) = try currentRepository()
+        try repository.removeEntry(gameID: gameID)
+        try validateCurrent(request)
+        try reload()
+    }
+
+    // MARK: - Account-owned collections
+
+    func reloadCollections() throws {
+        let (request, repository) = try currentRepository()
+        let loaded = try repository.loadCollections()
+        try validateCurrent(request)
+        collections = loaded
+    }
+
+    func reloadCollectionItems(collectionKey: String) throws {
+        let (request, repository) = try currentRepository()
+        let loaded = try repository.loadCollectionItems(collectionKey: collectionKey)
+        try validateCurrent(request)
+        collectionItems = loaded
+    }
+
+    func upsertCollection(collectionKey: String, title: String) throws {
+        let (request, repository) = try currentRepository()
+        try repository.upsertCollection(collectionKey: collectionKey, title: title)
+        try validateCurrent(request)
+        try reloadCollections()
+    }
+
+    func removeCollection(collectionKey: String) throws {
+        let (request, repository) = try currentRepository()
+        try repository.removeCollection(collectionKey: collectionKey)
+        try validateCurrent(request)
+        try reloadCollections()
+        try reloadCollectionItems(collectionKey: collectionKey)
+    }
+
+    func addGameToCollection(collectionKey: String, gameID: String, sortOrder: Int = 0) throws {
+        let (request, repository) = try currentRepository()
+        try repository.addGameToCollection(
+            collectionKey: collectionKey,
+            gameID: gameID,
+            sortOrder: sortOrder
+        )
+        try validateCurrent(request)
+        try reloadCollectionItems(collectionKey: collectionKey)
+    }
+
+    func removeGameFromCollection(collectionKey: String, gameID: String) throws {
+        let (request, repository) = try currentRepository()
+        try repository.removeGameFromCollection(collectionKey: collectionKey, gameID: gameID)
+        try validateCurrent(request)
+        try reloadCollectionItems(collectionKey: collectionKey)
+    }
+
+    // MARK: - Account-owned status history
+
+    func reloadStatusEvents() throws {
+        let (request, repository) = try currentRepository()
+        let loaded = try repository.loadStatusEvents()
+        try validateCurrent(request)
+        statusEvents = loaded
+    }
+
+    func recordStatusEvent(
+        eventKey: String,
+        gameID: String,
+        fromStatus: String?,
+        toStatus: String
+    ) throws {
+        let (request, repository) = try currentRepository()
+        try repository.recordStatusEvent(
+            eventKey: eventKey,
+            gameID: gameID,
+            fromStatus: fromStatus,
+            toStatus: toStatus
+        )
+        try validateCurrent(request)
+        try reloadStatusEvents()
+    }
+
+    private func currentRepository() throws -> (ItchAccountRequestContext, AccountScopedLibraryRepository) {
+        guard let request = dependencies.session.captureRequestContext() else {
+            entries = []
+            collections = []
+            collectionItems = []
+            statusEvents = []
             throw StoreError.noCurrentAccount
         }
-        let repository = try dependencies.libraryRepository(for: requestContext.accountID)
-        guard dependencies.session.isCurrent(requestContext) else {
+        let repository = try dependencies.libraryRepository(for: request.accountID)
+        try validateCurrent(request)
+        return (request, repository)
+    }
+
+    private func validateCurrent(_ request: ItchAccountRequestContext) throws {
+        guard dependencies.session.isCurrent(request) else {
             throw StoreError.staleSession
         }
-        try repository.removeEntry(gameID: gameID)
-        guard dependencies.session.isCurrent(requestContext) else {
-            throw StoreError.staleSession
-        }
-        try reload()
     }
 }
