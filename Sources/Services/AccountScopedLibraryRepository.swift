@@ -17,8 +17,9 @@ struct StoredAccountLibraryEntry: Equatable {
         eventKey: String,
         at date: Date = .now
     ) throws {
+        let scope = accountID
         let currentRows = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
-            predicate: #Predicate { $0.accountID == accountID && $0.gameID == gameID }
+            predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
         ))
         guard currentRows.count == 1, let current = currentRows.first else {
             if currentRows.isEmpty { throw RepositoryError.missingGame(gameID) }
