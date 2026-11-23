@@ -54,6 +54,21 @@ final class V4PersonalLibraryStore: ObservableObject {
         try reload()
     }
 
+
+    /// Changes the current status and records its history as one transaction.
+    func changeStatus(gameID: String, toStatus: String, eventKey: String, at date: Date = .now) throws {
+        let (request, repository) = try currentRepository()
+        try repository.changeStatus(
+            gameID: gameID,
+            toStatus: toStatus,
+            eventKey: eventKey,
+            at: date
+        )
+        try validateCurrent(request)
+        try reload()
+        try reloadStatusEvents()
+    }
+
     // MARK: - Account-owned collections
 
     func reloadCollections() throws {
