@@ -184,4 +184,4 @@ final class V4AccountScopedStoresTests: XCTestCase {
         )))
         XCTAssertTrue(store.entries.isEmpty)
     }
-}\n
+}
