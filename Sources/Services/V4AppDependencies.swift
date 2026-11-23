@@ -14,7 +14,7 @@ final class V4AppDependencies {
             case .noAuthenticatedAccount:
                 return "An authenticated itch account is required for personal data."
             case .accountNotRegistered(let accountID):
-                return "The itch account is not registered in the V4 database: \(accountID)."
+                return "The itch account is not registered in the V4 database: \\(accountID)."
             }
         }
     }
@@ -64,6 +64,26 @@ final class V4AppDependencies {
         )
 
         return V4AppDependencies(container: container, session: session ?? ItchAccountSession())
+    }
+
+    /// Opens V4 and completes the one-time Patreon reauthentication gate before
+    /// returning a runtime that can be attached to the production UI. This
+    /// method is deliberately not called by the current V3 app entry point.
+    /// The injectable preparation closure keeps the ordering testable without
+    /// touching a developer's real Keychain in unit tests.
+    static func openForProductionActivation(
+        in applicationSupportDirectory: URL? = nil,
+        session: ItchAccountSession? = nil,
+        prepareForActivation: (V4AppDependencies) throws -> Void = {
+            try $0.prepareForProductionActivation()
+        }
+    ) throws -> V4AppDependencies {
+        let dependencies = try open(
+            in: applicationSupportDirectory,
+            session: session
+        )
+        try prepareForActivation(dependencies)
+        return dependencies
     }
 
     /// Run only at the actual V4 production cutover, never while constructing
