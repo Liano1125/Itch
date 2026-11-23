@@ -124,4 +124,43 @@ final class V4AccountScopedStoresTests: XCTestCase {
         XCTAssertTrue(calendar.events.isEmpty)
         XCTAssertTrue(watches.watches.isEmpty)
     }
-}
+
+    @MainActor
+    func testPersonalLibraryStoreKeepsSameGameEntriesIsolatedAcrossAccounts() throws {
+        let (directory, dependencies, session) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = V4PersonalLibraryStore(dependencies: dependencies)
+        let firstDate = Date(timeIntervalSince1970: 1_800_000_300)
+
+        try activate(7301, session: session, dependencies: dependencies)
+        try store.upsert(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "playing", isFavorite: true,
+            notes: "A private note", addedAt: firstDate, updatedAt: firstDate
+        ))
+        XCTAssertEqual(try XCTUnwrap(store.entries.first).status, "playing")
+        XCTAssertEqual(try XCTUnwrap(store.entries.first).notes, "A private note")
+
+        try activate(7302, session: session, dependencies: dependencies)
+        try store.reload()
+        XCTAssertTrue(store.entries.isEmpty)
+        try store.upsert(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "completed", isFavorite: false,
+            notes: "B private note", addedAt: firstDate, updatedAt: firstDate
+        ))
+        XCTAssertEqual(try XCTUnwrap(store.entries.first).status, "completed")
+
+        try activate(7301, session: session, dependencies: dependencies)
+        try store.reload()
+        let firstAccountEntry = try XCTUnwrap(store.entries.first)
+        XCTAssertEqual(firstAccountEntry.status, "playing")
+        XCTAssertTrue(firstAccountEntry.isFavorite)
+        XCTAssertEqual(firstAccountEntry.notes, "A private note")
+
+        try activate(7302, session: session, dependencies: dependencies)
+        try store.reload()
+        let secondAccountEntry = try XCTUnwrap(store.entries.first)
+        XCTAssertEqual(secondAccountEntry.status, "completed")
+        XCTAssertFalse(secondAccountEntry.isFavorite)
+        XCTAssertEqual(secondAccountEntry.notes, "B private note")
+    }
+}\n
