@@ -1,0 +1,81 @@
+name: Daily V4 CI Monitor
+
+on:
+  schedule:
+    # 02:00, 04:00 and 06:00 China Standard Time (UTC+8).
+    # GitHub scheduled workflows are best-effort and may start late.
+    - cron: "0 18,20,22 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: daily-v4-ci-monitor
+  cancel-in-progress: false
+
+jobs:
+  inspect-v4-pr:
+    name: Inspect V4 draft PR and CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect PR #107 checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = 107;
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: prNumber
+            });
+            const sha = pr.head.sha;
+            const { data } = await github.rest.checks.listForRef({
+              owner, repo, ref: sha, per_page: 100
+            });
+            const checks = data.check_runs || [];
+            const counts = checks.reduce((acc, check) => {
+              const state = check.status === "completed"
+                ? (check.conclusion || "unknown")
+                : check.status;
+              acc[state] = (acc[state] || 0) + 1;
+              return acc;
+            }, {});
+            const failed = checks.filter(c =>
+              c.status === "completed" &&
+              ["failure", "timed_out", "cancelled", "action_required"].includes(c.conclusion)
+            );
+            const pending = checks.filter(c => c.status !== "completed");
+            const lines = [
+              "## itchPocket V4 scheduled CI inspection",
+              "",
+              `- Checked at: ${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })} (Asia/Shanghai)`,
+              `- PR: [#${pr.number} ${pr.title}](${pr.html_url})`,
+              `- State: ${pr.state}; Draft: ${pr.draft}; Merged: ${Boolean(pr.merged)}`,
+              `- Head: \`${sha}\``,
+              `- Checks: ${checks.length}`,
+              `- Summary: ${Object.entries(counts).map(([k,v]) => `${k}: ${v}`).join(", ") || "No check runs reported"}`,
+              ""
+            ];
+            if (failed.length) {
+              lines.push("### Failed checks");
+              for (const check of failed) {
+                lines.push(`- [${check.name}](${check.html_url || pr.html_url}): ${check.conclusion}`);
+              }
+            }
+            if (pending.length) {
+              lines.push("### In progress");
+              for (const check of pending) lines.push(`- ${check.name}: ${check.status}`);
+            }
+            if (!checks.length) {
+              lines.push("> No check runs are attached to the current PR head yet.");
+            }
+            if (pr.merged || pr.state !== "open") {
+              lines.push("", "> Attention: PR #107 is no longer an open, unmerged draft. Verify project governance before taking further action.");
+            }
+            core.summary.addRaw(lines.join("\n"), true);
+            await core.summary.write();
+            if (failed.length) core.setFailed(`${failed.length} CI check(s) failed for PR #${prNumber}.`);
