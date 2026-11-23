@@ -163,4 +163,25 @@ final class V4AccountScopedStoresTests: XCTestCase {
         XCTAssertFalse(secondAccountEntry.isFavorite)
         XCTAssertEqual(secondAccountEntry.notes, "B private note")
     }
-}
+
+    @MainActor
+    func testPersonalLibraryStoreRejectsSignedOutAndMissingCatalogGame() throws {
+        let (directory, dependencies, session) = try makeDependencies()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = V4PersonalLibraryStore(dependencies: dependencies)
+
+        XCTAssertThrowsError(try store.reload())
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertThrowsError(try store.upsert(StoredAccountLibraryEntry(
+            gameID: "not-in-shared-catalog", status: "playing", isFavorite: false,
+            notes: "", addedAt: .now, updatedAt: .now
+        )))
+
+        try activate(7303, session: session, dependencies: dependencies)
+        XCTAssertThrowsError(try store.upsert(StoredAccountLibraryEntry(
+            gameID: "not-in-shared-catalog", status: "playing", isFavorite: false,
+            notes: "", addedAt: .now, updatedAt: .now
+        )))
+        XCTAssertTrue(store.entries.isEmpty)
+    }
+}\n
