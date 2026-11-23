@@ -6,7 +6,7 @@ final class V4AppDependenciesTests: XCTestCase {
     @MainActor
     private func makeSupportDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v4-dependencies-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v4-dependencies-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true
@@ -102,12 +102,12 @@ final class V4AppDependenciesTests: XCTestCase {
         )
 
         XCTAssertEqual(account.id, identity.id)
-        XCTAssertEqual(try dependencies.registeredAccounts().map(\\.id), [identity.id])
+        XCTAssertEqual(try dependencies.registeredAccounts().map(\.id), [identity.id])
 
         let staleContext = try XCTUnwrap(session.captureRequestContext())
         session.activate(ItchAccountIdentity(itchUserID: 8103, username: "different-account"))
         XCTAssertThrowsError(try dependencies.recordAuthenticatedSession(staleContext))
-        XCTAssertEqual(try dependencies.registeredAccounts().map(\\.id), [identity.id])
+        XCTAssertEqual(try dependencies.registeredAccounts().map(\.id), [identity.id])
     }
 
     @MainActor
