@@ -179,6 +179,8 @@ final class DatabaseV4AccountModelTests: XCTestCase {
         let container = try makeContainer()
         let context = container.mainContext
         context.insert(DBGame(id: "shared-game", title: "Shared"))
+        context.insert(DBAccount(itchUserID: 101, username: "account-a"))
+        context.insert(DBAccount(itchUserID: 202, username: "account-b"))
         context.insert(ItchPocketSchemaV4.DBLibraryEntry(
             accountID: "itch:202", gameID: "shared-game", status: "completed"
         ))
