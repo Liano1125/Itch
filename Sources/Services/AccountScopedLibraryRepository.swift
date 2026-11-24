@@ -176,15 +176,36 @@ final class AccountScopedLibraryRepository {
         if save { try context.save() }
     }
 
+    /// Removes one game's personal library state as a single save operation.
+    /// Shared catalog data and other accounts' rows are never touched.
     func removeEntry(gameID: String, save: Bool = true) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let scope = accountID
-        let descriptor = FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
+        let entries = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
             predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
-        )
-        let rows = try context.fetch(descriptor)
-        guard rows.count <= 1 else { throw RepositoryError.duplicateEntry(gameID) }
-        rows.forEach(context.delete)
-        if save, !rows.isEmpty { try context.save() }
+        ))
+        guard entries.count <= 1 else { throw RepositoryError.duplicateEntry(gameID) }
+
+        let memberships = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryCollectionItem>(
+            predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
+        ))
+        let history = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryStatusEvent>(
+            predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
+        ))
+
+        guard !entries.isEmpty || !memberships.isEmpty || !history.isEmpty else { return }
+        entries.forEach(context.delete)
+        memberships.forEach(context.delete)
+        history.forEach(context.delete)
+
+        if save {
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                throw error
+            }
+        }
     }
 
     // MARK: - Account-owned collections
