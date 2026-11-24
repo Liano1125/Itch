@@ -115,6 +115,57 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
     }
 
     @MainActor
+    func testAddEntryWithInitialStatusPersistsEntryAndHistoryTogether() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBAccount(itchUserID: 101, username: "account-a"))
+        context.insert(DBGame(id: "shared-game", title: "Shared Game"))
+        try context.save()
+        let repository = try AccountScopedLibraryRepository(context: context, accountID: "itch:101")
+        let now = Date(timeIntervalSince1970: 1_800_000_600)
+
+        try repository.addEntryWithInitialStatus(
+            StoredAccountLibraryEntry(
+                gameID: "shared-game", status: "playing", isFavorite: false, notes: "first",
+                addedAt: now, updatedAt: now
+            ),
+            eventKey: "initial-playing"
+        )
+
+        XCTAssertEqual(try repository.loadEntries().map(\\.gameID), ["shared-game"])
+        let event = try XCTUnwrap(repository.loadStatusEvents().first)
+        XCTAssertEqual(event.eventKey, "initial-playing")
+        XCTAssertNil(event.fromStatus)
+        XCTAssertEqual(event.toStatus, "playing")
+    }
+
+    @MainActor
+    func testAddEntryWithInitialStatusRollsBackEntryWhenEventWriteFails() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBAccount(itchUserID: 101, username: "account-a"))
+        context.insert(DBGame(id: "shared-game", title: "Shared Game"))
+        try context.save()
+        let repository = try AccountScopedLibraryRepository(context: context, accountID: "itch:101")
+        try repository.recordStatusEvent(
+            eventKey: "duplicate-key", gameID: "shared-game",
+            fromStatus: nil, toStatus: "paused"
+        )
+        let now = Date(timeIntervalSince1970: 1_800_000_600)
+
+        XCTAssertThrowsError(try repository.addEntryWithInitialStatus(
+            StoredAccountLibraryEntry(
+                gameID: "shared-game", status: "playing", isFavorite: false, notes: "",
+                addedAt: now, updatedAt: now
+            ),
+            eventKey: "duplicate-key"
+        ))
+
+        XCTAssertTrue(try repository.loadEntries().isEmpty)
+        XCTAssertEqual(try repository.loadStatusEvents().map(\\.toStatus), ["paused"])
+    }
+
+    @MainActor
     func testRemovingLibraryEntryAlsoRemovesOnlyThatAccountsMembershipsAndHistory() throws {
         let container = try makeContainer()
         let context = container.mainContext
