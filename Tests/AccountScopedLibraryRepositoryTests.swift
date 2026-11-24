@@ -132,7 +132,7 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
             eventKey: "initial-playing"
         )
 
-        XCTAssertEqual(try repository.loadEntries().map(\\.gameID), ["shared-game"])
+        XCTAssertEqual(try repository.loadEntries().map(\.gameID), ["shared-game"])
         let event = try XCTUnwrap(repository.loadStatusEvents().first)
         XCTAssertEqual(event.eventKey, "initial-playing")
         XCTAssertNil(event.fromStatus)
@@ -162,7 +162,7 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
         ))
 
         XCTAssertTrue(try repository.loadEntries().isEmpty)
-        XCTAssertEqual(try repository.loadStatusEvents().map(\\.toStatus), ["paused"])
+        XCTAssertEqual(try repository.loadStatusEvents().map(\.toStatus), ["paused"])
     }
 
     @MainActor
