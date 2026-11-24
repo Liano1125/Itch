@@ -110,4 +110,50 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
         ), 0)
     }
 
+    @MainActor
+    func testRemovingLibraryEntryAlsoRemovesOnlyThatAccountsMembershipsAndHistory() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(DBAccount(itchUserID: 101, username: "account-a"))
+        context.insert(DBAccount(itchUserID: 202, username: "account-b"))
+        context.insert(DBGame(id: "shared-game", title: "Shared Game"))
+        try context.save()
+
+        let accountA = try AccountScopedLibraryRepository(context: context, accountID: "itch:101")
+        let accountB = try AccountScopedLibraryRepository(context: context, accountID: "itch:202")
+        let now = Date(timeIntervalSince1970: 1_800_000_600)
+
+        try accountA.upsertEntry(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "playing", isFavorite: true, notes: "A note",
+            addedAt: now, updatedAt: now
+        ))
+        try accountB.upsertEntry(StoredAccountLibraryEntry(
+            gameID: "shared-game", status: "completed", isFavorite: false, notes: "B note",
+            addedAt: now, updatedAt: now
+        ))
+        try accountA.upsertCollection(collectionKey: "favorites", title: "A Favorites")
+        try accountB.upsertCollection(collectionKey: "favorites", title: "B Favorites")
+        try accountA.addGameToCollection(collectionKey: "favorites", gameID: "shared-game")
+        try accountB.addGameToCollection(collectionKey: "favorites", gameID: "shared-game")
+        try accountA.recordStatusEvent(
+            eventKey: "a-status", gameID: "shared-game", fromStatus: nil, toStatus: "playing"
+        )
+        try accountB.recordStatusEvent(
+            eventKey: "b-status", gameID: "shared-game", fromStatus: nil, toStatus: "completed"
+        )
+
+        try accountA.removeEntry(gameID: "shared-game")
+
+        XCTAssertTrue(try accountA.loadEntries().isEmpty)
+        XCTAssertTrue(try accountA.loadCollectionItems(collectionKey: "favorites").isEmpty)
+        XCTAssertTrue(try accountA.loadStatusEvents().isEmpty)
+
+        let remainingEntry = try XCTUnwrap(accountB.loadEntries().first)
+        XCTAssertEqual(remainingEntry.status, "completed")
+        XCTAssertEqual(remainingEntry.notes, "B note")
+        XCTAssertEqual(try accountB.loadCollectionItems(collectionKey: "favorites").count, 1)
+        XCTAssertEqual(try accountB.loadStatusEvents().map(\\.eventKey), ["b-status"])
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1)
+    }
+
 }
