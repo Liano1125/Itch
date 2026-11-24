@@ -63,6 +63,14 @@ final class V4PersonalLibraryStoreTests: XCTestCase {
             updatedAt: dateB
         ))
         XCTAssertEqual(store.entries.map(\.notes), ["B private note"])
+        try store.upsertCollection(collectionKey: "favorites", title: "B Favorites")
+        try store.addGameToCollection(collectionKey: "favorites", gameID: "shared-game")
+        try store.recordStatusEvent(
+            eventKey: "account-b-status",
+            gameID: "shared-game",
+            fromStatus: nil,
+            toStatus: "completed"
+        )
 
         session.activate(accountA)
         try store.reload()
@@ -99,7 +107,7 @@ final class V4PersonalLibraryStoreTests: XCTestCase {
         try store.reloadStatusEvents()
         XCTAssertEqual(store.entries.map(\.notes), ["B private note"])
         XCTAssertEqual(store.collectionItems.map(\.gameID), ["shared-game"])
-        XCTAssertTrue(store.statusEvents.isEmpty)
+        XCTAssertEqual(store.statusEvents.map(\.eventKey), ["account-b-status"])
     }
 
     @MainActor
