@@ -128,4 +128,52 @@ final class V4PersonalLibraryStoreTests: XCTestCase {
         )))
         XCTAssertTrue(store.entries.isEmpty)
     }
+
+    @MainActor
+    func testAddToLibraryPersistsEntryAndInitialStatusEventAtomically() throws {
+        let supportDirectory = try makeSupportDirectory()
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+
+        let session = ItchAccountSession()
+        let dependencies = try V4AppDependencies.open(
+            in: supportDirectory,
+            session: session
+        )
+        let context = dependencies.modelContext
+        context.insert(DBGame(id: "atomic-game", title: "Atomic Game"))
+        try context.save()
+
+        session.activate(ItchAccountIdentity(itchUserID: 8301, username: "atomic-user"))
+        let request = try XCTUnwrap(session.captureRequestContext())
+        _ = try dependencies.recordAuthenticatedSession(request)
+
+        let store = V4PersonalLibraryStore(dependencies: dependencies)
+        let date = Date(timeIntervalSince1970: 1_800_000_300)
+        let entry = StoredAccountLibraryEntry(
+            gameID: "atomic-game",
+            status: "playing",
+            isFavorite: true,
+            notes: "Initial note",
+            addedAt: date,
+            updatedAt: date
+        )
+
+        try store.addToLibrary(entry, initialEventKey: "atomic-initial")
+        XCTAssertEqual(store.entries, [entry])
+        XCTAssertEqual(store.statusEvents, [
+            StoredAccountLibraryStatusEvent(
+                eventKey: "atomic-initial",
+                gameID: "atomic-game",
+                fromStatus: nil,
+                toStatus: "playing"
+            )
+        ])
+
+        XCTAssertThrowsError(try store.addToLibrary(entry, initialEventKey: "atomic-duplicate"))
+        try store.reload()
+        try store.reloadStatusEvents()
+        XCTAssertEqual(store.entries, [entry])
+        XCTAssertEqual(store.statusEvents.map(\.eventKey), ["atomic-initial"])
+    }
+
 }

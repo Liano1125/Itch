@@ -69,6 +69,7 @@ on:
       - feat/v4-account-scoped-update-watch
       - feat/v4-account-registry-repository
       - feat/v4-authenticated-account-registry-bridge
+      - feat/v4-atomic-library-add-flow-followup
   pull_request:
     branches:
       - design/v4-migration-journal-recovery
