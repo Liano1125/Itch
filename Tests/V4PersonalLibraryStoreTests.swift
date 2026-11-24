@@ -73,6 +73,33 @@ final class V4PersonalLibraryStoreTests: XCTestCase {
         try store.reload()
         XCTAssertEqual(store.entries.map(\.notes), ["B private note"])
         XCTAssertEqual(store.entries.map(\.status), ["completed"])
+
+        session.activate(accountA)
+        try store.upsertCollection(collectionKey: "favorites", title: "Favorites")
+        try store.addGameToCollection(collectionKey: "favorites", gameID: "shared-game")
+        try store.reloadCollectionItems(collectionKey: "favorites")
+        try store.recordStatusEvent(
+            eventKey: "account-a-status",
+            gameID: "shared-game",
+            fromStatus: nil,
+            toStatus: "playing"
+        )
+        XCTAssertEqual(store.collectionItems.map(\.gameID), ["shared-game"])
+        XCTAssertEqual(store.statusEvents.map(\.eventKey), ["account-a-status"])
+
+        try store.remove(gameID: "shared-game")
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertTrue(store.collectionItems.isEmpty)
+        XCTAssertTrue(store.statusEvents.isEmpty)
+
+        session.activate(accountB)
+        try store.reload()
+        try store.reloadCollections()
+        try store.reloadCollectionItems(collectionKey: "favorites")
+        try store.reloadStatusEvents()
+        XCTAssertEqual(store.entries.map(\.notes), ["B private note"])
+        XCTAssertEqual(store.collectionItems.map(\.gameID), ["shared-game"])
+        XCTAssertTrue(store.statusEvents.isEmpty)
     }
 
     @MainActor
