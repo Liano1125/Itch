@@ -251,6 +251,7 @@ final class AccountScopedLibraryRepository {
 
     /// Removes a collection and its memberships as one save operation.
     func removeCollection(collectionKey: String, save: Bool = true) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let scope = accountID
         let collections = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryCollection>(
             predicate: #Predicate { $0.accountID == scope && $0.collectionKey == collectionKey }
@@ -323,6 +324,7 @@ final class AccountScopedLibraryRepository {
         gameID: String,
         save: Bool = true
     ) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let scope = accountID
         let matches = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryCollectionItem>(
             predicate: #Predicate {
