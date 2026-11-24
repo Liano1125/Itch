@@ -144,8 +144,9 @@ final class AccountScopedLibraryRepository {
     ) throws {
         try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let scope = accountID
+        let gameID = entry.gameID
         let existing = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
-            predicate: #Predicate { $0.accountID == scope && $0.gameID == entry.gameID }
+            predicate: #Predicate { $0.accountID == scope && $0.gameID == gameID }
         ))
         guard existing.isEmpty else { throw RepositoryError.duplicateEntry(entry.gameID) }
 
