@@ -259,6 +259,13 @@ final class V4AccountScopedStoresTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).fromStatus, "playing")
         XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).toStatus, "completed")
 
+        // An unrelated unsaved edit in the shared main context must survive
+        // rollback of the isolated library transaction context.
+        let sharedGame = try XCTUnwrap(dependencies.modelContext.fetch(
+            FetchDescriptor<DBGame>(predicate: #Predicate { $0.id == "shared-game" })
+        ).first)
+        sharedGame.title = "Unrelated pending edit"
+
         XCTAssertThrowsError(try store.changeStatus(
             gameID: "shared-game", toStatus: "paused",
             eventKey: "status-transition-1", at: now.addingTimeInterval(20)
@@ -270,6 +277,7 @@ final class V4AccountScopedStoresTests: XCTestCase {
         XCTAssertEqual(store.statusEvents.count, 1)
         XCTAssertEqual(try XCTUnwrap(store.statusEvents.first).toStatus, "completed")
         XCTAssertEqual(try XCTUnwrap(store.entries.first).notes, "keep me")
+        XCTAssertEqual(sharedGame.title, "Unrelated pending edit")
     }
 
 }
