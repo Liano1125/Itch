@@ -152,7 +152,7 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
         XCTAssertEqual(remainingEntry.status, "completed")
         XCTAssertEqual(remainingEntry.notes, "B note")
         XCTAssertEqual(try accountB.loadCollectionItems(collectionKey: "favorites").count, 1)
-        XCTAssertEqual(try accountB.loadStatusEvents().map(\\.eventKey), ["b-status"])
+        XCTAssertEqual(try accountB.loadStatusEvents().map(\.eventKey), ["b-status"])
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBGame>()), 1)
     }
 
