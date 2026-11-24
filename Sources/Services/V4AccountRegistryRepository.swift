@@ -69,6 +69,16 @@ final class V4AccountRegistryRepository {
         return account
     }
 
+    func loadAccounts() throws -> [DBAccount] {
+        try context.fetch(FetchDescriptor<DBAccount>())
+            .sorted {
+                let lhsDate = $0.lastUsedAt ?? $0.firstSeenAt
+                let rhsDate = $1.lastUsedAt ?? $1.firstSeenAt
+                if lhsDate != rhsDate { return lhsDate > rhsDate }
+                return $0.id < $1.id
+            }
+    }
+
     func loadAccount(itchUserID: Int) throws -> DBAccount? {
         guard itchUserID > 0 else { throw RepositoryError.invalidIdentity }
         let accountID = DBAccount.stableID(itchUserID: itchUserID)

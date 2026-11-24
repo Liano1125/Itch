@@ -11,7 +11,12 @@ final class ScopedAppStateRepositoryTests: XCTestCase {
             schema: schema,
             isStoredInMemoryOnly: true
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        for userID in [1, 2, 7, 11, 22, 101, 202, 303, 404, 505, 606, 707] {
+            container.mainContext.insert(DBAccount(itchUserID: userID, username: "test-\(userID)"))
+        }
+        try container.mainContext.save()
+        return container
     }
 
     @MainActor
@@ -191,6 +196,21 @@ final class ScopedAppStateRepositoryTests: XCTestCase {
 
         XCTAssertNil(try repository.state(for: "remove-me", in: accountA))
         XCTAssertEqual(try repository.state(for: "remove-me", in: accountB)?.stringValue, "keep")
+    }
+
+
+    @MainActor
+    func testRetainedRepositoryCannotRecreateItchStateAfterAccountRemoval() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let repository = ScopedAppStateRepository(context: context)
+        let scope = try AppStateScope.itchAccount(userID: 101)
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<DBAccount>()).first { $0.id == "itch:101" })
+        context.delete(account)
+        try context.save()
+
+        XCTAssertThrowsError(try repository.setString("late", for: "private.key", in: scope))
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<DBScopedAppState>()), 0)
     }
 
 }

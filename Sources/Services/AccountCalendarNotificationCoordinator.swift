@@ -96,8 +96,6 @@ final class AccountCalendarNotificationCoordinator {
         if let previousAccountID, !Self.isCanonicalItchAccountID(previousAccountID) { return 0 }
 
         guard let accountID else {
-            // Sign-out clears the complete app-owned V4 namespace, including any stale
-            // projections left behind by an earlier account transition.
             await removeManagedNotifications(accountID: nil, generation: generation, isCurrent: isCurrent)
             return 0
         }
@@ -107,9 +105,6 @@ final class AccountCalendarNotificationCoordinator {
             guard isCurrent(), isCurrentOperation(generation) else { return 0 }
         }
 
-        // If the previous identity is unknown (for example, cold-launch restore after an
-        // interrupted sign-out), clear the whole app-owned V4 namespace before rebuilding.
-        // With a known identity, restrict cleanup to the destination account.
         if previousAccountID == nil {
             await removeManagedNotifications(accountID: nil, generation: generation, isCurrent: isCurrent)
         } else {
@@ -159,8 +154,6 @@ final class AccountCalendarNotificationCoordinator {
             do {
                 try await center.add(request)
                 guard isCurrent(), isCurrentOperation(generation) else {
-                    // Generation-specific identifiers ensure this stale cleanup cannot remove
-                    // a replacement notification scheduled by a newer rebuild.
                     await center.removePending(identifiers: [request.identifier])
                     return scheduled
                 }
@@ -170,6 +163,16 @@ final class AccountCalendarNotificationCoordinator {
             }
         }
         return scheduled
+    }
+
+    /// Removes only notifications owned by one account. Ordinary sign-out has separate semantics.
+    func clear(accountID: String) async {
+        guard Self.isCanonicalItchAccountID(accountID) else { return }
+        await removeManagedNotifications(
+            accountID: accountID,
+            generation: nil,
+            isCurrent: { true }
+        )
     }
 
     func cancelAllManagedNotifications() async {
@@ -183,20 +186,20 @@ final class AccountCalendarNotificationCoordinator {
 
     private func removeManagedNotifications(
         accountID: String?,
-        generation: UInt64,
+        generation: UInt64?,
         isCurrent: @escaping @MainActor () -> Bool
     ) async {
         let prefix = accountID.map { Self.notificationIdentifierPrefix(accountID: $0) }
             ?? Self.identifierPrefix
         let pendingIdentifiers = await center.pendingIdentifiers()
-        guard isCurrent(), isCurrentOperation(generation) else { return }
+        guard isCurrent(), generation.map(isCurrentOperation) ?? true else { return }
         let pending = pendingIdentifiers.filter { $0.hasPrefix(prefix) }
         let deliveredIdentifiers = await center.deliveredIdentifiers()
-        guard isCurrent(), isCurrentOperation(generation) else { return }
+        guard isCurrent(), generation.map(isCurrentOperation) ?? true else { return }
         let delivered = deliveredIdentifiers.filter { $0.hasPrefix(prefix) }
         if !pending.isEmpty {
             await center.removePending(identifiers: Array(pending))
-            guard isCurrent(), isCurrentOperation(generation) else { return }
+            guard isCurrent(), generation.map(isCurrentOperation) ?? true else { return }
         }
         if !delivered.isEmpty {
             await center.removeDelivered(identifiers: Array(delivered))

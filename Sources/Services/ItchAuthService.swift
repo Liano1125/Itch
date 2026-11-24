@@ -11,7 +11,46 @@ final class ItchAuthService: NSObject, ObservableObject,
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
-    private let api = ItchAPI()
+    private let readAccessToken: @MainActor () -> String?
+    private let deleteAccessToken: @MainActor () -> Void
+    private let revokeAccessToken: @MainActor (String) async throws -> Void
+    private let fetchProfile: @MainActor (String) async throws -> ItchUser
+    private let authorizeURL: (@MainActor (URL) async throws -> URL)?
+    private let exchangeAuthorizationCode: (@MainActor (String, String) async throws -> String)?
+    private var authOperationGeneration: UInt64 = 0
+
+    private enum AuthenticationError: LocalizedError {
+        case accountRemovalInProgress
+
+        var errorDescription: String? {
+            "This itch account is being removed from this device. Please try again after removal finishes."
+        }
+    }
+
+    init(
+        readAccessToken: @escaping @MainActor () -> String? = {
+            KeychainStore.read("access_token")
+        },
+        deleteAccessToken: @escaping @MainActor () -> Void = {
+            KeychainStore.delete("access_token")
+        },
+        revokeAccessToken: @escaping @MainActor (String) async throws -> Void = {
+            try await ItchAuthService.revokeAccessTokenOnServer($0)
+        },
+        fetchProfile: @escaping @MainActor (String) async throws -> ItchUser = {
+            try await ItchAPI().fetchProfile(token: $0)
+        },
+        authorizeURL: (@MainActor (URL) async throws -> URL)? = nil,
+        exchangeAuthorizationCode: (@MainActor (String, String) async throws -> String)? = nil
+    ) {
+        self.readAccessToken = readAccessToken
+        self.deleteAccessToken = deleteAccessToken
+        self.revokeAccessToken = revokeAccessToken
+        self.fetchProfile = fetchProfile
+        self.authorizeURL = authorizeURL
+        self.exchangeAuthorizationCode = exchangeAuthorizationCode
+        super.init()
+    }
 
     /// Account identity and generation shared with account-scoped request owners.
     let accountSession = ItchAccountSession()
@@ -23,18 +62,35 @@ final class ItchAuthService: NSObject, ObservableObject,
     }
 
     func restoreSession() async {
-        guard let token = KeychainStore.read("access_token") else {
+        authOperationGeneration &+= 1
+        let operation = authOperationGeneration
+        let removalSnapshot = accountSession.captureRemovalStateSnapshot()
+
+        guard let token = readAccessToken() else {
+            guard operation == authOperationGeneration else { return }
             user = nil
             accountSession.activate(nil)
             return
         }
 
         do {
-            let restoredUser = try await api.fetchProfile(token: token)
+            let restoredUser = try await fetchProfile(token)
+            // A sign-out, newer restore, or sign-in may have superseded this
+            // request while the profile lookup was suspended.
+            guard operation == authOperationGeneration,
+                  readAccessToken() == token else { return }
+            let restoredAccountID = "itch:\(restoredUser.id)"
+            guard !accountSession.removalWasStarted(for: restoredAccountID, after: removalSnapshot),
+                  !accountSession.isRemovalInProgress(for: restoredAccountID) else {
+                throw AuthenticationError.accountRemovalInProgress
+            }
             user = restoredUser
             accountSession.activate(ItchAccountIdentity(user: restoredUser))
         } catch {
-            KeychainStore.delete("access_token")
+            // Never let a stale restore delete a newer login's credential.
+            guard operation == authOperationGeneration,
+                  readAccessToken() == token else { return }
+            deleteAccessToken()
             user = nil
             accountSession.activate(nil)
             errorMessage = error.localizedDescription
@@ -44,9 +100,17 @@ final class ItchAuthService: NSObject, ObservableObject,
     func signIn() async {
         guard !isLoading else { return }
 
+        authOperationGeneration &+= 1
+        let operation = authOperationGeneration
+        let removalSnapshot = accountSession.captureRemovalStateSnapshot()
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            // An older sign-in must not clear the loading state of a newer one.
+            if operation == authOperationGeneration {
+                isLoading = false
+            }
+        }
 
         do {
             let verifier = PKCE.makeVerifier()
@@ -92,9 +156,13 @@ final class ItchAuthService: NSObject, ObservableObject,
                 throw ItchAPIError.invalidResponse
             }
 
-            let callbackURL = try await authorize(
-                url: authorizationURL
-            )
+            let callbackURL: URL
+            if let authorizeURL {
+                callbackURL = try await authorizeURL(authorizationURL)
+            } else {
+                callbackURL = try await authorize(url: authorizationURL)
+            }
+            guard operation == authOperationGeneration else { return }
 
             guard let callback = URLComponents(
                 url: callbackURL,
@@ -131,14 +199,23 @@ final class ItchAuthService: NSObject, ObservableObject,
                 throw ItchAPIError.invalidResponse
             }
 
-            let token = try await exchangeCode(
-                code,
-                verifier: verifier
-            )
+            let token: String
+            if let exchangeAuthorizationCode {
+                token = try await exchangeAuthorizationCode(code, verifier)
+            } else {
+                token = try await exchangeCode(code, verifier: verifier)
+            }
+            guard operation == authOperationGeneration else { return }
 
             // Validate the new credential before replacing the persisted session.
-            let authenticatedUser = try await api.fetchProfile(token: token)
+            let authenticatedUser = try await fetchProfile(token)
 
+            guard operation == authOperationGeneration else { return }
+            let authenticatedAccountID = "itch:\(authenticatedUser.id)"
+            guard !accountSession.removalWasStarted(for: authenticatedAccountID, after: removalSnapshot),
+                  !accountSession.isRemovalInProgress(for: authenticatedAccountID) else {
+                throw AuthenticationError.accountRemovalInProgress
+            }
             try KeychainStore.save(
                 token,
                 for: "access_token"
@@ -148,6 +225,7 @@ final class ItchAuthService: NSObject, ObservableObject,
             accountSession.activate(ItchAccountIdentity(user: authenticatedUser))
 
         } catch {
+            guard operation == authOperationGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -256,12 +334,33 @@ final class ItchAuthService: NSObject, ObservableObject,
     }
 
     func signOut() async {
-        guard let token = KeychainStore.read("access_token") else {
-            user = nil
-            accountSession.activate(nil)
-            return
-        }
+        // Invalidate local authority before any network suspension. Every
+        // account-owned request captured under the old generation is now stale.
+        authOperationGeneration &+= 1
+        let operation = authOperationGeneration
+        isLoading = false
+        // Close any pending browser authorization immediately. Its callback
+        // will be treated as stale by the generation checks in signIn().
+        webSession?.cancel()
+        webSession = nil
+        let token = readAccessToken()
+        user = nil
+        accountSession.activate(nil)
+        deleteAccessToken()
 
+        guard let token else { return }
+
+        do {
+            try await revokeAccessToken(token)
+        } catch {
+            // A later sign-in/restore owns the UI now; don't surface an old
+            // sign-out failure over the newer authenticated session.
+            guard operation == authOperationGeneration else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    static func revokeAccessTokenOnServer(_ token: String) async throws {
         var request = URLRequest(
             url: URL(string: "https://api.itch.io/oauth/revoke")!
         )
@@ -281,30 +380,13 @@ final class ItchAuthService: NSObject, ObservableObject,
             )
         ]
 
-        request.httpBody = body.percentEncodedQuery?.data(
-            using: .utf8
-        )
+        request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
 
-        do {
-            let (_, response) = try await URLSession.shared.data(
-                for: request
-            )
-
-            if let http = response as? HTTPURLResponse,
-               !(200..<300).contains(http.statusCode) {
-                throw ItchAPIError.httpError(
-                    http.statusCode,
-                    "撤销授权失败"
-                )
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            return
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           !(200..<300).contains(http.statusCode) {
+            throw ItchAPIError.httpError(http.statusCode, "撤销授权失败")
         }
-
-        KeychainStore.delete("access_token")
-        user = nil
-        accountSession.activate(nil)
     }
 
     func presentationAnchor(
