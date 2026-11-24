@@ -102,6 +102,10 @@ final class AccountScopedLibraryRepositoryTests: XCTestCase {
         XCTAssertThrowsError(try repository.recordStatusEvent(
             eventKey: "event", gameID: "game", fromStatus: nil, toStatus: "playing"
         ))
+        XCTAssertThrowsError(try repository.removeCollection(collectionKey: "favorites"))
+        XCTAssertThrowsError(try repository.removeGameFromCollection(
+            collectionKey: "favorites", gameID: "game"
+        ))
         XCTAssertEqual(try context.fetchCount(
             FetchDescriptor<ItchPocketSchemaV4.DBLibraryCollection>()
         ), 0)
