@@ -142,6 +142,7 @@ final class AccountScopedLibraryRepository {
         _ entry: StoredAccountLibraryEntry,
         eventKey: String
     ) throws {
+        try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let scope = accountID
         let existing = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
             predicate: #Predicate { $0.accountID == scope && $0.gameID == entry.gameID }
