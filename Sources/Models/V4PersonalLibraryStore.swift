@@ -52,6 +52,10 @@ final class V4PersonalLibraryStore: ObservableObject {
         try repository.removeEntry(gameID: gameID)
         try validateCurrent(request)
         try reload()
+        // The repository removes these account-owned rows in the same save
+        // boundary. Keep the already-published projections in sync as well.
+        collectionItems.removeAll { $0.gameID == gameID }
+        statusEvents.removeAll { $0.gameID == gameID }
     }
 
 
