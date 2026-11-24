@@ -136,6 +136,34 @@ final class AccountScopedLibraryRepository {
         }.sorted { $0.addedAt > $1.addedAt }
     }
 
+    /// Adds a new personal library entry and its initial status event atomically.
+    /// If either write fails, neither new row is persisted.
+    func addEntryWithInitialStatus(
+        _ entry: StoredAccountLibraryEntry,
+        eventKey: String
+    ) throws {
+        let scope = accountID
+        let existing = try context.fetch(FetchDescriptor<ItchPocketSchemaV4.DBLibraryEntry>(
+            predicate: #Predicate { $0.accountID == scope && $0.gameID == entry.gameID }
+        ))
+        guard existing.isEmpty else { throw RepositoryError.duplicateEntry(entry.gameID) }
+
+        do {
+            try upsertEntry(entry, save: false)
+            try recordStatusEvent(
+                eventKey: eventKey,
+                gameID: entry.gameID,
+                fromStatus: nil,
+                toStatus: entry.status,
+                save: false
+            )
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
     func upsertEntry(_ entry: StoredAccountLibraryEntry, save: Bool = true) throws {
         try V4AccountRegistryGuard.requireRegisteredAccount(accountID, in: context)
         let gameID = entry.gameID
