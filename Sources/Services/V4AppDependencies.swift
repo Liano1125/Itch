@@ -113,9 +113,15 @@ final class V4AppDependencies {
     }
 
     func libraryRepository(for accountID: String? = nil) throws -> AccountScopedLibraryRepository {
-        try AccountScopedLibraryRepository(
-            context: requireContext(for: accountID),
-            accountID: resolvedAccountID(accountID)
+        let resolvedID = try resolvedAccountID(accountID)
+        _ = try requireContext(for: resolvedID)
+        // Keep library transactions off the shared main context. A failed
+        // status/history save can safely roll back without discarding unrelated
+        // pending edits owned by other V4 stores.
+        let transactionContext = ModelContext(container)
+        return try AccountScopedLibraryRepository(
+            context: transactionContext,
+            accountID: resolvedID
         )
     }
 
