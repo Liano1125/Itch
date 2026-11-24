@@ -40,6 +40,16 @@ final class V4PersonalLibraryStore: ObservableObject {
         entries = loaded
     }
 
+    /// Adds a game and its initial status-history event in one persistence transaction.
+    /// Use this for first-time membership; `upsert` remains for editing an existing entry.
+    func addToLibrary(_ entry: StoredAccountLibraryEntry, initialEventKey: String) throws {
+        let (request, repository) = try currentRepository()
+        try repository.addEntryWithInitialStatus(entry, eventKey: initialEventKey)
+        try validateCurrent(request)
+        try reload()
+        try reloadStatusEvents()
+    }
+
     func upsert(_ entry: StoredAccountLibraryEntry) throws {
         let (request, repository) = try currentRepository()
         try repository.upsertEntry(entry)
