@@ -8,7 +8,7 @@ final class V4AuthenticationLifecycleCoordinator: ObservableObject {
     @Published private(set) var registeredAccountID: String?
     @Published private(set) var errorMessage: String?
 
-    typealias DependenciesFactory = (ItchAccountSession) throws -> V4AppDependencies
+    typealias DependenciesFactory = @MainActor (ItchAccountSession) throws -> V4AppDependencies
 
     private let makeDependencies: DependenciesFactory
     private var dependencies: V4AppDependencies?
