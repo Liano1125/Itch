@@ -45,6 +45,11 @@ final class V4AuthenticationLifecycleCoordinator: ObservableObject {
             if let dependencies, dependencies.session === session {
                 runtime = dependencies
             } else {
+                // A replacement auth-session object must never reuse a store
+                // backed by the previous session, even if the numeric itch ID
+                // happens to be identical.
+                registeredAccountID = nil
+                personalLibraryStore = nil
                 runtime = try makeDependencies(session)
                 guard runtime.session === session else {
                     throw LifecycleError.sessionMismatch
