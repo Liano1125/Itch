@@ -59,7 +59,7 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.errorMessage)
         XCTAssertNotNil(coordinator.personalLibraryStore)
         XCTAssertFalse(coordinator.personalLibraryStore === firstLibraryStore)
-        XCTAssertEqual(try runtime?.registeredAccounts().map(\\.id).sorted(), ["itch:9402", "itch:9403"])
+        XCTAssertEqual(try runtime?.registeredAccounts().map(\.id).sorted(), ["itch:9402", "itch:9403"])
     }
 
     @MainActor
@@ -83,7 +83,7 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.registeredAccountID)
         XCTAssertNil(coordinator.personalLibraryStore)
         XCTAssertNil(coordinator.errorMessage)
-        XCTAssertEqual(try runtime?.registeredAccounts().map(\\.id), ["itch:9404"])
+        XCTAssertEqual(try runtime?.registeredAccounts().map(\.id), ["itch:9404"])
     }
 
     @MainActor
