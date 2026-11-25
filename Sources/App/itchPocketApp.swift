@@ -30,6 +30,7 @@ struct itchPocketApp: App {
                 if let database {
                     database.attachModelContainer(to: ContentView())
                         .environmentObject(authService)
+                        .environmentObject(v4AuthenticationCoordinator)
                         .task {
                             await authService.restoreSession()
                         }
