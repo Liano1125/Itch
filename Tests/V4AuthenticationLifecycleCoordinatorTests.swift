@@ -6,7 +6,7 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
     @MainActor
     private func makeSupportDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("itchPocket-v4-auth-lifecycle-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("itchPocket-v4-auth-lifecycle-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -38,8 +38,11 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         let supportDirectory = try makeSupportDirectory()
         defer { try? FileManager.default.removeItem(at: supportDirectory) }
         let session = ItchAccountSession()
+        var runtime: V4AppDependencies?
         let coordinator = V4AuthenticationLifecycleCoordinator { injectedSession in
-            try V4AppDependencies.open(in: supportDirectory, session: injectedSession)
+            let opened = try V4AppDependencies.open(in: supportDirectory, session: injectedSession)
+            runtime = opened
+            return opened
         }
 
         session.activate(ItchAccountIdentity(itchUserID: 9402, username: "account-a"))
@@ -51,6 +54,7 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(coordinator.registeredAccountID, "itch:9403")
         XCTAssertNil(coordinator.errorMessage)
+        XCTAssertEqual(try runtime?.registeredAccounts().map(\.id).sorted(), ["itch:9402", "itch:9403"])
     }
 
     @MainActor
@@ -58,8 +62,11 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         let supportDirectory = try makeSupportDirectory()
         defer { try? FileManager.default.removeItem(at: supportDirectory) }
         let session = ItchAccountSession()
+        var runtime: V4AppDependencies?
         let coordinator = V4AuthenticationLifecycleCoordinator { injectedSession in
-            try V4AppDependencies.open(in: supportDirectory, session: injectedSession)
+            let opened = try V4AppDependencies.open(in: supportDirectory, session: injectedSession)
+            runtime = opened
+            return opened
         }
 
         session.activate(ItchAccountIdentity(itchUserID: 9404, username: "signed-out-user"))
@@ -69,6 +76,7 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
 
         XCTAssertNil(coordinator.registeredAccountID)
         XCTAssertNil(coordinator.errorMessage)
+        XCTAssertEqual(try runtime?.registeredAccounts().map(\.id), ["itch:9404"])
     }
 
     @MainActor
