@@ -7,6 +7,7 @@ import SwiftData
 struct itchPocketApp: App {
     @UIApplicationDelegateAdaptor(ItchPocketAppDelegate.self) private var appDelegate
     @StateObject private var authService = ItchAuthService()
+    @StateObject private var v4AuthenticationCoordinator = V4AuthenticationLifecycleCoordinator()
     @State private var database: AppDatabase?
     @State private var databaseError: String?
     @State private var canRecoverFromLegacy = AppDatabase.hasLegacyStoreForRecovery
@@ -29,8 +30,14 @@ struct itchPocketApp: App {
                 if let database {
                     database.attachModelContainer(to: ContentView())
                         .environmentObject(authService)
+                        .environmentObject(v4AuthenticationCoordinator)
                         .task {
                             await authService.restoreSession()
+                        }
+                        .onChange(of: authService.user?.id) { _, _ in
+                            v4AuthenticationCoordinator.synchronizeAuthenticatedSession(
+                                using: authService.accountSession
+                            )
                         }
                 } else {
                     DatabaseRecoveryView(
