@@ -33,6 +33,11 @@ final class V4PersonalLibraryStore: ObservableObject {
         self.dependencies = dependencies
     }
 
+    /// Publishes the latest account-scoped catalog projection from the V4 loader.
+    func publishLibraryGames(_ games: [StoredAccountLibraryGame]) {
+        libraryGames = games
+    }
+
     /// Reloads only the currently authenticated account's personal entries.
     func reload() throws {
         let (request, repository) = try currentRepository()
