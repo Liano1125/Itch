@@ -28,9 +28,11 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.registeredAccountID, "itch:9401")
         XCTAssertNil(coordinator.errorMessage)
         XCTAssertEqual(factoryCalls, 1)
+        let libraryStore = try XCTUnwrap(coordinator.personalLibraryStore)
 
         coordinator.synchronizeAuthenticatedSession(using: session)
         XCTAssertEqual(factoryCalls, 1)
+        XCTAssertTrue(coordinator.personalLibraryStore === libraryStore)
     }
 
     @MainActor
@@ -48,13 +50,16 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         session.activate(ItchAccountIdentity(itchUserID: 9402, username: "account-a"))
         coordinator.synchronizeAuthenticatedSession(using: session)
         XCTAssertEqual(coordinator.registeredAccountID, "itch:9402")
+        let firstLibraryStore = try XCTUnwrap(coordinator.personalLibraryStore)
 
         session.activate(ItchAccountIdentity(itchUserID: 9403, username: "account-b"))
         coordinator.synchronizeAuthenticatedSession(using: session)
 
         XCTAssertEqual(coordinator.registeredAccountID, "itch:9403")
         XCTAssertNil(coordinator.errorMessage)
-        XCTAssertEqual(try runtime?.registeredAccounts().map(\.id).sorted(), ["itch:9402", "itch:9403"])
+        XCTAssertNotNil(coordinator.personalLibraryStore)
+        XCTAssertFalse(coordinator.personalLibraryStore === firstLibraryStore)
+        XCTAssertEqual(try runtime?.registeredAccounts().map(\\.id).sorted(), ["itch:9402", "itch:9403"])
     }
 
     @MainActor
@@ -71,12 +76,14 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
 
         session.activate(ItchAccountIdentity(itchUserID: 9404, username: "signed-out-user"))
         coordinator.synchronizeAuthenticatedSession(using: session)
+        XCTAssertNotNil(coordinator.personalLibraryStore)
         session.activate(nil)
         coordinator.synchronizeAuthenticatedSession(using: session)
 
         XCTAssertNil(coordinator.registeredAccountID)
+        XCTAssertNil(coordinator.personalLibraryStore)
         XCTAssertNil(coordinator.errorMessage)
-        XCTAssertEqual(try runtime?.registeredAccounts().map(\.id), ["itch:9404"])
+        XCTAssertEqual(try runtime?.registeredAccounts().map(\\.id), ["itch:9404"])
     }
 
     @MainActor
@@ -93,11 +100,13 @@ final class V4AuthenticationLifecycleCoordinatorTests: XCTestCase {
         session.activate(ItchAccountIdentity(itchUserID: 9405, username: "retry-user"))
         coordinator.synchronizeAuthenticatedSession(using: session)
         XCTAssertNil(coordinator.registeredAccountID)
+        XCTAssertNil(coordinator.personalLibraryStore)
         XCTAssertNotNil(coordinator.errorMessage)
 
         shouldFail = false
         coordinator.synchronizeAuthenticatedSession(using: session)
         XCTAssertEqual(coordinator.registeredAccountID, "itch:9405")
+        XCTAssertNotNil(coordinator.personalLibraryStore)
         XCTAssertNil(coordinator.errorMessage)
     }
 
