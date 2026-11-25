@@ -6,7 +6,7 @@ extension V4PersonalLibraryStore {
     /// title/developer/detail fields come from the global catalog.
     func reloadLibraryGames() throws {
         guard let request = dependencies.session.captureRequestContext() else {
-            libraryGames = []
+            publishLibraryGames([])
             throw StoreError.noCurrentAccount
         }
         let repository = AccountScopedLibraryCatalogRepository(
@@ -15,6 +15,6 @@ extension V4PersonalLibraryStore {
         )
         let loaded = try repository.loadLibraryGames()
         try validateCurrent(request)
-        libraryGames = loaded
+        publishLibraryGames(loaded)
     }
 }
