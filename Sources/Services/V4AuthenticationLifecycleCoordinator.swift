@@ -62,6 +62,7 @@ final class V4AuthenticationLifecycleCoordinator: ObservableObject {
             try libraryStore.reload()
             try libraryStore.reloadCollections()
             try libraryStore.reloadStatusEvents()
+            try libraryStore.reloadLibraryGames()
 
             dependencies = runtime
             registeredAccountID = request.accountID
