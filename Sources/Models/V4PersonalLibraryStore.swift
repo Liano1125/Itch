@@ -25,11 +25,17 @@ final class V4PersonalLibraryStore: ObservableObject {
     @Published private(set) var collections: [StoredAccountLibraryCollection] = []
     @Published private(set) var collectionItems: [StoredAccountLibraryCollectionItem] = []
     @Published private(set) var statusEvents: [StoredAccountLibraryStatusEvent] = []
+    @Published private(set) var libraryGames: [StoredAccountLibraryGame] = []
 
-    private let dependencies: V4AppDependencies
+    let dependencies: V4AppDependencies
 
     init(dependencies: V4AppDependencies) {
         self.dependencies = dependencies
+    }
+
+    /// Publishes the latest account-scoped catalog projection from the V4 loader.
+    func publishLibraryGames(_ games: [StoredAccountLibraryGame]) {
+        libraryGames = games
     }
 
     /// Reloads only the currently authenticated account's personal entries.
@@ -164,6 +170,7 @@ final class V4PersonalLibraryStore: ObservableObject {
             collections = []
             collectionItems = []
             statusEvents = []
+            libraryGames = []
             throw StoreError.noCurrentAccount
         }
         let repository = try dependencies.libraryRepository(for: request.accountID)
@@ -171,7 +178,7 @@ final class V4PersonalLibraryStore: ObservableObject {
         return (request, repository)
     }
 
-    private func validateCurrent(_ request: ItchAccountRequestContext) throws {
+    func validateCurrent(_ request: ItchAccountRequestContext) throws {
         guard dependencies.session.isCurrent(request) else {
             throw StoreError.staleSession
         }

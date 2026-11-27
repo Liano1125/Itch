@@ -73,6 +73,7 @@ on:
       - feat/v4-auth-session-registry-lifecycle
       - feat/v4-account-library-catalog-projection
       - feat/v4-personal-library-runtime-bridge
+      - feat/v4-account-library-catalog-projection
   pull_request:
     branches:
       - design/v4-migration-journal-recovery
